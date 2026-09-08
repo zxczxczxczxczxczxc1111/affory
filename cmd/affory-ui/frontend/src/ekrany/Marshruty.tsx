@@ -64,12 +64,16 @@ export function Marshruty({
   pravila,
   trafik,
   zapushchennye,
+  obnovitProtsessy,
   naVyborPrilozheniya,
   naKomandu,
   zanyato = false,
 }: PravilaProps & { trafik: PravilaTrafika }) {
   const [tab, setTab] = useState<"services" | "apps" | "sites">("services");
   const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    if (adding && tab === "apps") obnovitProtsessy?.();
+  }, [adding, tab, obnovitProtsessy]);
   const [query, setQuery] = useState("");
   const [path, setPath] = useState("");
   const [picking, setPicking] = useState(false);

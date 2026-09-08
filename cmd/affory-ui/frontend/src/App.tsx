@@ -238,6 +238,13 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     zadatOtkaz({ kod: KOD_OBOLOCHKI, tekst: `${chto}: ${e instanceof Error ? e.message : String(e)}` });
   }, []);
 
+  const obnovitProtsessy = useCallback(() => {
+    void spisokProtsessov().then(zadatZapushchennye).catch((e: unknown) => {
+      zadatZapushchennye(null);
+      zhaloba("spisokProtsessov", e);
+    });
+  }, [zhaloba]);
+
   const obnovitSpisok = useCallback(async () => {
     try {
       const kadr = await zvat("listServers");
@@ -538,11 +545,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     proshlayaSvyaz.current = svyaz;
     if (bylo !== "net" || svyaz !== "est") return;
     sprositVsyo();
-    void spisokProtsessov().then(zadatZapushchennye).catch((e: unknown) => {
-      zadatZapushchennye(null);
-      zhaloba("spisokProtsessov", e);
-    });
-  }, [svyaz, sprositVsyo]);
+    obnovitProtsessy();
+  }, [svyaz, sprositVsyo, obnovitProtsessy]);
 
   // listRules is fetched only once the service says it exists: asking a
   // deferred command for data would turn its refusal into a banner.
@@ -550,16 +554,13 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     if ((vkladka === "pravila" || vkladka === "podklyuchenie") && otlozheno !== null && !("listRules" in otlozheno)) void obnovitPravila();
   }, [vkladka, otlozheno, obnovitPravila]);
 
-  // The process list is a snapshot taken when the tab opens: a live poll
-  // would redraw the picker under the person's cursor.
+  // Refresh after returning from another app; yesterday's snapshot is not clairvoyant.
   useEffect(() => {
     if (vkladka !== "pravila") return;
-    // A picker that quietly disappears reads as "this build has no picker".
-    void spisokProtsessov().then(zadatZapushchennye).catch((e: unknown) => {
-      zadatZapushchennye(null);
-      zhaloba("spisokProtsessov", e);
-    });
-  }, [vkladka, zhaloba]);
+    obnovitProtsessy();
+    window.addEventListener("focus", obnovitProtsessy);
+    return () => window.removeEventListener("focus", obnovitProtsessy);
+  }, [vkladka, obnovitProtsessy]);
 
   // The service refreshes the subscription on its own schedule; opening the
   // tab is the cheap moment to catch up with that.
@@ -750,6 +751,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             obnovitPravila={() => void obnovitPravila()}
             zhdutPodyoma={pravilaZhdut && naEkrane.sostoyanie !== "vyklyuchen"}
             zapushchennye={zapushchennye}
+            obnovitProtsessy={obnovitProtsessy}
             naVyborPrilozheniya={vybratPrilozhenie}
             naKomandu={(komanda, telo) => void vypolnit(komanda, telo)}
           />

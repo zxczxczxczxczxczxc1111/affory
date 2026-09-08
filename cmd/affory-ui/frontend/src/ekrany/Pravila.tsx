@@ -46,6 +46,7 @@ export interface PravilaProps {
   /** Running processes of this session for the picker; `null` until loaded
    *  (or when the shell could not list them), and then the path field alone. */
   zapushchennye?: Zapushchennyy[] | null;
+  obnovitProtsessy?: () => void;
   naVyborPrilozheniya?: () => Promise<string>;
   naKomandu: (komanda: string, telo: unknown) => void;
 }

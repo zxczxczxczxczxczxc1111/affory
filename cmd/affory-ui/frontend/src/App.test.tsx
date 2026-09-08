@@ -32,6 +32,7 @@ const stend = vi.hoisted(() => {
     bufer: null as string | null,
     buferLomaetsya: false,
     protsessyLomayutsya: false,
+    protsessy: [] as { imya: string; put: string }[],
     arhiv: "" as string,
     arhivLomaetsya: false,
     pravaLomayutsya: null as string | null,
@@ -115,7 +116,7 @@ vi.mock("./most", () => ({
   },
   spisokProtsessov: async () => {
     if (stend.s.protsessyLomayutsya) throw new Error("список процессов не читается");
-    return [];
+    return [...stend.s.protsessy];
   },
   tekstBufera: async () => {
     if (stend.s.buferLomaetsya) throw new Error("буфер обмена не прочитался");
@@ -224,6 +225,7 @@ beforeEach(() => {
   s.bufer = null;
   s.buferLomaetsya = false;
   s.protsessyLomayutsya = false;
+  s.protsessy = [];
   s.arhiv = "";
   s.arhivLomaetsya = false;
   s.pravaLomayutsya = null;
@@ -240,6 +242,27 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("оболочка окна", () => {
+  it("обновляет процессы при открытии формы и возврате в окно, сохраняя ввод", async () => {
+    // Programs launch after tabs open; snapshots have yet to develop telepathy.
+    mostProby().otvechatTelom("listRules", {
+      protsessy: [], domeny: [],
+      trafik: { po_umolchaniyu: "vpn", prilozheniya: [], domeny: [], servisy: [] },
+    });
+    render(<App />);
+    await screen.findByText(/Интернет работает напрямую/i);
+    fireEvent.click(screen.getByRole("tab", { name: "Правила" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Приложения" }));
+    stend.s.protsessy = [{ imya: "local.exe", put: "C:\\Users\\Test\\AppData\\Local\\App\\local.exe" }];
+    fireEvent.click(screen.getByRole("button", { name: "+ Добавить" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^local.exe,/ }));
+    fireEvent.change(screen.getByLabelText("Поиск приложения"), { target: { value: "roaming" } });
+    stend.s.protsessy = [{ imya: "roaming.exe", put: "C:\\Users\\Test\\AppData\\Roaming\\App\\roaming.exe" }];
+    fireEvent.focus(window);
+    await screen.findByRole("button", { name: /^roaming.exe,/ });
+    expect(screen.getByLabelText("Путь к приложению")).toHaveValue("C:\\Users\\Test\\AppData\\Local\\App\\local.exe");
+    expect(screen.getByLabelText("Поиск приложения")).toHaveValue("roaming");
+    expect(stend.s.schet.get("setRules") ?? 0).toBe(0);
+  });
   it("передаёт выбор приложения из нативного моста в форму правил", async () => {
     // Wiring deserves a test too; otherwise the perfectly tested button is furniture.
     const most = mostProby();
