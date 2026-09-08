@@ -396,10 +396,16 @@
 }
 .af-server-action {
   color: var(--af-ink);
-  font-size: var(--af-caption-size);
-  min-width: 65px;
-  text-align: right;
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #b9a7e026;
+  border-radius: 8px;
 }
+.af-server-action svg { width: 17px; height: 17px; }
+.af-server-ping { flex-shrink: 0; }
 .af-session {
   display: flex;
   justify-content: space-between;
