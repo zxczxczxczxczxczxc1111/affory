@@ -1,0 +1,260 @@
+diff --git a/adapter/platform.go b/adapter/platform.go
+index 44af9b6..1d83bb0 100644
+--- a/adapter/platform.go
++++ b/adapter/platform.go
+@@ -99,6 +99,7 @@ type ConnectionOwner struct {
+ 	UserId              int32
+ 	UserName            string
+ 	ProcessPath         string
++	ProcessFamilyPaths  []string
+ 	AndroidPackageNames []string
+ }
+ 
+diff --git a/common/process/searcher.go b/common/process/searcher.go
+index 7a882fc..afa189c 100644
+--- a/common/process/searcher.go
++++ b/common/process/searcher.go
+@@ -23,6 +23,7 @@ var ErrNotFound = E.New("process not found")
+ type Config struct {
+ 	Logger         log.ContextLogger
+ 	PackageManager tun.PackageManager
++	ProcessFamily  bool
+ }
+ 
+ func FindProcessInfo(searcher Searcher, ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
+diff --git a/common/process/searcher_windows.go b/common/process/searcher_windows.go
+index f011765..506d791 100644
+--- a/common/process/searcher_windows.go
++++ b/common/process/searcher_windows.go
+@@ -6,6 +6,7 @@ import (
+ 	"syscall"
+ 
+ 	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/afforyprocess"
+ 	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/winiphlpapi"
+ 
+@@ -14,14 +15,21 @@ import (
+ 
+ var _ Searcher = (*windowsSearcher)(nil)
+ 
+-type windowsSearcher struct{}
++type windowsSearcher struct{ family *afforyprocess.Watcher }
+ 
+-func NewSearcher(_ Config) (Searcher, error) {
++func NewSearcher(config Config) (Searcher, error) {
+ 	err := initWin32API()
+ 	if err != nil {
+ 		return nil, E.Cause(err, "init win32 api")
+ 	}
+-	return &windowsSearcher{}, nil
++	s := &windowsSearcher{}
++	if config.ProcessFamily {
++		s.family, err = afforyprocess.NewWatcher(func(err error) { config.Logger.Warn("process family snapshot: ", err) })
++		if err != nil {
++			return nil, E.Cause(err, "initialize process families")
++		}
++	}
++	return s, nil
+ }
+ 
+ func initWin32API() error {
+@@ -32,6 +40,9 @@ func (s *windowsSearcher) ResetCache() {
+ }
+ 
+ func (s *windowsSearcher) Close() error {
++	if s.family != nil {
++		return s.family.Close()
++	}
+ 	return nil
+ }
+ 
+@@ -44,7 +55,18 @@ func (s *windowsSearcher) FindProcessInfo(ctx context.Context, network string, s
+ 	if err != nil {
+ 		return &adapter.ConnectionOwner{ProcessID: pid, UserId: -1}, err
+ 	}
+-	return &adapter.ConnectionOwner{ProcessID: pid, ProcessPath: path, UserId: -1}, nil
++	owner := &adapter.ConnectionOwner{ProcessID: pid, ProcessPath: path, UserId: -1}
++	if s.family != nil {
++		paths, err := s.family.Find(pid)
++		if err != nil {
++			return nil, err
++		}
++		owner.ProcessFamilyPaths = paths
++		if len(paths) > 0 {
++			owner.ProcessPath = paths[0]
++		}
++	}
++	return owner, nil
+ }
+ 
+ func getProcessPath(pid uint32) (string, error) {
+diff --git a/option/rule.go b/option/rule.go
+index 15f86a4..36ffd3e 100644
+--- a/option/rule.go
++++ b/option/rule.go
+@@ -161,6 +161,7 @@ type RawDefaultRule struct {
+ 	PortRange                badoption.Listable[string]                                                  `json:"port_range,omitempty"`
+ 	ProcessName              badoption.Listable[string]                                                  `json:"process_name,omitempty"`
+ 	ProcessPath              badoption.Listable[string]                                                  `json:"process_path,omitempty"`
++	ProcessPathTree          badoption.Listable[string]                                                  `json:"process_path_tree,omitempty"`
+ 	ProcessPathRegex         badoption.Listable[string]                                                  `json:"process_path_regex,omitempty"`
+ 	PackageName              badoption.Listable[string]                                                  `json:"package_name,omitempty"`
+ 	PackageNameRegex         badoption.Listable[string]                                                  `json:"package_name_regex,omitempty"`
+diff --git a/route/process_cache.go b/route/process_cache.go
+index f99ceba..ae85f69 100644
+--- a/route/process_cache.go
++++ b/route/process_cache.go
+@@ -22,6 +22,9 @@ type processCacheEntry struct {
+ }
+ 
+ func (r *Router) findProcessInfoCached(ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
++	if r.needProcessFamily {
++		return process.FindProcessInfo(r.processSearcher, ctx, network, source, destination)
++	}
+ 	key := processCacheKey{
+ 		Network:     network,
+ 		Source:      source,
+diff --git a/route/router.go b/route/router.go
+index 682111d..c891f6e 100644
+--- a/route/router.go
++++ b/route/router.go
+@@ -36,6 +36,7 @@ type Router struct {
+ 	httpClientManager adapter.HTTPClientManager
+ 	rules             []adapter.Rule
+ 	needFindProcess   bool
++	needProcessFamily bool
+ 	needFindNeighbor  bool
+ 	leaseFiles        []string
+ 	ruleSets          []adapter.RuleSet
+@@ -64,6 +65,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
+ 		rules:             make([]adapter.Rule, 0, len(options.Rules)),
+ 		ruleSetMap:        make(map[string]adapter.RuleSet),
+ 		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
++		needProcessFamily: hasRule(options.Rules, func(rule option.DefaultRule) bool { return len(rule.ProcessPathTree) > 0 }),
+ 		needFindNeighbor:  hasRule(options.Rules, isNeighborRule) || hasDNSRule(dnsOptions.Rules, isNeighborDNSRule) || hasLocalNeighborDNSServer(dnsOptions.Servers) || options.FindNeighbor,
+ 		leaseFiles:        options.DHCPLeaseFiles,
+ 		pauseManager:      service.FromContext[pause.Manager](ctx),
+@@ -180,9 +182,13 @@ func (r *Router) Start(stage adapter.StartStage) error {
+ 				searcher, err := process.NewSearcher(process.Config{
+ 					Logger:         r.logger,
+ 					PackageManager: r.network.PackageManager(),
++					ProcessFamily:  r.needProcessFamily,
+ 				})
+ 				monitor.Finish()
+ 				if err != nil {
++					if r.needProcessFamily {
++						return E.Cause(err, "process family routing unavailable")
++					}
+ 					if err != os.ErrInvalid {
+ 						r.logger.Warn(E.Cause(err, "create process searcher"))
+ 					}
+diff --git a/route/rule/rule_default.go b/route/rule/rule_default.go
+index 3aef4a1..b818656 100644
+--- a/route/rule/rule_default.go
++++ b/route/rule/rule_default.go
+@@ -200,6 +200,14 @@ func NewDefaultRule(ctx context.Context, logger log.ContextLogger, options optio
+ 		rule.items = append(rule.items, item)
+ 		rule.allItems = append(rule.allItems, item)
+ 	}
++	if len(options.ProcessPathTree) > 0 {
++		if !C.IsWindows {
++			return nil, E.New("process_path_tree requires Affory's Windows core")
++		}
++		item := NewProcessPathTreeItem(options.ProcessPathTree)
++		rule.items = append(rule.items, item)
++		rule.allItems = append(rule.allItems, item)
++	}
+ 	if len(options.PackageName) > 0 {
+ 		item := NewPackageNameItem(options.PackageName)
+ 		rule.items = append(rule.items, item)
+diff --git a/route/rule/rule_item_process_tree.go b/route/rule/rule_item_process_tree.go
+new file mode 100644
+index 0000000..0857d3a
+--- /dev/null
++++ b/route/rule/rule_item_process_tree.go
+@@ -0,0 +1,33 @@
++package rule
++
++import (
++	"github.com/sagernet/sing-box/adapter"
++	"strings"
++)
++
++type ProcessPathTreeItem struct {
++	paths       map[string]bool
++	description string
++}
++
++func NewProcessPathTreeItem(paths []string) *ProcessPathTreeItem {
++	r := &ProcessPathTreeItem{paths: make(map[string]bool), description: "process_path_tree=" + strings.Join(paths, ",")}
++	for _, path := range paths {
++		r.paths[strings.ToLower(path)] = true
++	}
++	return r
++}
++
++func (r *ProcessPathTreeItem) Match(metadata *adapter.InboundContext) bool {
++	if metadata.ProcessInfo == nil {
++		return false
++	}
++	for _, path := range metadata.ProcessInfo.ProcessFamilyPaths {
++		if r.paths[strings.ToLower(path)] {
++			return true
++		}
++	}
++	return false
++}
++
++func (r *ProcessPathTreeItem) String() string { return r.description }
+diff --git a/route/rule/rule_item_process_tree_test.go b/route/rule/rule_item_process_tree_test.go
+new file mode 100644
+index 0000000..b000059
+--- /dev/null
++++ b/route/rule/rule_item_process_tree_test.go
+@@ -0,0 +1,32 @@
++package rule
++
++import (
++	"context"
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/option"
++	"testing"
++)
++
++func TestAfforyProcessFamilyMatchesAncestryNotExecutableName(t *testing.T) {
++	r := NewProcessPathTreeItem([]string{`C:\Steam\steam.exe`})
++	inside := &adapter.InboundContext{ProcessInfo: &adapter.ConnectionOwner{
++		ProcessID: 20, ProcessPath: `C:\helper.exe`, ProcessFamilyPaths: []string{`C:\helper.exe`, `c:\steam\STEAM.exe`},
++	}}
++	outside := &adapter.InboundContext{ProcessInfo: &adapter.ConnectionOwner{
++		ProcessID: 30, ProcessPath: `C:\helper.exe`, ProcessFamilyPaths: []string{`C:\helper.exe`, `C:\explorer.exe`},
++	}}
++	if !r.Match(inside) || r.Match(outside) || r.Match(&adapter.InboundContext{}) {
++		t.Fatal("process family classification is incorrect")
++	}
++}
++
++func TestAfforyProcessFamilyOptionIsAccepted(t *testing.T) {
++	var rule option.Rule
++	err := rule.UnmarshalJSONContext(context.Background(), []byte(`{"process_path_tree":["C:\\Steam\\steam.exe"],"outbound":"direct"}`))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(rule.DefaultOptions.ProcessPathTree) != 1 {
++		t.Fatal("family matcher was discarded")
++	}
++}
+diff --git a/route/rule_conds.go b/route/rule_conds.go
+index 716a19b..d518bf9 100644
+--- a/route/rule_conds.go
++++ b/route/rule_conds.go
+@@ -38,7 +38,7 @@ func hasDNSRule(rules []option.DNSRule, cond func(rule option.DefaultDNSRule) bo
+ }
+ 
+ func isProcessRule(rule option.DefaultRule) bool {
+-	return len(rule.ProcessName) > 0 || len(rule.ProcessPath) > 0 || len(rule.ProcessPathRegex) > 0 || len(rule.PackageName) > 0 || len(rule.PackageNameRegex) > 0 || len(rule.User) > 0 || len(rule.UserID) > 0
++	return len(rule.ProcessPathTree) > 0 || len(rule.ProcessName) > 0 || len(rule.ProcessPath) > 0 || len(rule.ProcessPathRegex) > 0 || len(rule.PackageName) > 0 || len(rule.PackageNameRegex) > 0 || len(rule.User) > 0 || len(rule.UserID) > 0
+ }
+ 
+ func isProcessDNSRule(rule option.DefaultDNSRule) bool {

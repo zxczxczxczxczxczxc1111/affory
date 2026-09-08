@@ -1,0 +1,46 @@
+ЕСЛИ ПОСЛЕ ОТКЛЮЧЕНИЯ AFFORY НЕ ВЕРНУЛАСЬ СЕТЬ
+===============================================
+
+Открой командную строку от имени администратора.
+
+1. Отключи туннель и его защиту:
+
+    "C:\Program Files\Affory\affory-cli.exe" disconnect
+    "C:\Program Files\Affory\affory-cli.exe" killswitch off
+
+2. Если служба не отвечает, останови только Affory и восстанови её настройки:
+
+    "C:\Program Files\Affory\affory-svc.exe" prepare-install
+
+Эта команда останавливает AfforySvc и возвращает настройки из файла
+C:\ProgramData\Affory\firewall-do-affory.json. Чужие VPN не завершаются.
+При отсутствии файла политика брандмауэра не меняется.
+Службу после этого можно запустить командой sc start AfforySvc.
+
+РУЧНОЕ ВОССТАНОВЛЕНИЕ
+----------------------
+
+Если исполняемые файлы Affory недоступны, сначала останови AfforySvc:
+
+    sc stop AfforySvc
+
+Открой firewall-do-affory.json в Блокноте. Для каждого профиля domain,
+private и public верни ЕГО значение politika. Например, только если в файле
+у private записано BlockInbound,AllowOutbound:
+
+    netsh advfirewall set privateprofile firewallpolicy blockinbound,allowoutbound
+
+Если у этого профиля vklyuchen было false, верни его выключенное состояние:
+
+    netsh advfirewall set privateprofile state off
+
+Не меняй политики всех профилей одним значением. Если файл отсутствует или
+повреждён, исходные настройки неизвестны: не сбрасывай чужую защиту наугад.
+
+После возврата политик сними только правила Affory:
+
+{{ПРАВИЛА}}
+
+Не завершай все процессы sing-box.exe: этот файл используют другие VPN.
+Если сеть не вернулась, сохрани файл отката и журнал
+C:\ProgramData\Affory\log\sluzhba.log для разбора причины.

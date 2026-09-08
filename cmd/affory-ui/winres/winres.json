@@ -1,0 +1,15 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": ["../ikonki/sfera_16.png", "../ikonki/sfera_20.png", "../ikonki/sfera_24.png", "../ikonki/sfera_32.png", "../ikonki/sfera_48.png", "../ikonki/sfera_64.png", "../ikonki/sfera_128.png", "../ikonki/sfera_256.png"]
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {"file_version": "0.0.0.0", "product_version": "0.0.0.0"},
+        "info": {"0409": {"FileDescription": "Affory", "ProductName": "Affory", "OriginalFilename": "affory-ui.exe", "InternalName": "affory-ui"}}
+      }
+    }
+  }
+}

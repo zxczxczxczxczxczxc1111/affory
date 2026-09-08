@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/* Spec §8.2, verbatim. This @theme IS the design system: Tailwind v4 turns
+   every variable below into utilities (bg-surface, text-accent-ink, ...), so
+   there is one source of truth for colour, not a token file and a palette
+   arguing with each other. Dark only. There is no light theme, on purpose. */
+@theme {
+  /* Tailwind's own palette is switched off first. With it gone, bg-blue-500
+     does not exist, and "one accent" is enforced by the compiler rather than
+     by a code review that already missed it once. */
+  --color-*: initial;
+
+  /* Surfaces. Pure black on purpose: on OLED the pixel is physically off, and
+     the step up to a card grows from 2% to 4% lightness. */
+  --color-background:     #000000;
+  --color-rail:           #080809;
+  --color-surface:        #0a0a0b;
+  --color-elevated:       #0f0f10;
+  --color-surface-hover:  #111113;
+  --color-surface-active: #1a1a1e;
+
+  /* Text must survive an actual display, not just pass a contrast spreadsheet. */
+  --color-foreground:   rgb(255 255 255 / 0.92);
+  --color-fg-secondary: rgb(255 255 255 / 0.76);
+  --color-fg-muted:     rgb(255 255 255 / 0.66);
+  --color-fg-faint:     rgb(255 255 255 / 0.56);
+
+  /* Accent: pale lilac. Two values, not one. The dark swatch scores 2.3:1 on
+     black and a non-text element needs 3:1. Fill is the swatch, ink is the
+     readable one. Painting a border with the fill ships a line nobody sees. */
+  --color-accent:       #4e4069;  /* fill: primary button, active plate */
+  --color-accent-ink:   #b9a7e0;  /* line, icon, active tab. 9.6:1 on black */
+
+  --color-border:        rgb(255 255 255 / 0.06);
+  --color-border-hover:  rgb(255 255 255 / 0.12);
+  --color-border-active: rgb(255 255 255 / 0.20);
+
+  --color-fill-subtle: rgb(255 255 255 / 0.03);
+  --color-fill:        rgb(255 255 255 / 0.06);
+  --color-fill-hover:  rgb(255 255 255 / 0.10);
+
+  /* No green. Lilac already means "connected"; green would be a second accent
+     saying the same thing, and a second accent is how a palette dies. */
+  --color-warn:   #fbbf24;  /* reconnecting */
+  --color-danger: #f87171;  /* dropped */
+
+  /* One quiet lilac focus edge. The operating system can keep its searchlight. */
+  --color-focus: #b9a7e0;
+
+  /* Motion lives here and nowhere else. */
+  --default-transition-duration: 120ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Title bar height (§8.3). One token for the bar and for anything that must
+     sit under it; two hardcoded numbers drift into a gap or an overlap. */
+  --spacing-polosa: 3.3125rem;
+
+  --radius-sm:  0.375rem;  /* 6px  small control */
+  --radius-md:  0.5rem;    /* 8px  button, input, chip */
+  --radius-lg:  0.75rem;   /* 12px card, panel */
+  --radius-xl:  1rem;      /* 16px large block */
+  --radius-2xl: 1.5rem;    /* 24px dialog only */
+
+  /* Bundled Cyrillic Manrope. Windows defaults do not get to redesign the app. */
+  --font-sans: Manrope, system-ui, "Segoe UI", sans-serif;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.55;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+}
+
+/* Manrope from Google Fonts, SIL OFL. Latin and Cyrillic travel in one file. */
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./shrifty/manrope-variable.ttf") format("truetype");
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    /* Numbers in columns must not jitter on every tick of an update. */
+    font-variant-numeric: tabular-nums;
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+  }
+  /* One focus rule for the whole app, via outline rather than ring-offset:
+     an offset ring has to know the colour underneath, and a button moved to
+     another surface would carry a halo of the wrong colour with it. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 3px;
+  }
+  /* The switch (ui.tsx Tumbler): a native checkbox painted as a pill. Native
+     because keyboard, focus and disabled come for free; painted because a
+     bare checkbox in a row of settings reads as a form, not as a control. */
+  .tumbler {
+    appearance: none;
+    width: 36px;
+    height: 20px;
+    margin: 0;
+    border-radius: 10px;
+    background: var(--color-fill-hover);
+    position: relative;
+    cursor: pointer;
+    transition: background-color var(--default-transition-duration);
+  }
+  .tumbler::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-fg-secondary);
+    transition: transform var(--default-transition-duration), background-color var(--default-transition-duration);
+  }
+  .tumbler:checked { background: var(--color-accent); }
+  .tumbler:checked::after { transform: translateX(16px); background: #fff; }
+  .tumbler:disabled { opacity: 0.4; cursor: default; }
+  /* Underline as affordance is banned; affordance is colour only. */
+  a { text-decoration: none; }
+}

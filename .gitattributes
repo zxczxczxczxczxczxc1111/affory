@@ -1,0 +1,13 @@
+# Source line endings stay consistent across Windows checkouts.
+*.go   text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.md   text eol=lf
+*.ps1  text eol=crlf
+*.nsi  text eol=crlf
+*.patch text eol=lf -whitespace
+cmd/affory-ui/frontend/src/shrifty/OFL-Manrope.txt -whitespace

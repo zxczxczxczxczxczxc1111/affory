@@ -1,0 +1,42 @@
+# Generated files do not belong in source history.
+node_modules/
+cmd/affory-ui/frontend/dist/
+/build/
+/yadra/
+/ustanovka/yadro/
+/ustanovka/sborka/
+/ustanovka/vypusk/
+*.exe
+*.dll
+*.syso
+*.zip
+*.log
+*.tmp
+
+# Local configuration and access material stay on the machine.
+.env
+.env.*
+*.real.json
+*.podpiska
+podpiska.raw
+*.pfx
+*.p12
+*.key
+*.cred.xml
+podpis.local.txt
+
+# Internal workspace notes are not part of the application.
+.claude/
+.codex/
+.agents/
+.superpowers/
+.preview/
+.idea/
+.vscode/
+AGENTS.md
+CLAUDE.md
+SKILL.md
+pamyat/
+plans/
+docs/plans/
+docs/superpowers/

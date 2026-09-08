@@ -1,0 +1,1 @@
+socks://polzovatel:parol@203.0.113.23:1080#SOCKS

@@ -1,0 +1,1 @@
+vless://11111111-2222-3333-4444-555555555555@203.0.113.10:443?encryption=none&type=tcp&security=reality&sni=www.microsoft.com&fp=chrome&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=bb01&flow=xtls-rprx-vision#%F0%9F%87%A9%F0%9F%87%AA%20LTE%20%7C%20DE

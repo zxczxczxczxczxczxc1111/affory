@@ -1,0 +1,36 @@
+# Корпус ФОРМ ссылок, снятый со сборника igareck/vpn-configs-for-russia
+# 02.09.2026 (145 живых ссылок, 21 различное сочетание параметров).
+#
+# Чужих учётных данных здесь НЕТ и быть не должно: uuid, pbk, sid, sni и host
+# заменены синтетическими значениями правильной формы. Ценность корпуса не в
+# ключах, а в сочетаниях полей, которые панели кладут в ссылки на самом деле.
+#
+# Корпус закрывает шов, названный в находке 33 и подтверждённый находкой 43:
+# «ядро не приняло то, что собрал генератор» не проверялось никогда. У каждой
+# формы обязан быть ОПРЕДЕЛЁННЫЙ исход, третьего не дано:
+#   1. разбор отвергает её с названной причиной, либо
+#   2. разбор принимает, генератор собирает, и ядро конфиг принимает.
+#
+# Обновляется повторным снятием со сборника, а не дописыванием руками.
+
+vless://11111111-2222-3333-4444-555555555555@203.0.113.11:8443?flow=xtls-rprx-vision&fp=chrome&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sid=01ab&sni=example.org#forma-01
+vless://11111111-2222-3333-4444-555555555555@203.0.113.12:9443?encryption=none&flow=xtls-rprx-vision&fp=android&security=tls&sni=example.org#forma-02
+vless://11111111-2222-3333-4444-555555555555@203.0.113.13:443?encryption=none&headerType=none&security=none&type=tcp#forma-03
+vless://11111111-2222-3333-4444-555555555555@203.0.113.14:443?encryption=none&flow=xtls-rprx-vision&fp=chrome&headerType=&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sni=example.org&type=tcp#forma-04
+vless://11111111-2222-3333-4444-555555555555@203.0.113.15:10043?encryption=none&flow=xtls-rprx-vision&fp=android&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sid=01ab&sni=example.org&type=tcp#forma-05
+vless://11111111-2222-3333-4444-555555555555@203.0.113.16:8686?encryption=none&fp=android&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sid=01ab&sni=example.org&type=tcp#forma-06
+vless://11111111-2222-3333-4444-555555555555@203.0.113.17:10043?flow=xtls-rprx-vision&fp=chrome&headerType=none&host=example.org&path=%2F&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sid=01ab&sni=example.org&type=tcp#forma-07
+vless://11111111-2222-3333-4444-555555555555@203.0.113.18:10043?flow=xtls-rprx-vision&fp=android&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sid=01ab&sni=example.org&type=tcp#forma-08
+vless://11111111-2222-3333-4444-555555555555@203.0.113.19:8443?alpn=h2%2Chttp%2F1.1&encryption=none&fp=android&security=tls&sni=example.org&type=tcp#forma-09
+vless://11111111-2222-3333-4444-555555555555@203.0.113.20:9443?encryption=none&flow=xtls-rprx-vision&fp=android&security=tls&sni=example.org&type=tcp#forma-10
+vless://11111111-2222-3333-4444-555555555555@203.0.113.21:80?encryption=none&flow=&host=example.org&path=%2F&type=ws#forma-11
+vless://11111111-2222-3333-4444-555555555555@203.0.113.22:80?fp=android&host=example.org&path=%2F&type=ws#forma-12
+vless://11111111-2222-3333-4444-555555555555@203.0.113.23:80?fp=chrome&headerType=none&host=example.org&path=%2F&security=false&type=ws#forma-13
+vless://11111111-2222-3333-4444-555555555555@203.0.113.24:2200?encryption=none&host=example.org&path=%2Fv1&security=none&type=ws#forma-14
+vless://11111111-2222-3333-4444-555555555555@203.0.113.25:443?fp=android&headerType=none&host=example.org&path=%2F&security=tls&type=ws#forma-15
+vless://11111111-2222-3333-4444-555555555555@203.0.113.26:443?fp=chrome&security=tls&sni=example.org&type=ws#forma-16
+vless://11111111-2222-3333-4444-555555555555@203.0.113.27:443?fp=android&security=tls&type=ws#forma-17
+vless://11111111-2222-3333-4444-555555555555@203.0.113.28:443?encryption=none&fp=android&mode=packet-up&path=%2Fassets%2Fv2%2Fpkg&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sid=01ab&sni=example.org&type=xhttp#forma-18
+vless://11111111-2222-3333-4444-555555555555@203.0.113.29:443?fp=edge&mode=packet-up&packetEncoding=xudp&path=%2Fassets%2Fv2%2Fpkg&pbk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&security=reality&sid=01ab&sni=example.org&type=xhttp#forma-19
+vless://11111111-2222-3333-4444-555555555555@203.0.113.30:443?alpn=h3&encryption=none&extra=%7B%22scMaxEachPostBytes%22%3A%221000000%22%2C%22xPaddingBytes%22%3A%22100-1000%22%7D&fm=%7B%22tcp%22%3A%5B%7B%22settings%22%3A%7B%22delay%22%3A%220-1%22%2C%22length%22%3A%223-3%22%2C%22packets%22%3A%22tlshello%22%7D%2C%22type%22%3A%22fragment%22%7D%5D%7D&fp=android&fragment=3-3%2C0-1%2Ctlshello%2Cnull&host=example.org&mode=auto&path=%2F&security=tls&sni=example.org&type=xhttp#forma-20
+vless://11111111-2222-3333-4444-555555555555@203.0.113.31:443?alpn=h3&encryption=none&fp=android&headerType=none&host=example.org&path=%2FLunex&security=tls&sni=example.org&type=xhttp#forma-21

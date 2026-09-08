@@ -1,0 +1,94 @@
+{
+  "versiya": "2026.09.08",
+  "reviziya": "b8bc7025266f7cff00e2dffd42914ab3441ff87c",
+  "istochnik": "https://iplist.opencck.org/ru/",
+  "litsenziya": "MIT",
+  "servisy": [
+    {
+      "id": "youtube",
+      "imya": "YouTube",
+      "domeny": [
+        "youtube.com",
+        "youtu.be",
+        "googlevideo.com",
+        "ytimg.com",
+        "youtube-nocookie.com"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/youtube/youtube.com.json"
+    },
+    {
+      "id": "discord",
+      "imya": "Discord",
+      "domeny": [
+        "discord.com",
+        "discord.gg",
+        "discord.media",
+        "discordapp.com",
+        "discordapp.net"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/discord/discord.com.json"
+    },
+    {
+      "id": "chatgpt",
+      "imya": "ChatGPT",
+      "domeny": [
+        "chatgpt.com",
+        "openai.com",
+        "oaistatic.com",
+        "oaiusercontent.com"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/ai/chatgpt.com.json"
+    },
+    {
+      "id": "instagram",
+      "imya": "Instagram",
+      "domeny": [
+        "instagram.com",
+        "cdninstagram.com"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/socials/instagram.com.json"
+    },
+    {
+      "id": "whatsapp",
+      "imya": "WhatsApp",
+      "domeny": [
+        "whatsapp.com",
+        "whatsapp.net"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/messengers/whatsapp.com.json"
+    },
+    {
+      "id": "telegram",
+      "imya": "Telegram",
+      "domeny": [
+        "telegram.org",
+        "telegram.me",
+        "t.me",
+        "cdn-telegram.org"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/messengers/telegram.org.json"
+    },
+    {
+      "id": "spotify",
+      "imya": "Spotify",
+      "domeny": [
+        "spotify.com",
+        "scdn.co",
+        "spotifycdn.com"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/music/spotify.com.json"
+    },
+    {
+      "id": "netflix",
+      "imya": "Netflix",
+      "domeny": [
+        "netflix.com",
+        "nflxext.com",
+        "nflximg.net",
+        "nflxvideo.net",
+        "nflxso.net"
+      ],
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/video/netflix.com.json"
+    }
+  ]
+}

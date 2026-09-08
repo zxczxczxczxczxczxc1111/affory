@@ -1,0 +1,1 @@
+vless://11111111-2222-3333-4444-555555555555@203.0.113.11:9443?encryption=none&type=ws&security=reality&sni=www.microsoft.com&fp=chrome&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=bb02&path=%2Fabc&host=cdn.example.org#%F0%9F%87%B3%F0%9F%87%B1%20VPN

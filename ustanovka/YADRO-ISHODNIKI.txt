@@ -1,0 +1,20 @@
+ИСХОДНИКИ ЯДРА sing-box.exe
+
+Ядро распространяется под GNU GPL версии 3 или новее, текст в GPL-3.0.txt.
+Upstream: https://github.com/SagerNet/sing-box
+Базовая ревизия: c881f561e9304ac7a2662d27d80394b3fec1b96c (v1.14.0-rc.5).
+Affory добавляет Windows-правило process_path_tree для процессов и их потомков.
+Изменения: ustanovka/patches/process-family.patch и ustanovka/processfamily/*.go.
+Теги сборки: with_gvisor,with_quic,with_utls,with_clash_api.
+
+Воспроизведение: применить указанный patch к базовой ревизии, скопировать *.go
+из processfamily в common/afforyprocess и собрать скриптом sobrat-yadro.ps1.
+Скрипт выполняет эти действия автоматически. Точный тулчейн, хеш патча,
+исходников расширения и бинаря записаны в YADRO-VYPUSKA.json.
+Исходники и скрипты соответствующей сборки поставляются рядом с установщиком
+в архиве исходного кода. Версия ядра: sing-box.exe version.
+
+Affory распространяется под GNU GPL версии 3 или новее.
+Встроенный каталог сервисов содержит выбранные доменные суффиксы из
+https://github.com/rekryt/iplist (OpenCCK), лицензия MIT, текст LICENSE.opencck.
+Версия набора и ссылки на конкретную ревизию указаны в internal/katalog/servisy.json.

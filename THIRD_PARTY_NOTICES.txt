@@ -1,0 +1,44 @@
+Affory
+======
+
+Affory is distributed under GNU GPL version 3 or later. See LICENSE.
+
+sing-box
+--------
+Source: https://github.com/SagerNet/sing-box
+License: GNU GPL version 3 or later.
+Affory includes a Windows process-family extension. The corresponding source,
+patch, build scripts and release fingerprint accompany each release.
+See ustanovka/YADRO-ISHODNIKI.txt and ustanovka/GPL-3.0.txt.
+
+Manrope
+-------
+Designer: Mikhail Sharanda.
+Source: https://github.com/google/fonts/tree/main/ofl/manrope
+License: SIL Open Font License 1.1.
+The bundled variable font includes Latin and Cyrillic characters. The original
+Manrope[wght].ttf was renamed manrope-variable.ttf without changes.
+Full license: cmd/affory-ui/frontend/src/shrifty/OFL-Manrope.txt.
+
+Service icons
+-------------
+Source: https://github.com/simple-icons/simple-icons/tree/15.0.0/icons
+License: CC0 1.0.
+Included marks: YouTube, Discord, OpenAI (ChatGPT), Instagram, WhatsApp,
+Telegram, Spotify and Netflix. SVG geometry is unchanged; fill is #e5e0ed.
+Full text: cmd/affory-ui/frontend/src/assets/services/LICENSE.simple-icons.txt.
+Brand names and marks belong to their respective owners. These marks identify
+routing destinations and do not imply endorsement.
+
+OpenCCK service catalog
+----------------------
+Source: https://github.com/rekryt/iplist
+License: MIT. See internal/katalog/LICENSE.opencck.
+The selected domain suffixes and their source revisions are recorded in
+internal/katalog/servisy.json.
+
+Other components
+----------------
+Go dependencies are recorded in go.mod and go.sum. Frontend dependencies are
+recorded in cmd/affory-ui/frontend/package.json and package-lock.json.
+Their license terms remain with the respective components and sources.

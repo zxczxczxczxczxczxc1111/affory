@@ -1,0 +1,1 @@
+tuic://11111111-2222-3333-4444-555555555555:parol@203.0.113.8:443?alpn=h3&congestion_control=bbr&udp_relay_mode=native&sni=www.example.com#TUIC
