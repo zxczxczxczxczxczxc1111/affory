@@ -936,3 +936,41 @@
  .af-file-picker { flex-wrap: wrap; }
  .af-file-picker input { flex-basis: 100%; }
 }
+
+/* The viewport owns the frame; 100% plus a banner was an accounting scandal. */
+.af-viewport { display: flex; flex-direction: column; padding: 12px; }
+.af-viewport > :not(.af-home) { flex-shrink: 0; }
+.af-home { max-width: none; height: auto; min-height: 580px; flex: 1 0 auto; border: 1px solid var(--af-line); border-radius: 14px; overflow: hidden; }
+.af-home-grid { flex: 1 0 auto; }
+.af-home-left { justify-content: center; padding: 24px clamp(24px, 4vw, 64px); }
+.af-home .af-power { width: clamp(175px, 28vh, 300px); height: clamp(175px, 28vh, 300px); }
+.af-home .af-stats { margin-top: clamp(24px, 4vh, 56px); }
+.af-home-right { padding: 24px clamp(20px, 3vw, 48px); }
+.af-home .af-server-list { flex: 1 1 240px; max-height: 52vh; }
+.af-server-tools { display: flex; align-items: center; gap: 10px; }
+.af-server-tools .af-search { min-width: 0; flex: 1; margin: 0; }
+.af-server-tools button { flex-shrink: 0; }
+.af-delay-note { font-size: var(--af-caption-size); color: var(--af-muted); margin: 10px 0 8px; }
+.af-delay-pair { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.af-delay-pair > span { color: #dbcfed; }
+.af-delay-pair small { font-size: 12px; }
+.af-github { align-self: center; margin-right: 16px; padding: 5px 11px; border: 1px solid #b9a7e033; border-radius: 8px; color: #cfc0e5; font-size: 13px; background: #b9a7e00b; }
+.af-github:hover { background: #b9a7e01c; }
+.af-routes { max-width: none; width: 100%; min-height: 0; flex: 1; }
+@media (max-width: 1000px) { .af-server-tools { flex-wrap: wrap; } .af-server-tools .af-search { flex-basis: 100%; } }
+@media (max-width: 760px) { .af-home { min-height: 0; } .af-home .af-server-list { max-height: 380px; flex-basis: auto; } .af-github { margin-right: 4px; padding: 4px 7px; } }
+@media (min-width: 761px) {
+  .af-home { flex: 1; min-height: 620px; }
+  .af-home-grid { flex: 1; }
+  .af-home .af-server-list { flex: 1 1 0; }
+}
+@media (min-width: 761px) and (max-height: 800px) {
+  .af-home-left, .af-home-right { padding: 18px 20px; }
+  .af-home .af-power { width: 175px; height: 175px; margin: 15px auto 10px; }
+  .af-home .af-stats { margin-top: 20px; }
+  .af-current { margin-top: 12px; }
+  .af-traffic-control { margin-top: 16px; padding-top: 13px; }
+}
+
+.af-github { display: flex; align-items: center; justify-content: center; padding: 6px 10px; border-color: transparent; background: transparent; }
+.af-github img { display: block; width: 80px; height: 22px; object-fit: contain; }

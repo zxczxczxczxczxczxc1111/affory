@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { VKLADKI, nazvanieVkladki, type Vkladka } from "./vkladki";
 import sphere from "../assets/affory-sphere.png";
+import github from "../assets/github-white.svg";
 
 // Window frame: our own title bar (the window is frameless, §8.3) and the
 // four tabs. Pure over props like every screen; minimise and close are calls
@@ -11,6 +12,7 @@ export interface KarkasProps {
   naVkladku: (v: Vkladka) => void;
   naSvernut: () => void;
   naZakryt: () => void;
+  naGitHub?: () => void;
   /** First run (§9.2): tabs are disabled until the service exists. The
    *  window controls stay live so the window can still be closed. */
   zablokirovany?: boolean;
@@ -23,7 +25,7 @@ export interface KarkasProps {
 const TASHCHIT: CSSProperties = { ["--wails-draggable" as string]: "drag" } as CSSProperties;
 const NE_TASHCHIT: CSSProperties = { ["--wails-draggable" as string]: "no-drag" } as CSSProperties;
 
-export function Karkas({ vkladka, naVkladku, naSvernut, naZakryt, zablokirovany = false, children }: KarkasProps) {
+export function Karkas({ vkladka, naVkladku, naSvernut, naZakryt, naGitHub, zablokirovany = false, children }: KarkasProps) {
   return (
     <div className="flex h-screen flex-col">
       <header
@@ -59,6 +61,7 @@ export function Karkas({ vkladka, naVkladku, naSvernut, naZakryt, zablokirovany 
           </nav>
         </div>
         <div className="af-window-controls flex h-polosa items-stretch">
+          <button type="button" className="af-github" style={NE_TASHCHIT} onClick={naGitHub} aria-label="Открыть GitHub Affory" title="GitHub Affory"><img src={github} alt="" /></button>
           <button
             type="button"
             data-testid="svernut"

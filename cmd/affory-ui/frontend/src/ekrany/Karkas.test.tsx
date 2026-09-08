@@ -72,3 +72,13 @@ describe("каркас: вкладки на первом запуске", () => 
     expect((screen.getByTestId("zakryt") as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+it("GitHub opens through the shell without making the title bar draggable", () => {
+  // A repository link should open a browser, not tow the whole window away.
+  const open = vi.fn();
+  render(<Karkas vkladka="podklyuchenie" naVkladku={nichego} naSvernut={nichego} naZakryt={nichego} naGitHub={open}>x</Karkas>);
+  const button = screen.getByRole("button", {name: "Открыть GitHub Affory"});
+  fireEvent.click(button);
+  expect(open).toHaveBeenCalledOnce();
+  expect(button.style.getPropertyValue("--wails-draggable")).toBe("no-drag");
+});

@@ -105,6 +105,9 @@ func TestZaderzhkiSTunnelemZovutKlashPoTeguKazhdogo(t *testing.T) {
 	if z[0].RealpingMs == nil || *z[0].RealpingMs != 87 {
 		t.Fatalf("realping не дошёл: %v", z[0].RealpingMs)
 	}
+	if z[0].TcpingMs != nil {
+		t.Fatal("TCP при включённом TUN не является независимым замером")
+	}
 	if len(sprosheno) != 1 || sprosheno[0] == "" {
 		t.Fatalf("ядро спрошено не по тегу сервера: %v", sprosheno)
 	}
@@ -127,8 +130,8 @@ func TestZaderzhkiOtkazYadraNeSpisyvaetsyaNaServer(t *testing.T) {
 		Tip: "komanda", Id: 1, Imya: "measureDelays",
 	})
 	z := razobratZaderzhki(t, k)
-	if z[0].TcpingMs == nil {
-		t.Fatal("отказ ядра погасил и tcping, хотя тот от ядра не зависит")
+	if z[0].TcpingMs != nil || z[0].TcpingOtkaz == "" {
+		t.Fatal("TCP под TUN не должен выдавать локальное подтверждение за задержку узла")
 	}
 	if z[0].RealpingOtkaz == "" {
 		t.Fatal("отказ ядра не назван")

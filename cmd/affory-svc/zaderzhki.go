@@ -79,7 +79,10 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 func (s *Sluzhba) zamerOdnogo(ctx context.Context, srv protokol.Server, adresKlash, sekret string) zamerZaderzhki {
 	z := zamerZaderzhki{Id: srv.Id}
 
-	if d, err := yadra.Tcping(ctx, srv.Host, srv.Port, srokTcping); err != nil {
+	// The TUN stack can acknowledge TCP locally; its optimism is not network latency.
+	if adresKlash != "" {
+		z.TcpingOtkaz = "узел: проверка доступна при выключенном VPN"
+	} else if d, err := yadra.Tcping(ctx, srv.Host, srv.Port, srokTcping); err != nil {
 		z.TcpingOtkaz = err.Error()
 	} else {
 		ms := d.Milliseconds()

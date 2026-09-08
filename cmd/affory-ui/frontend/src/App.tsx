@@ -16,7 +16,7 @@ import {
 import { Servery, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
 import type { Vkladka } from "./ekrany/vkladki";
 import {
-  KanalNedostupen, naSobytie, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
+  KanalNedostupen, otkrytGitHub, naSobytie, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
   udalitProgrammu, ustanovitSluzhbu, zvat, type Kadr,
 } from "./most";
 import { VERSIYA_PROTOKOLA, type OtkazStroki, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
@@ -676,7 +676,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
 
   return (
     <main className="affory-desktop bg-background text-foreground h-screen" data-testid="oboloshka">
-      <Karkas vkladka={vkladka} naVkladku={zadatVkladku} naSvernut={oknoSvernut} naZakryt={oknoZakryt} zablokirovany={ustanovka !== null}>
+      <Karkas naGitHub={() => { void otkrytGitHub().catch((e: unknown) => zhaloba("Не удалось открыть GitHub", e)); }} vkladka={vkladka} naVkladku={zadatVkladku} naSvernut={oknoSvernut} naZakryt={oknoZakryt} zablokirovany={ustanovka !== null}>
         {/* A refusal is shown on whichever tab is open: a declined UAC on
             Settings must not wait for the human to walk back to Connection. */}
         {pokazat && !ustanovka && (
@@ -704,6 +704,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           <PervyyZapusk sostoyanie={ustanovka.sostoyanie} prichina={ustanovka.prichina} naUstanovku={naUstanovku} />
         ) : vkladka === "podklyuchenie" ? (
           <Glavnyy
+            naProverit={() => void vypolnit("measureDelays", {})}
+            proverkaIdet={busyCommand === "measureDelays"}
             skorost={<Skorost {...speed} disabled={busyCommand !== null || (naEkrane.sostoyanie !== "vyklyuchen" && naEkrane.sostoyanie !== "podnyat")} />}
             pravila={pravila}
             zaderzhki={zaderzhki}

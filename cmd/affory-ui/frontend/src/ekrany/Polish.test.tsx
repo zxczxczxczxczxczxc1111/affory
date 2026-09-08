@@ -97,3 +97,15 @@ it("application rules show names without letter avatars and still route the proc
   fireEvent.click(screen.getByRole("option", { name: "Через VPN" }));
   expect(send).toHaveBeenCalledWith("setRules", expect.objectContaining({ trafik: expect.objectContaining({ prilozheniya: [{ ...trafik.prilozheniya[0], marshrut: "vpn" }] }) }));
 });
+
+it("server checks remain available without VPN and never confuse node latency with VPN latency", () => {
+  // A fast TCP handshake does not get to impersonate the entire tunnel.
+  const check = vi.fn();
+  render(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} naProverit={check}
+    servery={[{ id: "s", imya: "Test server", host: "example.org", port: 443, transport: "hy2", iz_podpiski: false }]}
+    zaderzhki={[{ id: "s", tcping_ms: 4, realping_ms: 148 }]} />);
+  fireEvent.click(screen.getByRole("button", { name: "Проверить серверы" }));
+  expect(check).toHaveBeenCalledOnce();
+  expect(screen.getByText("VPN 148 мс")).toBeInTheDocument();
+  expect(screen.getByText("узел 4 мс")).toBeInTheDocument();
+});

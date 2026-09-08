@@ -460,7 +460,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
  *
  *  Ноль на экране читается как «мгновенно» и ставит узел первым по задержке,
  *  то есть ровно наверх списка, что противоположно правде о мёртвом узле. */
-function Zaderzhka({ zamer }: { zamer?: ZamerZaderzhki }) {
+export function Zaderzhka({ zamer, compact = false }: { zamer?: ZamerZaderzhki; compact?: boolean }) {
   if (!zamer) return null;
   const uzel =
     typeof zamer.tcping_ms === "number" ? `узел ${zamer.tcping_ms} мс` : zamer.tcping_otkaz || "узел не измерен";
@@ -469,8 +469,8 @@ function Zaderzhka({ zamer }: { zamer?: ZamerZaderzhki }) {
       ? `туннель ${zamer.realping_ms} мс`
       : zamer.realping_otkaz || "туннель не измерен";
   return (
-    <span data-testid={`zaderzhka-${zamer.id}`} className="text-fg-muted shrink-0 text-xs">
-      {uzel} · {tunnel}
+    <span data-testid={`zaderzhka-${zamer.id}`} className={compact ? "af-delay-pair" : "text-fg-muted shrink-0 text-xs"} title={`${uzel} · ${tunnel}`}>
+      {compact ? <><span>{typeof zamer.realping_ms === "number" ? `VPN ${zamer.realping_ms} мс` : zamer.realping_otkaz && !zamer.realping_otkaz.includes("туннель опущен") ? "VPN недоступен" : "VPN не измерен"}</span><small>{typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}</small></> : <>{uzel} · {tunnel}</>}
     </span>
   );
 }

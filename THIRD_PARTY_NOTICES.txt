@@ -42,3 +42,6 @@ Other components
 Go dependencies are recorded in go.mod and go.sum. Frontend dependencies are
 recorded in cmd/affory-ui/frontend/package.json and package-lock.json.
 Their license terms remain with the respective components and sources.
+
+GitHub logo: GitHub, Inc. Trademark used to link to this project's repository.
+Official source: https://brand.github.com/foundations/logo

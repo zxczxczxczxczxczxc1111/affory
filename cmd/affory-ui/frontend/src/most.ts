@@ -1,4 +1,4 @@
-import { Call, Clipboard, Events, Window } from "@wailsio/runtime";
+import { Browser, Call, Clipboard, Events, Window } from "@wailsio/runtime";
 
 /** Window controls. The title bar is ours (frameless window), so minimise and
  *  close are bridge calls too; Karkas asks App, App asks here. */
@@ -191,4 +191,9 @@ export async function prochitatProfil(put: string): Promise<string> {
   } catch (e) {
     throw new Error(e instanceof Error ? e.message : String(e));
   }
+}
+
+/** A fixed project URL, because the browser is not a command interpreter. */
+export function otkrytGitHub(): Promise<void> {
+  return Browser.OpenURL("https://github.com/zxczxczxczxczxczxc1111/affory");
 }

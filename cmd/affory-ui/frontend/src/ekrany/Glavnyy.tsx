@@ -7,7 +7,7 @@ import type {
   StatusOtvet,
 } from "../protokol";
 import { glavnoeDeystvie } from "./podpisi";
-import type { SpisokServerov, ZamerZaderzhki } from "./Servery";
+import { Zaderzhka, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
 import { VyborTrafika } from "./Marshruty";
@@ -28,6 +28,8 @@ export interface GlavnyyProps {
   pravila?: PravilaOtvet | null;
   zaderzhki?: ZamerZaderzhki[];
   zanyato?: boolean;
+  naProverit?: () => void;
+  proverkaIdet?: boolean;
   naVyborServera?: (id: string) => void;
   naTrafik?: (r: Marshrut) => void;
   naPravila?: () => void;
@@ -126,6 +128,8 @@ export function Glavnyy({
   naTrafik,
   naPravila,
   skorost,
+  naProverit,
+  proverkaIdet = false,
 }: GlavnyyProps) {
   const izvestnye = servery ?? spisok?.servery ?? [];
   const podnyat = status.sostoyanie === "podnyat";
@@ -243,7 +247,7 @@ export function Glavnyy({
           </div>
           <dl className="af-stats" data-testid="statistika">
             <Cifra
-              nazvanie="задержка"
+              nazvanie="задержка VPN"
               znachenie={
                 podnyat ? chislo(statistika?.zaderzhka_ms, "мс") : PROCHERK
               }
@@ -296,6 +300,7 @@ export function Glavnyy({
               ? "Affory выбирает сервер с наименьшей задержкой."
               : "Нажмите на сервер, чтобы сразу подключиться к нему."}
           </p>
+          <div className="af-server-tools">
           <input
             className="af-search"
             id="af-server-search"
@@ -304,10 +309,15 @@ export function Glavnyy({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <button type="button" className="af-manage" disabled={molchit || busy || zanyato || loading || !izvestnye.length || !naProverit} onClick={naProverit}>
+            {proverkaIdet ? "Проверяем…" : "Проверить серверы"}
+          </button>
+          </div>
+          <p className="af-delay-note">Последняя проверка: VPN через туннель, узел при выключенном VPN.</p>
           <div className="af-server-list" aria-label="Список серверов">
             {shown.map((server) => {
               const active = podnyat && status.nesushchiy_id === server.id;
-              const ping = zaderzhki.find((z) => z.id === server.id)?.tcping_ms;
+              const zamer = zaderzhki.find((z) => z.id === server.id);
               return (
                 <button
                   type="button"
@@ -326,7 +336,7 @@ export function Glavnyy({
                     <small>{server.transport}</small>
                   </span>
                   <span className="af-server-ping">
-                    {ping != null ? `${Math.round(ping)} мс` : ""}
+                    <Zaderzhka zamer={zamer} compact />
                   </span>
                   <span className="af-server-action">
                     {active ? "Подключён" : "Подключить"}
