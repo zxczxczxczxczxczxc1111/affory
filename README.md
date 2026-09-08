@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="assets/screenshots/connection.jpg"><img src="assets/screenshots/connection.jpg" width="100%" alt="Главный экран Affory: подключение, выбор сервера и замер скорости"></a>
-  <br><sub>Подключение и выбор сервера. Серверы на скриншоте показаны для примера.</sub>
+  <br><sub>Подключение и выбор сервера. Демонстрационные данные: серверы и замеры показаны для примера.</sub>
 </p>
 
 ## Что умеет
@@ -37,7 +37,7 @@
 
 Для подключения понадобится ссылка на свой VPN-сервер или подписка от провайдера.
 
-1. Скачай **Affory-1.0.1-setup.exe** из [релизов](https://github.com/zxczxczxczxczxczxc1111/affory/releases/latest) и установи. Windows запросит права администратора.
+1. Скачай **Affory-1.0.2-setup.exe** из [релизов](https://github.com/zxczxczxczxczxczxc1111/affory/releases/latest) и установи. Windows запросит права администратора.
 2. Открой Affory, нажми **«Управлять»** и добавь ссылку на сервер или подписку.
 3. Нажми на сферу, чтобы подключиться. Справа можно переключаться между автоматическим и ручным выбором сервера.
 
@@ -52,3 +52,4 @@
 Нашёл ошибку или хочешь предложить изменение? [Напиши в Issues](https://github.com/zxczxczxczxczxczxc1111/affory/issues).
 
 Лицензия [GPL-3.0-or-later](LICENSE). Внутри используется [sing-box](https://github.com/SagerNet/sing-box). Сведения о шрифте, иконках и других компонентах находятся в [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
