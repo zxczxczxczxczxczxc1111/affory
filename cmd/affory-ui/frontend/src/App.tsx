@@ -16,7 +16,7 @@ import {
 import { Servery, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
 import type { Vkladka } from "./ekrany/vkladki";
 import {
-  KanalNedostupen, otkrytGitHub, naSobytie, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
+  KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
   udalitProgrammu, ustanovitSluzhbu, zvat, type Kadr,
 } from "./most";
 import { VERSIYA_PROTOKOLA, type OtkazStroki, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
@@ -159,6 +159,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // null means "no answer yet". The screens still want a whole StatusOtvet,
   // so `naEkrane` below substitutes MOLCHIT once we know the pipe is dead.
   const [status, zadatStatus] = useState<StatusOtvet | null>(null);
+  // Видно ли окно. Решение владельца 10.09.2026: в трее программа проводит
+  // подавляющую часть времени, и опрашивать ядро ради счётчиков, которых никто
+  // не видит, незачем. Начальное true: окно, стартовавшее без ключа --trey,
+  // уже на экране, а ушедшее в трей получит false первым же событием.
+  const [oknoVidno, zadatOknoVidno] = useState(true);
   const [svyaz, zadatSvyaz] = useState<Svyaz>("zhdyom");
   const speed = useSkorost(zvat, svyaz === "est");
   // null until the service actually answers subscribeStats with numbers.
@@ -492,18 +497,23 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     }
   }, [ubratOtkaz, vypolnit, otkaz]);
 
+  useEffect(() => naVidimostOkna(zadatOknoVidno), []);
+
   // Everything the window asks for at startup, in one place: the reconnect
   // path below repeats exactly this list and nothing else.
   const sprositVsyo = useCallback(() => {
     void obnovitSpisok();
     void zagruzitOtlozhennye();
-    // Stats subscription lives with THIS screen: without on/off the service
-    // would poll clash_api every second even for a minimised window.
-    void zvat("subscribeStats", { vkl: true }).catch((e: unknown) => zhaloba("subscribeStats", e));
+    // Подписка на статистику живёт с ЭТИМ экраном и только пока он виден.
+    // Намерение было записано тут комментарием с самого начала, а отписка
+    // висела на размонтировании компонента, которого при уходе в трей не
+    // случается никогда: окно прячется, а не закрывается. Отдельный эффект
+    // ниже включает и выключает её по видимости.
+    void zvat("subscribeStats", { vkl: oknoVidno }).catch((e: unknown) => zhaloba("subscribeStats", e));
     // listRules is NOT here: it is fetched by the effect below, once hello
     // has said the command exists. Asking a deferred command for data would
     // turn its refusal into a banner about a wave that has not landed yet.
-  }, [obnovitSpisok, zagruzitOtlozhennye, zhaloba]);
+  }, [obnovitSpisok, zagruzitOtlozhennye, zhaloba, oknoVidno]);
 
   useEffect(() => {
     void oprosit();
@@ -528,12 +538,34 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     };
   }, [oprosit, sprositVsyo]);
 
+  // Подписка на статистику следует за видимостью окна. Отдельным эффектом, а
+  // не внутри sprositVsyo: тот зовётся ещё и на возврате канала, а тут вопрос
+  // ровно один, видно окно или нет.
+  const pervayaVidimost = useRef(true);
+  useEffect(() => {
+    if (pervayaVidimost.current) {
+      // Первый проход уже сделан монтированием: sprositVsyo подписался сам.
+      pervayaVidimost.current = false;
+      return;
+    }
+    void zvat("subscribeStats", { vkl: oknoVidno }).catch(() => undefined);
+    // Вернувшееся окно спрашивает статус СРАЗУ, а не через период: человек
+    // развернул программу, чтобы посмотреть, и снимок пятисекундной давности
+    // это не то, за чем он её разворачивал.
+    if (oknoVidno) void oprositTiho();
+  }, [oknoVidno, oprositTiho]);
+
   // The tray recovers from a service restart on its own and the window did
   // not: status was asked once, at mount. Five seconds is the tray's period.
+  //
+  // У свёрнутого окна отставать нечему, поэтому опрос встаёт вместе с ним.
+  // Побочно это убирает спусковой крючок пересборки меню в трее: до
+  // 10.09.2026 каждый ответ status доходил до SetMenu.
   useEffect(() => {
+    if (!oknoVidno) return;
     const t = window.setInterval(() => void oprositTiho(), periodOprosaMs);
     return () => window.clearInterval(t);
-  }, [oprositTiho, periodOprosaMs]);
+  }, [oprositTiho, periodOprosaMs, oknoVidno]);
 
   // On the way back from a dead pipe everything has to be asked again: the
   // service drops the stats subscription when a client disconnects

@@ -38,6 +38,7 @@ export class KanalNedostupen extends Error {
 // Wails names services by reflect's Type.String(), so "main.most" it is.
 const IMYA_ZVAT = "main.most.Zvat";
 const SOBYTIE_KANALA = "kanal";
+const SOBYTIE_OKNA = "okno";
 
 /** Sends one command and returns the answer frame. The body travels as JSON
  *  text both ways; typing it is the caller's business. */
@@ -125,6 +126,19 @@ export function naSobytie(obrabotchik: (kadr: Kadr) => void): () => void {
     // a shell bug, and swallowing it would hide exactly that.
     if (typeof sobytie.data !== "string") return;
     obrabotchik(JSON.parse(sobytie.data) as Kadr);
+  });
+}
+
+/** Видимость окна: Go сообщает «показалось» и «спряталось» отсюда, а не Wails
+ *  своими WindowShow и WindowHide. Причина записана в main.go: при ПЕРВОМ
+ *  показе родное событие не приходит вовсе, а окно у нас ещё и прячется
+ *  крестиком вместо закрытия, чего родные события не различают.
+ *
+ *  Возвращает функцию отписки. */
+export function naVidimostOkna(obrabotchik: (vidno: boolean) => void): () => void {
+  return Events.On(SOBYTIE_OKNA, (sobytie: { data: unknown }) => {
+    if (typeof sobytie.data !== "boolean") return;
+    obrabotchik(sobytie.data);
   });
 }
 

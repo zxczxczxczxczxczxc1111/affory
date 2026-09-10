@@ -100,6 +100,19 @@ func main() {
 	okno.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		okno.Hide()
 		e.Cancel()
+		// Спрятанное окно перестаёт быть подписчиком статистики: опрашивать
+		// ядро дважды в секунду ради счётчиков, которых никто не видит, незачем
+		// (решение владельца 10.09.2026). Показ обратно шлёт Trey.Pokazat.
+		app.Event.Emit(sobytieOkna, false)
+	})
+	// Свёрнутое окно это тот же случай, что и спрятанное, а событий у него
+	// своя пара. Родному WindowShow не доверяем и здесь: обратно поднимает
+	// WindowRestore, который приходит честно.
+	okno.OnWindowEvent(events.Common.WindowMinimise, func(*application.WindowEvent) {
+		app.Event.Emit(sobytieOkna, false)
+	})
+	okno.OnWindowEvent(events.Common.WindowRestore, func(*application.WindowEvent) {
+		app.Event.Emit(sobytieOkna, true)
 	})
 
 	// Снятие режима и опускание туннеля из трея ходят теми же командами, что и

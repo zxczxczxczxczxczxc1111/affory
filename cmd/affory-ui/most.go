@@ -418,6 +418,15 @@ func (m *most) peredavatSobytiya(k *kanal.Klient) {
 // sobytieKanala is the single Wails event name that carries service events.
 const sobytieKanala = "kanal"
 
+// sobytieOkna несёт ОДИН вопрос: видно окно или нет.
+//
+// Своё событие, а не родные WindowShow и WindowHide Wails, по двум причинам,
+// и обе замерены. Первая записана рядом в Pokazat: при первом показе окна,
+// созданного скрытым, WindowShow не приходит вовсе. Вторая наша: крестик у нас
+// прячет окно в трей вместо закрытия, и с точки зрения родных событий это не
+// отличается ни от чего.
+const sobytieOkna = "okno"
+
 // kanalZakrytKadr is the synthetic frame the shell emits when the pipe dies.
 // It is shaped like a real event so the frontend needs no second code path.
 func kanalZakrytKadr() string {

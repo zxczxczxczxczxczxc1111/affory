@@ -27,6 +27,8 @@ const stend = vi.hoisted(() => {
     schet: new Map<string, number>(),
     otkazy: new Map<string, Otkaz>(),
     podpischiki: [] as ((kadr: unknown) => void)[],
+    /** Наблюдатели видимости окна: Go сообщает сюда «свернулось / развернулось». */
+    nablyudateliOkna: [] as ((vidno: boolean) => void)[],
     sluzhbaEst: true,
     /** Non-null makes tekstBufera throw instead of answering "". */
     bufer: null as string | null,
@@ -96,6 +98,12 @@ vi.mock("./most", () => ({
     stend.s.podpischiki.push(obrabotchik);
     return () => {
       stend.s.podpischiki = stend.s.podpischiki.filter((p) => p !== obrabotchik);
+    };
+  },
+  naVidimostOkna: (obrabotchik: (vidno: boolean) => void) => {
+    stend.s.nablyudateliOkna.push(obrabotchik);
+    return () => {
+      stend.s.nablyudateliOkna = stend.s.nablyudateliOkna.filter((n) => n !== obrabotchik);
     };
   },
   oknoSvernut: () => undefined,
@@ -207,6 +215,10 @@ function mostProby() {
     skolkoRaz(komanda: string): number {
       return s.schet.get(komanda) ?? 0;
     },
+    /** Окно ушло в трей или свернулось: ровно то, что делает крестик. */
+    okno(vidno: boolean) {
+      for (const n of [...s.nablyudateliOkna]) n(vidno);
+    },
   };
 }
 
@@ -221,6 +233,7 @@ beforeEach(() => {
   s.schet = new Map();
   s.otkazy = new Map();
   s.podpischiki = [];
+  s.nablyudateliOkna = [];
   s.sluzhbaEst = true;
   s.bufer = null;
   s.buferLomaetsya = false;
@@ -667,4 +680,66 @@ describe("замер полосы", () => {
     expect(blok).not.toHaveTextContent("0.0 Мбит/с");
     expect((screen.getByTestId("obyavit-polosu") as HTMLButtonElement).disabled).toBe(true);
   });
+
+  // Решение владельца 10.09.2026: «постоянно обновлять это в фоне нет никакого
+  // смысла, учитывая то, что 95 процентов времени приложение находится в трее».
+  //
+  // Намерение в коде уже было записано: комментарий у subscribeStats дословно
+  // говорил про свёрнутое окно. Отписка при этом висела на размонтировании
+  // компонента, а оно при уходе в трей не наступает НИКОГДА, потому что окно
+  // прячется, а не закрывается. Построено, но не подключено.
+  it("отписывается от статистики, когда окно уходит в трей", async () => {
+    const most = mostProby();
+    render(<App periodOprosaMs={BYSTRO} />);
+    await waitFor(() => expect(most.skolkoRaz("subscribeStats")).toBeGreaterThan(0));
+
+    most.okno(false);
+    await waitFor(() => expect(most.teloKomandy("subscribeStats")).toEqual({ vkl: false }));
+  });
+
+  it("подписывается обратно, когда окно возвращается", async () => {
+    const most = mostProby();
+    render(<App periodOprosaMs={BYSTRO} />);
+    await waitFor(() => expect(most.skolkoRaz("subscribeStats")).toBeGreaterThan(0));
+
+    most.okno(false);
+    await waitFor(() => expect(most.teloKomandy("subscribeStats")).toEqual({ vkl: false }));
+    most.okno(true);
+    await waitFor(() => expect(most.teloKomandy("subscribeStats")).toEqual({ vkl: true }));
+  });
+
+  // Опрос статуса тоже стоит: он ходил раз в пять секунд ровно затем, чтобы
+  // экран не отстал, а у свёрнутого окна отставать нечему. Побочно это убирает
+  // спусковой крючок пересборки меню в трее.
+  it("не опрашивает статус, пока окно свёрнуто", async () => {
+    const most = mostProby();
+    render(<App periodOprosaMs={BYSTRO} />);
+    await waitFor(() => expect(most.skolkoRaz("status")).toBeGreaterThan(0));
+
+    most.okno(false);
+    // Дать нескольким периодам пройти: если опрос жив, счётчик уедет.
+    await new Promise((r) => setTimeout(r, BYSTRO * 6));
+    const zamerlo = most.skolkoRaz("status");
+    await new Promise((r) => setTimeout(r, BYSTRO * 6));
+    expect(most.skolkoRaz("status")).toBe(zamerlo);
+  });
+
+  // Вернувшееся окно обязано спросить статус СРАЗУ, а не через период: человек
+  // развернул программу, чтобы посмотреть, и увидел бы снимок пятисекундной
+  // давности.
+  it("спрашивает статус сразу при возврате окна", async () => {
+    const most = mostProby();
+    render(<App periodOprosaMs={100000} />);
+    await waitFor(() => expect(most.skolkoRaz("status")).toBeGreaterThan(0));
+
+    most.okno(false);
+    // Дождаться, пока сворачивание доедет до экрана. Без этого оба события
+    // прилетают в один такт React, состояние возвращается к прежнему значению,
+    // и перерисовки не будет вовсе: тест меряет собственную спешку.
+    await waitFor(() => expect(most.teloKomandy("subscribeStats")).toEqual({ vkl: false }));
+    const bylo = most.skolkoRaz("status");
+    most.okno(true);
+    await waitFor(() => expect(most.skolkoRaz("status")).toBeGreaterThan(bylo));
+  });
+
 });
