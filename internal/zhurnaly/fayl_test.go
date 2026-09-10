@@ -1,6 +1,7 @@
 package zhurnaly
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -155,5 +156,51 @@ func TestPisatPosleZakrytiyaNePadaet(t *testing.T) {
 	}
 	if err := z.Close(); err != nil {
 		t.Fatalf("повторное закрытие ругается: %v", err)
+	}
+}
+
+// Ochistit нужен кнопке «Очистить журнал»: она обещает стереть журналы, и
+// оставить один из них нетронутым значит соврать в интерфейсе.
+//
+// Именно усечение, а не удаление: файл открыт на запись, и Windows его удалить
+// не даст, а если бы дал, следующая запись ушла бы в никуда.
+func TestOchistitUsekaetOtkrytyyFayl(t *testing.T) {
+	katalog := t.TempDir()
+	z, err := Otkryt(katalog, "proba.log")
+	if err != nil {
+		t.Fatalf("журнал не открылся: %v", err)
+	}
+	defer z.Close()
+	if _, err := z.Write([]byte("первая строка\nвторая строка\n")); err != nil {
+		t.Fatalf("запись: %v", err)
+	}
+	if err := z.Ochistit(); err != nil {
+		t.Fatalf("очистка: %v", err)
+	}
+	soderzhimoe, err := os.ReadFile(filepath.Join(katalog, "proba.log"))
+	if err != nil {
+		t.Fatalf("чтение: %v", err)
+	}
+	if len(soderzhimoe) != 0 {
+		t.Fatalf("после очистки осталось %d байт: %q", len(soderzhimoe), soderzhimoe)
+	}
+	// Журнал обязан остаться рабочим: очистка это не закрытие.
+	if _, err := z.Write([]byte("после очистки\n")); err != nil {
+		t.Fatalf("запись после очистки: %v", err)
+	}
+	soderzhimoe, _ = os.ReadFile(filepath.Join(katalog, "proba.log"))
+	if string(soderzhimoe) != "после очистки\n" {
+		t.Fatalf("после очистки в файле %q", soderzhimoe)
+	}
+}
+
+func TestOchistitZakrytogoNeRugaetsyaVpustuyu(t *testing.T) {
+	z, err := Otkryt(t.TempDir(), "proba.log")
+	if err != nil {
+		t.Fatalf("журнал не открылся: %v", err)
+	}
+	z.Close()
+	if err := z.Ochistit(); !errors.Is(err, ErrZakryt) {
+		t.Fatalf("очистка закрытого дала %v, ждали ErrZakryt", err)
 	}
 }

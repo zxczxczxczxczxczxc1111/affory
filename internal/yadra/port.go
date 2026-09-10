@@ -136,3 +136,23 @@ func imyaProcessa(pid uint32) string {
 	}
 	return windows.UTF16ToString(bufer[:dlina])
 }
+
+// PidPorta называет процесс, который слушает порт, числом. Ноль без ошибки
+// значит, что не слушает никто.
+//
+// Отдельно от VladelecPorta намеренно: та отвечает путём и служит защите от
+// перехвата, а диагностике нужен именно pid, чтобы спросить у системы счётчик
+// дескрипторов. Искать ядро по имени процесса нельзя: на машине живут чужие
+// sing-box от других клиентов, и спутать их значит мерить чужое.
+func PidPorta(port int) (int, error) {
+	stroki, err := slushateli()
+	if err != nil {
+		return 0, err
+	}
+	for _, s := range stroki {
+		if int(portIzSetevogo(s.LokPort)) == port {
+			return int(s.VladeletPid), nil
+		}
+	}
+	return 0, nil
+}

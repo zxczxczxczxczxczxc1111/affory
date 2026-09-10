@@ -119,3 +119,32 @@ func (z *Fayl) Close() error {
 	z.f = nil
 	return err
 }
+
+// Ochistit опустошает журнал, оставляя его рабочим.
+//
+// Кнопка «Очистить журнал» в интерфейсе обещает стереть журналы, и оставить
+// один нетронутым значит соврать.
+//
+// Через ПЕРЕОТКРЫТИЕ, а не Truncate: файл открыт с O_APPEND, и Windows на
+// усечение такого дескриптора отвечает «Access is denied». Проверено прогоном
+// 10.09.2026, первая версия падала ровно здесь. Удаление тоже не годится:
+// открытый файл Windows удалить не даст.
+func (z *Fayl) Ochistit() error {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	if z.f == nil {
+		return ErrZakryt
+	}
+	if err := z.f.Close(); err != nil {
+		return fmt.Errorf("журнал %s не закрывается: %w", z.put, err)
+	}
+	f, err := os.OpenFile(z.put, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		// Дескриптора больше нет, и притворяться, что журнал жив, нельзя:
+		// следующая запись должна честно сказать «закрыт».
+		z.f = nil
+		return fmt.Errorf("журнал %s не переоткрывается: %w", z.put, err)
+	}
+	z.f, z.razmer = f, 0
+	return nil
+}
