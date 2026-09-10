@@ -22,6 +22,21 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 if ($Versiya -notmatch '^\d+\.\d+\.\d+$') { throw "версия $Versiya не вида X.Y.Z" }
+# Номер сверяется с деревом, а не принимается на слово.
+#
+# Собрать релиз с версией, которой в дереве нет, значит выложить сборку, чью
+# родословную потом никто не восстановит: в exe одно число, в исходниках
+# другое. Расхождение это ошибка ввода, и ловить её надо здесь, а не после
+# выкладки.
+$faylVersii = Join-Path (Split-Path $PSScriptRoot -Parent) 'VERSIYA'
+if (Test-Path $faylVersii) {
+    $vDereve = (Get-Content $faylVersii -Raw).Trim()
+    if ($vDereve -ne $Versiya) {
+        throw "версия $Versiya не совпадает с деревом ($vDereve): поправьте VERSIYA или аргумент"
+    }
+} else {
+    throw "нет файла VERSIYA в корне дерева: собирать релиз вслепую нельзя"
+}
 if (-not (Test-Path $Yadro)) { throw "нет ядра $Yadro" }
 if (-not (Test-Path $Makensis)) { throw "нет makensis: $Makensis" }
 
