@@ -118,3 +118,42 @@ func TestTreyPrimenyaetPosledneeOtlozhennoe(t *testing.T) {
 		t.Fatalf("применено %q, а последним было поднятое", s.posledniy.sostoyanie)
 	}
 }
+
+// Гость поймал панику 10.09.2026, которой юнит-тесты не видели ВООБЩЕ:
+//
+//	panic: runtime error: invalid memory address or nil pointer dereference
+//	application.(*App).dispatchOnMainThread
+//	application.InvokeAsync
+//	main.(*Trey).Obnovit ... main.novyyTrey ... main.main
+//
+// Причина. Первую отрисовку делает конструктор, то есть ДО app.Run. Платформенной
+// части у приложения в этот момент ещё нет, и InvokeAsync разыменовывает nil.
+// Прежний код сюда не попадал: он звал SetIcon и SetMenu, а те при отсутствии
+// платформенной части просто запоминают значения.
+//
+// Набор был зелёным, потому что шов подменял ровно ту функцию, которая падала.
+// Классический «построено, но не подключено»: проверялось всё, кроме стыка.
+func TestTreyNeUhoditNaGlavnyyPotokDoZapuskaPrilozheniya(t *testing.T) {
+	var ushloAsinhronno int
+	tr := &Trey{}
+	tr.risovat = func(vidTreya) {}
+	tr.naGlavnom = vybratPotok(&tr.gotov, func(f func()) {
+		ushloAsinhronno++
+		f()
+	})
+
+	// Приложение ещё не запущено: ровно состояние конструктора.
+	tr.Obnovit(protokol.StatusOtvet{Sostoyanie: protokol.SostSluzhbaMolchit})
+	if ushloAsinhronno != 0 {
+		t.Fatalf("до запуска приложения работа ушла на главный поток %d раз:"+
+			" там ещё нет платформенной части, и это паника при старте окна", ushloAsinhronno)
+	}
+
+	// Приложение поднялось: с этого мгновения рисовать можно только оттуда.
+	tr.gotov.Store(true)
+	tr.Obnovit(protokol.StatusOtvet{Sostoyanie: protokol.SostPodnyat})
+	if ushloAsinhronno != 1 {
+		t.Fatalf("после запуска работа ушла на главный поток %d раз вместо одного:"+
+			" рисование из чужой горутины правит живой HMENU", ushloAsinhronno)
+	}
+}

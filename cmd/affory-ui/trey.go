@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -157,6 +158,11 @@ type Trey struct {
 	naGlavnom func(func())
 	risovat   func(vidTreya)
 
+	// gotov поднимается, когда у приложения появилась платформенная часть.
+	// Не удобство и не оптимизация: до этого мгновения уводить работу на
+	// главный поток НЕЛЬЗЯ, см. vybratPotok.
+	gotov atomic.Bool
+
 	// Три поля ниже трогаются ТОЛЬКО на главном потоке, поэтому без мьютекса, и
 	// это не экономия, а условие правильности. Проверять «открыто ли меню» из
 	// чужой горутины бессмысленно: между проверкой и доставкой вызова на
@@ -166,6 +172,33 @@ type Trey struct {
 	otlozhennyy  *vidTreya
 	menyuOtkryto bool
 }
+
+// vybratPotok собирает отправителя работы на главный поток, который умеет
+// молчать, пока главного потока в смысле Wails ещё нет.
+//
+// Гость поймал этим панику 10.09.2026: конструктор трея рисует первое состояние
+// ДО app.Run, платформенной части у приложения в этот момент нет, и InvokeAsync
+// разыменовывает nil прямо в main. Прежний код сюда не попадал, потому что звал
+// SetIcon и SetMenu, а те при отсутствии платформенной части просто запоминают
+// значения и ничего не делают.
+//
+// Прямой вызов до запуска безопасен ровно по той же причине: рисовать в этот
+// момент физически некуда, и вся отрисовка сводится к записи полей, которые
+// Wails применит сам при старте.
+func vybratPotok(gotov *atomic.Bool, asinhronno func(func())) func(func()) {
+	return func(f func()) {
+		if gotov.Load() {
+			asinhronno(f)
+			return
+		}
+		f()
+	}
+}
+
+// Zapustilos отмечает, что приложение поднялось и главный поток у него есть.
+// Зовётся из main по событию ApplicationStarted, которое Wails шлёт уже ПОСЛЕ
+// создания платформенной части (проверено по application_windows.go).
+func (t *Trey) Zapustilos() { t.gotov.Store(true) }
 
 // vidTreya это ВСЁ, что видно в трее, одним сравнимым значением.
 //
@@ -207,8 +240,9 @@ func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(
 		otklyuchit: otklyuchit, sost: protokol.SostSluzhbaMolchit}
 	// InvokeAsync, а не InvokeSync: ждать главного потока фоновой горутине
 	// незачем, а при открытом меню ожидание длилось бы столько, сколько человек
-	// держит меню на экране.
-	t.naGlavnom = application.InvokeAsync
+	// держит меню на экране. Через vybratPotok, потому что конструктор рисует
+	// первое состояние ещё до запуска приложения.
+	t.naGlavnom = vybratPotok(&t.gotov, application.InvokeAsync)
 	t.risovat = t.risovatZhivo
 	t.pokazat = t.Pokazat
 	t.zakryt = app.Quit

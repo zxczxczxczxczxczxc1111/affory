@@ -121,6 +121,12 @@ func main() {
 	// программы, которой это чинить, а выход поверх поднятого туннеля увёл бы
 	// весь трафик в туннель, о котором на экране не осталось ни значка.
 	trey := novyyTrey(app, okno, m.zvatFonovo, m.SnyatRezhim, m.Otklyuchit)
+	// Трей узнаёт о запуске приложения отсюда. До этого события платформенной
+	// части у приложения нет, и уводить на главный поток нечего и некуда: окно
+	// падало паникой прямо в main, поймано живым прогоном 10.09.2026.
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		trey.Zapustilos()
+	})
 	uved := novyyUvedomlyatel(uvedomleniya)
 	m.naStatus = func(st protokol.StatusOtvet) {
 		trey.Obnovit(st)
