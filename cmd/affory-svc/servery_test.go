@@ -248,7 +248,7 @@ func TestIstekshayaPodpiskaDohoditTekstomPaneli(t *testing.T) {
 }
 
 func TestPustayaPodpiskaSohranyaetPrezhniySpisok(t *testing.T) {
-	// Решение владельца: одна опечатка в публикации не должна оставлять запертую
+	// Решено: одна опечатка в публикации не должна оставлять запертую
 	// машину без единого адреса.
 	s := podstavnaya(t, nil)
 	zadatPodpisku(t, s, "https://panel.example/pusto")

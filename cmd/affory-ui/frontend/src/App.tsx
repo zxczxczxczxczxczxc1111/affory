@@ -159,7 +159,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // null means "no answer yet". The screens still want a whole StatusOtvet,
   // so `naEkrane` below substitutes MOLCHIT once we know the pipe is dead.
   const [status, zadatStatus] = useState<StatusOtvet | null>(null);
-  // Видно ли окно. Решение владельца 10.09.2026: в трее программа проводит
+  // Видно ли окно. Решено 10.09.2026: в трее программа проводит
   // подавляющую часть времени, и опрашивать ядро ради счётчиков, которых никто
   // не видит, незачем. Начальное true: окно, стартовавшее без ключа --trey,
   // уже на экране, а ушедшее в трей получит false первым же событием.

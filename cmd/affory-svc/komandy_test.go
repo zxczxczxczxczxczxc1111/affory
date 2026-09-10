@@ -48,8 +48,8 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	}
 	s.zapisat = func(sostoyanie.SostoyanieFayla) error { return nil }
 	// Конструктор уже прочитал НАСТОЯЩИЙ файл настроек машины: 03.09.2026
-	// тест «журнал выключен по умолчанию» покраснел на хосте, где владелец
-	// включил журнал в окне. Подставная служба читает пустоту и перечитывает.
+	// тест «журнал выключен по умолчанию» покраснел на хосте, где журнал
+	// включили в окне. Подставная служба читает пустоту и перечитывает.
 	s.prochitat = func() (sostoyanie.SostoyanieFayla, error) { return sostoyanie.SostoyanieFayla{}, nil }
 	s.zagruzitNastroyki()
 	s.storozhit = func(ctx context.Context, imya, konfig string, sob func(protokol.Sostoyanie)) error {
@@ -989,7 +989,7 @@ func TestSetRouteModeVSostoyaniiOtkazNeTrebuetPerepodyoma(t *testing.T) {
 }
 
 // Обратная половина. Прежде здесь стояло «на живом ядре признак обязан
-// остаться»: решение переменилось задачей И1, и решил его владелец в пользу
+// остаться»: решение переменилось задачей И1 в пользу
 // приёмки. Живое ядро переключает режим само, и требовать переподъёма значит
 // рвать человеку все соединения ради того, что делается одним PUT.
 //

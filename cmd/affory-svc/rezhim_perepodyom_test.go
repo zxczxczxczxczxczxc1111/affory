@@ -11,7 +11,7 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
-// Находка 16, вторая половина. Решение владельца 02.09.2026: перезапуск ядра
+// Находка 16, вторая половина. Решено 02.09.2026: перезапуск ядра
 // ДО запирания брандмауэра.
 //
 // Порядок и есть всё решение. Обратный порядок тоже работает в хорошем случае,
@@ -57,7 +57,7 @@ func TestVklyucheniyeRezhimaSnachalaPerepodnimaetYadro(t *testing.T) {
 }
 
 // Неудачный перезапуск обязан оставить машину ОТКРЫТОЙ и режим выключенным.
-// Ровно за это владелец и выбрал этот порядок.
+// Ровно за это порядок и выбран.
 func TestNeudachnyyPerepodyomNeZapiraetMashinu(t *testing.T) {
 	s := podstavnaya(t, nil)
 	if err := s.Connect(context.Background()); err != nil {

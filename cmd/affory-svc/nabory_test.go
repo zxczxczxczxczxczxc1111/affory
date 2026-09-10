@@ -117,7 +117,7 @@ func TestHostyNaborovVhodyatVAdresaKandidatov(t *testing.T) {
 	}
 }
 
-// Выключатель российского списка (просьба владельца 08.09.2026). Набор ru был
+// Выключатель российского списка (решено 08.09.2026). Набор ru был
 // зашит намертво: человек видел его действие, но выключить не мог ничем.
 
 func TestBezRuSpiskaUbiraetNaborIzKonfiga(t *testing.T) {

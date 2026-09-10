@@ -154,7 +154,7 @@ func soderzhitStroku(s []string, chto string) bool {
 }
 
 func TestAdresaZagruzokPopadayutVSpisok(t *testing.T) {
-	// Наборы rule_set качаются мимо туннеля (решение владельца 31.08.2026), а
+	// Наборы rule_set качаются мимо туннеля (решено 31.08.2026), а
 	// мимо туннеля ходит только то, что стоит в правиле петли и в разрешающих
 	// правилах. Хост набора обязан быть в обоих списках, то есть здесь.
 	a, err := sobratAdresaS(context.Background(),

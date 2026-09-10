@@ -356,7 +356,7 @@ export function Nastroyki({
           </Ryad>
           {/* Результат прямо под кнопкой. Замер тратит десятки мегабайт, и
               молчание после него человек читает как сломанную кнопку, а
-              значит жмёт ещё раз (владелец, 03.09.2026). */}
+              значит жмёт ещё раз (решено 03.09.2026). */}
           {zamerPolosy && (
             <div className="border-border border-t p-4" data-testid="zamer-polosy">
               <p className="text-sm">
