@@ -24,9 +24,9 @@ import (
 
 // stend собирает Trey без живого Wails и считает, сколько раз тот пошёл в трей.
 type stendTreya struct {
-	t          *Trey
-	risovaniy  int
-	posledniy  vidTreya
+	t         *Trey
+	risovaniy int
+	posledniy vidTreya
 }
 
 func novyyStend() *stendTreya {

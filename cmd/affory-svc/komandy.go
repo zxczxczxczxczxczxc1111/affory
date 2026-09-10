@@ -107,7 +107,7 @@ type Sluzhba struct {
 	zagruzitSnimok func(ctx context.Context, adres string) (set.Snimok, error)
 	// Журнал соединений (6.2): файл, период опроса и снимок соединений
 	// подставляются тестами.
-	zhurnalSoed      *sostoyanie.ZhurnalSoedineniy
+	zhurnalSoed *sostoyanie.ZhurnalSoedineniy
 
 	// Подробный журнал: сам файл, швы над системой и такт. Всё три ради теста
 	// подменяемо, потому что настоящие источники это системные вызовы.
@@ -115,8 +115,8 @@ type Sluzhba struct {
 	istochnikiDiag    diagnostika.Istochniki
 	periodDiagnostiki time.Duration
 	// Накопленные счётчики ядра, чтобы писать в журнал прирост за такт.
-	byloVverh uint64
-	byloVniz  uint64
+	byloVverh        uint64
+	byloVniz         uint64
 	periodZhurnala   time.Duration
 	soedineniyaYadra func(ctx context.Context, adres, sekret string) ([]yadra.Soedinenie, error)
 	// muVybor держит ВЕСЬ цикл живого переключения: чтение текущего выбора,
