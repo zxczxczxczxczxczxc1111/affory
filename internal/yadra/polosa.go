@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -145,9 +146,24 @@ func zamer(ctx context.Context, v VhodPolosy, vid vidZamera) (ItogPolosy, error)
 	// добавить к замеру время на закрытие соединений. Счётчик атомарный, и
 	// опоздавшая запись в него после снятия показаний уже никого не касается.
 	var s schyot
+	var idut sync.WaitGroup
 	for i := 0; i < v.Potokov; i++ {
-		go vid.rabota(ctx, klient, v.Adres, &s)
+		idut.Add(1)
+		go func() {
+			defer idut.Done()
+			vid.rabota(ctx, klient, v.Adres, &s)
+		}()
 	}
+
+	// Пул закрывается ПОСЛЕ потоков, и потому в стороне от замера. Транспорт
+	// живёт один замер, а его простаивающие соединения не имеют срока
+	// (IdleConnTimeout у голого Transport нулевой), то есть висят до конца
+	// процесса. Закрыть их прямо здесь нельзя: поток, дописывающий последний
+	// ответ, вернёт своё соединение в уже закрытый пул, и оно переживёт замер.
+	go func() {
+		idut.Wait()
+		klient.CloseIdleConnections()
+	}()
 	nachalo := time.Now()
 	<-ctx.Done()
 	proshlo := time.Since(nachalo)
