@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Вывод ядра в журнал службы.
@@ -20,6 +21,18 @@ import (
 // подробный лог, а именно жалобы.
 const predelStrokYadra = 200
 
+// Окно, за которое считается предел.
+//
+// Прежде предел считался за ВЕСЬ запуск ядра, и после двухсотой строки журнал
+// молчал до перезапуска. Ядро работает сутками. По журналу живой машины
+// 10.09.2026: пять раз «дальше молчим», и шторм отказов сокетов у ядра виден
+// только до порога, а сколько их было на самом деле, узнать неоткуда.
+//
+// Минута выбрана как срок, за который человек успевает заметить неполадку и
+// снять журнал: заливка файла по-прежнему невозможна (потолок 200 строк в
+// минуту, то есть 12 тысяч в час), а жалобы следующего часа уже слышны.
+const oknoStrokYadra = time.Minute
+
 // Zhurnal это куда уходит вывод ядра. По умолчанию журнал процесса, служба
 // подставляет свой файл `log\yadro.log`: жалобы ядра и жизнь службы читаются
 // по отдельности, а не вперемешку.
@@ -30,6 +43,18 @@ type zhurnalYadra struct {
 	ost   []byte
 	strok int
 	skazl bool
+	// Начало текущего окна и сколько строк за него проглочено.
+	nachalo    time.Time
+	proglochen int
+	// Шов времени: тест не имеет права спать минуту, чтобы проверить окно.
+	seychas func() time.Time
+}
+
+func (z *zhurnalYadra) teper() time.Time {
+	if z.seychas != nil {
+		return z.seychas()
+	}
+	return time.Now()
 }
 
 // Write собирает ЦЕЛЫЕ строки. Поток приходит кусками, и граница куска не
@@ -47,10 +72,25 @@ func (z *zhurnalYadra) Write(p []byte) (int, error) {
 		if stroka == "" {
 			continue
 		}
+		teper := z.teper()
+		if z.nachalo.IsZero() {
+			z.nachalo = teper
+		}
+		// Окно кончилось: слушаем снова и говорим, скольких не услышали.
+		// Число обязательно, иначе по журналу нельзя отличить «ядро замолчало»
+		// от «мы перестали слушать».
+		if teper.Sub(z.nachalo) >= oknoStrokYadra {
+			if z.proglochen > 0 {
+				Zhurnal.Printf("ядро %s: проглочено строк за окно: %d", z.imya, z.proglochen)
+			}
+			z.nachalo, z.strok, z.skazl, z.proglochen = teper, 0, false, 0
+		}
 		if z.strok >= predelStrokYadra {
+			z.proglochen++
 			if !z.skazl {
 				z.skazl = true
-				Zhurnal.Printf("ядро %s: строк больше %d, дальше молчим", z.imya, predelStrokYadra)
+				Zhurnal.Printf("ядро %s: строк больше %d за %v, дальше молчим до конца окна",
+					z.imya, predelStrokYadra, oknoStrokYadra)
 			}
 			continue
 		}
