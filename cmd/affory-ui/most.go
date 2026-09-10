@@ -341,6 +341,23 @@ func (m *most) SnyatRezhim() error {
 	return otkazVOtvete(otvet)
 }
 
+// Otklyuchit опускает туннель и отвечает, ПОЛУЧИЛОСЬ ЛИ.
+//
+// Той же командой, что и кнопка «Отключить» на главном экране, и по той же
+// причине, что и SnyatRezhim: два пути к одному поступку разошлись бы молча.
+// Зовётся выходом из трея, которому с 10.09.2026 нельзя закрывать программу над
+// поднятым туннелем: значка не останется, а трафик пойдёт.
+//
+// Отказ приезжает КАДРОМ без ошибки Go, поэтому одного err мало. Ровно на этом
+// однажды закрылась программа над запертой машиной.
+func (m *most) Otklyuchit() error {
+	otvet, err := m.Zvat("disconnect", "")
+	if err != nil {
+		return err
+	}
+	return otkazVOtvete(otvet)
+}
+
 // obryvKanala tells a dead pipe from a refusal. kanal.Klient.Zvat returns
 // the frame AND an error for a refusal; only an error without a frame is
 // the transport failing. Closing the pipe on a refusal cost the screen every

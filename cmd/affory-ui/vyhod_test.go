@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
 // Ф1 от 05.09.2026. Окно закрывается крестиком в трей, значит «Выход» это уже
@@ -13,7 +15,9 @@ import (
 // Дверь обязана НАЗЫВАТЬ то, что сделает. Строка «Выход», снимающая защиту
 // молча, хуже отсутствия двери: человек нажал одно, получил другое.
 func TestVyhodIzTreyaNazyvaetSnyatieZashchity(t *testing.T) {
-	podpisBez, snyatBez := punktVyhoda(false)
+	// Туннель опущен у обоих вызовов намеренно: здесь проверяется РОВНО
+	// измерение замка, а опускание туннеля у него своя проверка рядом.
+	podpisBez, snyatBez, _ := punktVyhoda(protokol.SostVyklyuchen, false)
 	if snyatBez {
 		t.Error("режим выключен, а выход собрался его снимать: снимать нечего")
 	}
@@ -21,7 +25,7 @@ func TestVyhodIzTreyaNazyvaetSnyatieZashchity(t *testing.T) {
 		t.Errorf("подпись без режима %q, ожидалось «Выход»", podpisBez)
 	}
 
-	podpisS, snyatS := punktVyhoda(true)
+	podpisS, snyatS, _ := punktVyhoda(protokol.SostVyklyuchen, true)
 	if !snyatS {
 		t.Error("режим включён, а выход его не снимает: человек уходит, оставляя машину запертой")
 	}

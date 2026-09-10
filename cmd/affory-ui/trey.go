@@ -82,6 +82,21 @@ func deystvieTreya(s protokol.Sostoyanie) (podpis, komanda string) {
 	}
 }
 
+// tunnelZhivoy отвечает, есть ли что опускать.
+//
+// Отказ и выключенное сюда не входят: опускать там нечего. Молчащая служба тем
+// более: команду отправлять некуда, и обещать в подписи то, чего не сделаем,
+// нельзя.
+func tunnelZhivoy(s protokol.Sostoyanie) bool {
+	switch s {
+	case protokol.SostPodnyat, protokol.SostNeNeset,
+		protokol.SostPodnimaetsya, protokol.SostVosstanavl:
+		return true
+	default:
+		return false
+	}
+}
+
 // punktVyhoda отвечает, что написать в последней строке меню и что сделать по
 // нажатию.
 //
@@ -89,13 +104,25 @@ func deystvieTreya(s protokol.Sostoyanie) (podpis, komanda string) {
 // «я закончил». Закончить при включённом режиме «весь трафик» нельзя: замок
 // остаётся на машине. Ф1 от 05.09.2026.
 //
-// Подпись обязана называть снятие защиты. Строка «Выход», снимающая режим молча,
-// хуже отсутствия двери: человек нажал одно, а получил другое.
-func punktVyhoda(zamok bool) (podpis string, snyatRezhim bool) {
-	if zamok {
-		return "Выйти и снять защиту", true
+// С 10.09.2026 выход ещё и ОПУСКАЕТ туннель, решение владельца. Прежде служба
+// продолжала вести весь трафик через туннель после закрытия окна: значка нет,
+// объяснения нет, а трафик идёт. Саму службу выход не трогает и трогать не
+// должен, на ней держатся автозапуск при входе и возврат после внезапной смерти.
+//
+// Подпись обязана называть поступок. Строка «Выход», снимающая защиту или
+// рвущая соединение молча, хуже отсутствия двери: человек нажал одно, а получил
+// другое. Замок называется первым, потому что он сильнее: туннель уходит вместе
+// с программой, а замок остался бы на машине и без неё.
+func punktVyhoda(sost protokol.Sostoyanie, zamok bool) (podpis string, snyatRezhim, opustit bool) {
+	opustit = tunnelZhivoy(sost)
+	switch {
+	case zamok:
+		return "Выйти и снять защиту", true, opustit
+	case opustit:
+		return "Выйти и отключить", false, true
+	default:
+		return "Выход", false, false
 	}
-	return "Выход", false
 }
 
 // Trey owns the system tray icon and the "hide instead of close" contract:
@@ -108,9 +135,15 @@ type Trey struct {
 	// zvat runs a service command in the background; the tray never waits
 	// for an answer, the answer arrives as a state event like any other.
 	zvat func(komanda string)
-	// snyatRezhim ЖДЁТ ответа, в отличие от zvat: уходить, не дождавшись
-	// снятия замка, значит уходить с запертой машины.
+	// snyatRezhim и otklyuchit ЖДУТ ответа, в отличие от zvat: уходить, не
+	// дождавшись снятия замка или опускания туннеля, значит уходить, оставив
+	// машину запертой или трафик в туннеле без единого значка на экране.
 	snyatRezhim func() error
+	otklyuchit  func() error
+	// pokazat и zakryt это швы над окном и приложением: оба нужны выходу, и оба
+	// требуют живого Wails, которого у набора нет.
+	pokazat func()
+	zakryt  func()
 
 	mu               sync.Mutex
 	sost             protokol.Sostoyanie
@@ -164,19 +197,21 @@ func vidDlya(st protokol.StatusOtvet) vidTreya {
 		// месте, иначе меню прыгает высотой на каждом подъёме.
 		v.deystvie = "..."
 	}
-	v.vyhod, _ = punktVyhoda(st.KillSwitch)
+	v.vyhod, _, _ = punktVyhoda(st.Sostoyanie, st.KillSwitch)
 	return v
 }
 
 func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(komanda string),
-	snyatRezhim func() error) *Trey {
+	snyatRezhim func() error, otklyuchit func() error) *Trey {
 	t := &Trey{app: app, okno: okno, zvat: zvat, snyatRezhim: snyatRezhim,
-		sost: protokol.SostSluzhbaMolchit}
+		otklyuchit: otklyuchit, sost: protokol.SostSluzhbaMolchit}
 	// InvokeAsync, а не InvokeSync: ждать главного потока фоновой горутине
 	// незачем, а при открытом меню ожидание длилось бы столько, сколько человек
 	// держит меню на экране.
 	t.naGlavnom = application.InvokeAsync
 	t.risovat = t.risovatZhivo
+	t.pokazat = t.Pokazat
+	t.zakryt = app.Quit
 	t.sistemnyy = app.SystemTray.New()
 	t.menu = app.NewMenu()
 	// First line is the state, disabled on purpose: it is a label, not a
@@ -214,34 +249,44 @@ func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(
 	return t
 }
 
-// vyyti снимает режим, если он включён, и только потом закрывает программу.
+// vyyti запускает выход. В отдельной горутине: обработчик меню крутится на
+// главном потоке, а команды ходят по каналу и ЖДУТ ответа.
+func (t *Trey) vyyti() { go t.vyytiSinhronno() }
+
+// vyytiSinhronno снимает режим, опускает туннель и только потом закрывает
+// программу. Именно в этом порядке.
 //
-// Неудача снятия ОТМЕНЯЕТ выход и открывает окно. Уйти молча значило бы
-// оставить человека ровно в том положении, из-за которого это и чинилось:
-// машина заперта, программы нет, объяснения нет. Окно покажет и режим, и
-// причину отказа: экраны для них уже написаны.
-func (t *Trey) vyyti() {
+// Порядок не вкусовщина. Опустить туннель под замком значит отрезать машину от
+// сети на всё время, пока человек соображает, что произошло: замок пускает
+// трафик только через туннель, которого уже нет.
+//
+// Неудача любого шага ОТМЕНЯЕТ выход и открывает окно. Уйти молча значило бы
+// оставить человека ровно в том положении, из-за которого это и чинилось: то
+// машина заперта без программы, то туннель ведёт весь трафик без значка.
+// Окно покажет и режим, и причину отказа: экраны для них уже написаны.
+func (t *Trey) vyytiSinhronno() {
 	t.mu.Lock()
-	zamok := t.zamok
+	sost, zamok := t.sost, t.zamok
 	t.mu.Unlock()
-	_, snyat := punktVyhoda(zamok)
+	_, snyat, opustit := punktVyhoda(sost, zamok)
+
 	if snyat {
 		if t.snyatRezhim == nil {
-			t.Pokazat()
+			t.pokazat()
 			return
 		}
-		// В отдельной горутине: обработчик меню крутится на главном потоке, а
-		// команда ходит по каналу и ждёт ответа.
-		go func() {
-			if err := t.snyatRezhim(); err != nil {
-				t.Pokazat()
-				return
-			}
-			t.app.Quit()
-		}()
-		return
+		if err := t.snyatRezhim(); err != nil {
+			t.pokazat()
+			return
+		}
 	}
-	t.app.Quit()
+	if opustit && t.otklyuchit != nil {
+		if err := t.otklyuchit(); err != nil {
+			t.pokazat()
+			return
+		}
+	}
+	t.zakryt()
 }
 
 // Pokazat brings the window up from the tray.
