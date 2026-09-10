@@ -152,6 +152,7 @@ type Trey struct {
 	punktSostoyaniya *application.MenuItem
 	punktDeystviya   *application.MenuItem
 	punktVyhoda      *application.MenuItem
+	punktObnovleniya *application.MenuItem
 
 	// Швы ради теста: живой трей требует запущенного приложения Wails, и без
 	// них ни одно из требований ниже не проверить прогоном.
@@ -211,6 +212,13 @@ type vidTreya struct {
 	deystvie      string
 	deystvieZhivo bool
 	vyhod         string
+
+	// Обновление живёт ОТДЕЛЬНО от иконки. Четыре иконки отвечают на вопрос
+	// «жив туннель или нет», и подмешать в тот же канал вторую новость значит
+	// испортить оба ответа: точка в углу на красной иконке читается как часть
+	// аварии. Обновление называется словами.
+	obnovlenie       bool
+	punktObnovleniya string
 }
 
 // vidDlya это чистая функция состояния. Ни одного вызова в трей, ровно чтобы
@@ -231,6 +239,14 @@ func vidDlya(st protokol.StatusOtvet) vidTreya {
 		v.deystvie = "..."
 	}
 	v.vyhod, _, _ = punktVyhoda(st.Sostoyanie, st.KillSwitch)
+	if st.Obnovlenie != nil {
+		// Номер обязателен в обеих строках: «доступно обновление» без версии
+		// не даёт решить, нужна ли она прямо сейчас. Состояние туннеля при
+		// этом остаётся первым: обновление это приписка, а не замена новости.
+		v.obnovlenie = true
+		v.punktObnovleniya = "Обновить до " + st.Obnovlenie.Versiya
+		v.podskazka += ", доступно обновление " + st.Obnovlenie.Versiya
+	}
 	return v
 }
 
@@ -255,6 +271,13 @@ func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(
 	t.punktSostoyaniya.SetEnabled(false)
 	t.menu.AddSeparator()
 	t.menu.Add("Открыть окно").OnClick(func(*application.Context) { t.Pokazat() })
+	// Скрыт, пока обновления нет. Нажатие ОТКРЫВАЕТ окно, а не качает молча:
+	// в окне видно номер и размер, и решение остаётся за человеком. Тянуть
+	// двенадцать мегабайт по клику в трее, ничего не показав, значит решить
+	// за него.
+	t.punktObnovleniya = t.menu.Add("Обновить")
+	t.punktObnovleniya.SetHidden(true)
+	t.punktObnovleniya.OnClick(func(*application.Context) { t.Pokazat() })
 	t.punktDeystviya = t.menu.Add("Подключить")
 	t.punktDeystviya.OnClick(func(*application.Context) {
 		t.mu.Lock()
@@ -420,6 +443,10 @@ func (t *Trey) risovatZhivo(v vidTreya) {
 	t.punktSostoyaniya.SetLabel(v.sostoyanie)
 	t.punktDeystviya.SetLabel(v.deystvie).SetEnabled(v.deystvieZhivo)
 	t.punktVyhoda.SetLabel(v.vyhod)
+	if v.obnovlenie {
+		t.punktObnovleniya.SetLabel(v.punktObnovleniya)
+	}
+	t.punktObnovleniya.SetHidden(!v.obnovlenie)
 	t.sistemnyy.SetMenu(t.menu)
 }
 
