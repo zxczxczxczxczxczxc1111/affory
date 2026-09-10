@@ -120,6 +120,8 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 
 	case "setJournal":
 		return s.setJournal(k)
+	case "setDiagnostics":
+		return s.setDiagnostics(k)
 
 	case "clearJournal":
 		return s.clearJournal(k)
@@ -436,7 +438,8 @@ func imenaKomand() []string {
 		"setKillSwitch", "exportProfile", "importProfile",
 		"setAutostart", "setConnectOnStart", "setBandwidth",
 		"listRules", "setRules",
-		"subscribeStats", "setJournal", "clearJournal", "checkExitIp", "checkLeaks",
+		"subscribeStats", "setJournal", "setDiagnostics", "clearJournal",
+		"checkExitIp", "checkLeaks",
 		"installUpdate", "getServerHealth", "checkUpdate", "downloadUpdate",
 		"measureDelays", "measureBandwidth",
 		"startSpeedTest", "speedTestStatus", "cancelSpeedTest",

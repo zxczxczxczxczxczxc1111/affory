@@ -127,6 +127,19 @@ func main() {
 			vyhod("journal принимает on, off или clear")
 		}
 
+	// Подробный журнал для отладки. Отдельной командой, а не третьим значением
+	// journal: включают их по разным поводам, и «journal debug» читалось бы
+	// как уровень подробности того же журнала, а это другой файл.
+	case "diagnostics":
+		switch pod {
+		case "on", "off":
+			pechat(k.Zvat("setDiagnostics", map[string]bool{"vkl": pod == "on"}))
+		case "":
+			pechat(k.Zvat("status", nil))
+		default:
+			vyhod("diagnostics принимает on или off")
+		}
+
 	// Two decisions, two commands (§9.2, task 4.8): the program at logon and
 	// the tunnel at boot. One word for both would be the merged switch the
 	// spec forbids, only on the command line.

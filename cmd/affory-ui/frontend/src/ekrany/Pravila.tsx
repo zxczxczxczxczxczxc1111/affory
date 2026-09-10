@@ -304,6 +304,20 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
             />
           </Ryad>
           <Ryad
+            testId="diagnostika-ryad"
+            nazvanie="подробный журнал для отладки"
+            poyasnenie="раз в секунду: дескрипторы, занятые порты, соединения, скорость, задержка ядра; нужен, когда связь пропадает без видимой причины"
+            aktiven={!molchit}
+          >
+            <Tumbler
+              testId="diagnostika"
+              podpis="подробный журнал для отладки"
+              vkl={status.diagnostika ?? false}
+              aktiven={!molchit && !zhdyomHello}
+              naSmenu={(vkl) => naKomandu("setDiagnostics", { vkl })}
+            />
+          </Ryad>
+          <Ryad
             nazvanie="очистить журнал"
             poyasnenie={chistkaOtlozhena ?? "стирает файл соединений"}
             aktiven={!molchit && !chistkaOtlozhena}

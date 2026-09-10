@@ -23,7 +23,7 @@ import (
 // setConnectOnStart отсутствовали в обоих.
 var resheniyeOPravah = map[string]bool{
 	"hello": false, "status": false, "subscribeStats": false,
-	"setJournal": false, "clearJournal": false,
+	"setJournal": false, "setDiagnostics": false, "clearJournal": false,
 	"checkUpdate": false, "getServerHealth": false,
 	"checkExitIp": false, "checkLeaks": false,
 	// measureDelays спрашивает у ядра и у сети то, что и так видно на экране:

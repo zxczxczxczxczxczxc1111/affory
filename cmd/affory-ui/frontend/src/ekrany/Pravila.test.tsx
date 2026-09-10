@@ -100,6 +100,21 @@ describe("правила: режим «весь трафик» и журнал",
     expect(na).toHaveBeenCalledTimes(1);
     expect(na).toHaveBeenCalledWith("setJournal", { vkl: true });
   });
+
+  // Подробный журнал это ОТДЕЛЬНЫЙ тумблер. Журнал соединений пишет, куда
+  // ходили; этот пишет, почему встало. Включают их по разным поводам.
+  it("подробный журнал: свой тумблер, значение из статуса", () => {
+    risovat({ otlozheno: { listRules: 5, setRules: 5 }, status: { ...VYKL, diagnostika: true } });
+    const t = screen.getByTestId("diagnostika") as HTMLInputElement;
+    expect(t.checked).toBe(true);
+  });
+
+  it("подробный журнал шлёт setDiagnostics и не трогает журнал соединений", () => {
+    const na = risovat({ otlozheno: { listRules: 5, setRules: 5 }, status: { ...VYKL, diagnostika: false } });
+    fireEvent.click(screen.getByTestId("diagnostika"));
+    expect(na).toHaveBeenCalledTimes(1);
+    expect(na).toHaveBeenCalledWith("setDiagnostics", { vkl: true });
+  });
 });
 
 describe("правила: домены и честное предупреждение", () => {

@@ -46,6 +46,11 @@ func (s *Sluzhba) clearJournal(k protokol.Kadr) protokol.Kadr {
 	if err := s.zhurnalSoed.Ochistit(); err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodZhurnalNeStyort, err.Error())
 	}
+	// Подробный журнал входит в то же обещание: кнопка называется «Очистить
+	// журнал», а не «очистить один из журналов».
+	if err := s.zhurnalDiag.Ochistit(); err != nil {
+		return otkaz(k.Id, k.Imya, protokol.KodZhurnalNeStyort, err.Error())
+	}
 	return otvet(k.Id, k.Imya, s.Status())
 }
 

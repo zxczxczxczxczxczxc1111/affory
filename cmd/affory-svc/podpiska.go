@@ -94,6 +94,14 @@ func (s *Sluzhba) ZapustitRaspisanie() {
 		defer s.fon.Done()
 		s.raspisanieObnovleniy(s.fonCtx)
 	}()
+	// Подробный журнал крутится ВСЕГДА и молчит, пока настройка выключена.
+	// Заводить и гасить горутину по щелчку настройки значит завести гонку там,
+	// где такт стоит одного сравнения.
+	s.fon.Add(1)
+	go func() {
+		defer s.fon.Done()
+		s.sobiratDiagnostiku(s.fonCtx)
+	}()
 }
 
 // raspisaniePodpiski тянет подписку при старте и дальше раз в период.

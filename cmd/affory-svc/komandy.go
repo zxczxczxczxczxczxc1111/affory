@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
@@ -19,6 +20,7 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/zhurnaly"
 )
 
 // Константы целей больше нет: сервер берётся из списка (задача 3.8). Пока она
@@ -106,6 +108,15 @@ type Sluzhba struct {
 	// Журнал соединений (6.2): файл, период опроса и снимок соединений
 	// подставляются тестами.
 	zhurnalSoed      *sostoyanie.ZhurnalSoedineniy
+
+	// Подробный журнал: сам файл, швы над системой и такт. Всё три ради теста
+	// подменяемо, потому что настоящие источники это системные вызовы.
+	zhurnalDiag       *diagnostika.Zhurnal
+	istochnikiDiag    diagnostika.Istochniki
+	periodDiagnostiki time.Duration
+	// Накопленные счётчики ядра, чтобы писать в журнал прирост за такт.
+	byloVverh uint64
+	byloVniz  uint64
 	periodZhurnala   time.Duration
 	soedineniyaYadra func(ctx context.Context, adres, sekret string) ([]yadra.Soedinenie, error)
 	// muVybor держит ВЕСЬ цикл живого переключения: чтение текущего выбора,
@@ -336,6 +347,16 @@ func NovayaSluzhba() *Sluzhba {
 	s.adresObnovleniy = AdresObnovleniyPoUmolchaniyu
 	s.skachatFayl = skachatPoSeti
 	s.zhurnalSoed = sostoyanie.NovyyZhurnalSoedineniy()
+	s.periodDiagnostiki = periodDiagnostikiPoUmolchaniyu
+	// Файл открывается ВСЕГДА, а пишется только при включённой настройке: иначе
+	// первая же секунда после включения уходила бы на открытие файла, а
+	// интересна как раз она.
+	if f, err := zhurnaly.Otkryt(sostoyanie.KatalogZhurnalov(), diagnostika.ImyaZhurnala); err == nil {
+		s.zhurnalDiag = diagnostika.NovyyZhurnal(f)
+	} else {
+		log.Printf("подробный журнал не открыт: %v", err)
+	}
+	s.istochnikiDiag = s.nastoyashchieIstochniki()
 	s.periodZhurnala = periodZhurnalaPoUmolchaniyu
 	s.soedineniyaYadra = yadra.Soedineniya
 	s.provalov = provalovPodryadPoUmolchaniyu
@@ -472,6 +493,7 @@ func (s *Sluzhba) Status() protokol.StatusOtvet {
 		Avtozapusk:           avtozapuskVklyuchen(),
 		PodklyuchatPriStarte: s.snimok.PodklyuchatPriStarte,
 		Zhurnal:              s.snimok.Zhurnal,
+		Diagnostika:          s.snimok.Diagnostika,
 		PolosaVverh:          s.snimok.PolosaVverh,
 		PolosaVniz:           s.snimok.PolosaVniz,
 		Oshib:                s.oshib,
@@ -493,6 +515,7 @@ func (s *Sluzhba) zagruzitNastroyki() {
 	s.snimok.PodklyuchatPriStarte = f.PodklyuchatPriStarte
 	s.snimok.KillSwitch, s.killSwitch = f.KillSwitch, f.KillSwitch
 	s.snimok.Zhurnal = f.Zhurnal
+	s.snimok.Diagnostika = f.Diagnostika
 	s.snimok.PolosaVverh, s.snimok.PolosaVniz = f.PolosaVverh, f.PolosaVniz
 	if f.AdresProverki != "" {
 		s.adresProverki = f.AdresProverki

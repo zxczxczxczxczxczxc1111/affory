@@ -59,6 +59,7 @@ export interface StatusOtvet {
   /** Second decision, separate from autostart (§9.2 defaults differ). */
   podklyuchat_pri_starte?: boolean;
   zhurnal?: boolean;
+  diagnostika?: boolean;
   /** Local mixed proxy port next to the tunnel; absent when it is not up. */
   port_proksi?: number;
   /** Полоса канала в мегабитах, объявленная человеком. Отсутствие означает «не

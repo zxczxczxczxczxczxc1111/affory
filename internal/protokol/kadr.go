@@ -74,6 +74,7 @@ type StatusOtvet struct {
 	// оба обещал бы человеку подключение, которого он не выбирал.
 	PodklyuchatPriStarte bool `json:"podklyuchat_pri_starte"`
 	Zhurnal              bool `json:"zhurnal"`
+	Diagnostika          bool `json:"diagnostika"`
 	// Полоса канала человека в мегабитах, добавлено 05.09.2026. Пара нулей это
 	// «не измерена», и экран обязан отличать её от объявленной: без объявления
 	// hysteria2 идёт на BBR, и это рабочее состояние, а не пустое поле.

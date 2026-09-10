@@ -69,6 +69,10 @@ type SostoyanieFayla struct {
 	// Добавлено волной 6 (задача 6.2). Журнал соединений включён. Настройка,
 	// переживает сброс при отключении по тому же доводу, что и флаг выше.
 	Zhurnal bool `json:"zhurnal,omitempty"`
+	// Подробный журнал для отладки (diagnostika.jsonl). Отдельно от Zhurnal:
+	// тот пишет, КУДА ходили, этот пишет, ПОЧЕМУ встало. Включают их по разным
+	// поводам, и связывать одним флагом значит заставить включать лишнее.
+	Diagnostika bool `json:"diagnostika,omitempty"`
 	// Эндпоинт checkExitIp (6.3). Пусто значит умолчание set.AdresProverkiPoUmolchaniyu.
 	AdresProverki string `json:"adres_proverki,omitempty"`
 
