@@ -118,12 +118,65 @@ type Trey struct {
 	punktSostoyaniya *application.MenuItem
 	punktDeystviya   *application.MenuItem
 	punktVyhoda      *application.MenuItem
+
+	// Швы ради теста: живой трей требует запущенного приложения Wails, и без
+	// них ни одно из требований ниже не проверить прогоном.
+	naGlavnom func(func())
+	risovat   func(vidTreya)
+
+	// Три поля ниже трогаются ТОЛЬКО на главном потоке, поэтому без мьютекса, и
+	// это не экономия, а условие правильности. Проверять «открыто ли меню» из
+	// чужой горутины бессмысленно: между проверкой и доставкой вызова на
+	// главный поток меню успевает открыться. Решение принимается там же, где
+	// исполняется.
+	narisovano   *vidTreya
+	otlozhennyy  *vidTreya
+	menyuOtkryto bool
+}
+
+// vidTreya это ВСЁ, что видно в трее, одним сравнимым значением.
+//
+// Сравнимым намеренно: пока состояние не изменилось, трогать трей нельзя, а
+// «не изменилось» должно решаться одним ==, а не сверкой шести полей руками.
+type vidTreya struct {
+	ikonka        string
+	podskazka     string
+	sostoyanie    string
+	deystvie      string
+	deystvieZhivo bool
+	vyhod         string
+}
+
+// vidDlya это чистая функция состояния. Ни одного вызова в трей, ровно чтобы
+// решение «что должно быть на экране» проверялось отдельно от рисования.
+func vidDlya(st protokol.StatusOtvet) vidTreya {
+	podpis := podpisTreya(st.Sostoyanie)
+	deystvie, _ := deystvieTreya(st.Sostoyanie)
+	v := vidTreya{
+		ikonka:        ikonkaSostoyaniya(st.Sostoyanie),
+		podskazka:     "Affory: " + podpis,
+		sostoyanie:    podpis,
+		deystvie:      deystvie,
+		deystvieZhivo: deystvie != "",
+	}
+	if !v.deystvieZhivo {
+		// Переходное состояние: действия нет, но строка обязана остаться на
+		// месте, иначе меню прыгает высотой на каждом подъёме.
+		v.deystvie = "..."
+	}
+	v.vyhod, _ = punktVyhoda(st.KillSwitch)
+	return v
 }
 
 func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(komanda string),
 	snyatRezhim func() error) *Trey {
 	t := &Trey{app: app, okno: okno, zvat: zvat, snyatRezhim: snyatRezhim,
 		sost: protokol.SostSluzhbaMolchit}
+	// InvokeAsync, а не InvokeSync: ждать главного потока фоновой горутине
+	// незачем, а при открытом меню ожидание длилось бы столько, сколько человек
+	// держит меню на экране.
+	t.naGlavnom = application.InvokeAsync
+	t.risovat = t.risovatZhivo
 	t.sistemnyy = app.SystemTray.New()
 	t.menu = app.NewMenu()
 	// First line is the state, disabled on purpose: it is a label, not a
@@ -147,7 +200,16 @@ func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(
 	t.punktVyhoda.OnClick(func(*application.Context) { t.vyyti() })
 	t.sistemnyy.SetMenu(t.menu)
 	t.sistemnyy.OnClick(t.Pokazat)
-	t.sistemnyy.OnRightClick(t.sistemnyy.OpenMenu)
+	// Обрамление показа меню, а не голый OpenMenu. Обработчик Wails зовёт
+	// прямо из wndProc, то есть уже на главном потоке, а OpenMenu блокирует до
+	// закрытия меню: TrackPopupMenuEx возвращается, когда человек выбрал или
+	// передумал. Значит между двумя строками ниже меню и правда на экране, и
+	// пересобирать его в это время нельзя.
+	t.sistemnyy.OnRightClick(func() {
+		t.MenyuOtkrylos()
+		t.sistemnyy.OpenMenu()
+		t.MenyuZakrylos()
+	})
 	t.Obnovit(protokol.StatusOtvet{Sostoyanie: t.sost})
 	return t
 }
@@ -196,30 +258,85 @@ func (t *Trey) Pokazat() {
 	t.okno.Focus()
 }
 
-// Obnovit repaints icon, tooltip and menu for a state. Safe from any
-// goroutine: the tray methods marshal onto the main thread themselves.
+// Obnovit перерисовывает трей под состояние. Зовётся из любой горутины.
+//
+// Само рисование уезжает на главный поток целиком, а не по вызову: SetLabel и
+// SetEnabled в Wails v3.0.0-beta.16 идут БЕЗ InvokeSync, то есть правят живой
+// HMENU из вызвавшей горутины. Раньше это сходило с рук, потому что рядом стоял
+// вызов пострашнее.
 func (t *Trey) Obnovit(st protokol.StatusOtvet) {
-	s := st.Sostoyanie
+	v := vidDlya(st)
 	t.mu.Lock()
-	t.sost = s
+	t.sost = st.Sostoyanie
 	t.zamok = st.KillSwitch
 	t.mu.Unlock()
-	t.sistemnyy.SetIcon(ikonki[ikonkaSostoyaniya(s)])
-	t.sistemnyy.SetTooltip("Affory: " + podpisTreya(s))
-	t.punktSostoyaniya.SetLabel(podpisTreya(s))
-	podpis, _ := deystvieTreya(s)
-	if podpis == "" {
-		t.punktDeystviya.SetLabel("...").SetEnabled(false)
-	} else {
-		t.punktDeystviya.SetLabel(podpis).SetEnabled(true)
+	t.naGlavnom(func() { t.narisovatNaGlavnom(v) })
+}
+
+// narisovatNaGlavnom зовётся ТОЛЬКО на главном потоке, и на этом держится всё
+// остальное.
+//
+// Два отказа рисовать, оба обязательные:
+//
+// Первый: состояние не изменилось. Экран спрашивает status раз в пять секунд, и
+// до 10.09.2026 каждый ответ приводил к SetMenu. Пересобирать меню, в котором не
+// поменялась ни буква, значит платить полную цену пересборки за ничто.
+//
+// Второй: меню открыто. SetMenu в Wails это DestroyMenu плюс постройка заново
+// (windowsSystemTray.updateMenu), а открытое меню трея это TrackPopupMenuEx со
+// своим модальным циклом сообщений, который наш вызов честно подхватит и
+// исполнит. Меню уничтожается под курсором, и человек видит белый прямоугольник
+// вместо списка. Отложенное применяется после закрытия.
+func (t *Trey) narisovatNaGlavnom(v vidTreya) {
+	if t.narisovano != nil && *t.narisovano == v {
+		return
 	}
-	podpisVyhoda, _ := punktVyhoda(st.KillSwitch)
-	t.punktVyhoda.SetLabel(podpisVyhoda)
-	t.menu.Update()
-	// Wails v3.0.0-beta.16, Windows: Update() refreshes the Menu object, but
-	// the tray keeps the popup it built at SetMenu time, so the human saw
-	// "выключено / Подключить" over a raised tunnel (owner, 03.09.2026).
-	// Handing the same menu back to the tray rebuilds the popup.
+	if t.menyuOtkryto {
+		// Копится ПОСЛЕДНЕЕ, а не очередь: промежуточных состояний за время,
+		// пока меню открыто, уже никто не увидит, а лишняя пересборка стоит
+		// ровно столько же, сколько нужная.
+		otlozhit := v
+		t.otlozhennyy = &otlozhit
+		return
+	}
+	t.primenit(v)
+}
+
+func (t *Trey) primenit(v vidTreya) {
+	t.otlozhennyy = nil
+	primeneno := v
+	t.narisovano = &primeneno
+	t.risovat(v)
+}
+
+// MenyuOtkrylos и MenyuZakrylos обрамляют показ меню. Оба зовутся с главного
+// потока: обработчик правого клика Wails вызывает прямо из wndProc, а
+// OpenMenu блокирует, пока меню на экране.
+func (t *Trey) MenyuOtkrylos() { t.menyuOtkryto = true }
+
+func (t *Trey) MenyuZakrylos() {
+	t.menyuOtkryto = false
+	if t.otlozhennyy != nil {
+		t.primenit(*t.otlozhennyy)
+	}
+}
+
+// risovatZhivo это единственное место, которое говорит с системным треем.
+//
+// Уже на главном потоке, поэтому InvokeSync внутри SetIcon, SetTooltip и
+// SetMenu не идёт через PostMessage вовсе: он видит свой поток и зовёт напрямую.
+// Именно этого и не хватало, пока рисование шло из фоновой горутины.
+//
+// Menu.Update() здесь НЕТ намеренно. Для трея он бесполезен целиком: строит
+// второй HMENU через windowsMenu, которого трей не показывает никогда. Трей
+// обновляется исключительно через SetMenu, и прежний комментарий про это в
+// соседней строке был прав ровно наполовину.
+func (t *Trey) risovatZhivo(v vidTreya) {
+	t.sistemnyy.SetIcon(ikonki[v.ikonka])
+	t.sistemnyy.SetTooltip(v.podskazka)
+	t.punktSostoyaniya.SetLabel(v.sostoyanie)
+	t.punktDeystviya.SetLabel(v.deystvie).SetEnabled(v.deystvieZhivo)
+	t.punktVyhoda.SetLabel(v.vyhod)
 	t.sistemnyy.SetMenu(t.menu)
 }
 
