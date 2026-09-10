@@ -49,6 +49,12 @@ export function readSpeed(value: unknown): SpeedSnapshot | null {
 }
 
 type Request = (name: string, body: Record<string, unknown>) => Promise<Kadr>;
+
+// Пока замер идёт, состояние должно быть свежим: полоса на экране движется.
+// В покое хватает и десяти секунд, потому что меняться там нечему, кроме
+// замера, запущенного мимо этого окна.
+const PERIOD_ZAMERA = 1000;
+const PERIOD_POKOYA = 10_000;
 export function useSkorost(request: Request, available: boolean) {
   const [snapshot, setSnapshot] = useState<SpeedSnapshot | null>(null);
   const [error, setError] = useState("");
@@ -57,9 +63,21 @@ export function useSkorost(request: Request, available: boolean) {
   const commandRunning = useRef(false);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; epoch.current++; }; }, []);
+  // Период опроса СЛЕДУЕТ фазе, а не тикает всегда.
+  //
+  // Раньше здесь стоял setInterval на секунду, работавший всё время, пока живо
+  // окно. Журнал команд живой машины за двое суток: 25 155 строк, из них
+  // 18 338 это speedTestStatus, при двадцати запусках замера за то же время.
+  // Диск от этого не страдает, ротация работает; страдает диагностика, потому
+  // что настоящие команды уезжают за горизонт ротации вчетверо быстрее.
+  //
+  // В покое опрос всё равно НУЖЕН, просто редкий: замер можно запустить из
+  // второго окна или из affory-cli, и узнать об этом больше неоткуда.
+  const idyot = useRef(false);
   useEffect(() => {
-    if (!available) { epoch.current++; setSnapshot(null); return; }
+    if (!available) { epoch.current++; idyot.current = false; setSnapshot(null); return; }
     let live = true, busy = false;
+    let timer = 0;
     const poll = async () => {
       if (busy || commandRunning.current) return;
       busy = true;
@@ -69,7 +87,7 @@ export function useSkorost(request: Request, available: boolean) {
         if (!live || turn !== epoch.current || !alive.current) return;
         if (reply.oshibka) return;
         const next = readSpeed(reply.telo);
-        if (next) setSnapshot(next);
+        if (next) { idyot.current = next.phase === "download" || next.phase === "upload"; setSnapshot(next); }
       } catch (e: unknown) {
         if (live && turn === epoch.current) {
           setSnapshot(null);
@@ -77,14 +95,22 @@ export function useSkorost(request: Request, available: boolean) {
         }
       } finally { busy = false; }
     };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 1000);
-    return () => { live = false; window.clearInterval(timer); };
+    const zavesti = () => {
+      timer = window.setTimeout(async () => {
+        await poll();
+        if (live) zavesti();
+      }, idyot.current || commandRunning.current ? PERIOD_ZAMERA : PERIOD_POKOYA);
+    };
+    // Первый такт заводится ПОСЛЕ первого ответа, а не рядом с ним: фаза до
+    // ответа неизвестна, и таймер, заведённый вслепую, встал бы на редкий
+    // период посреди идущего замера.
+    void poll().then(() => { if (live) zavesti(); });
+    return () => { live = false; window.clearTimeout(timer); };
   }, [request, available]);
   const command = useCallback(async (name: string, body: Record<string, unknown>) => {
     if (commandRunning.current) return;
     commandRunning.current = true; epoch.current++; setPending(true); setError("");
-    if (name === "startSpeedTest") setSnapshot(null);
+    if (name === "startSpeedTest") { setSnapshot(null); idyot.current = true; }
     try {
       const reply = await request(name, body);
       if (!alive.current) return;
