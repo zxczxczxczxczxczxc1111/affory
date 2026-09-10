@@ -34,7 +34,12 @@ func AdresVyhoda(ctx context.Context, endpoint string, portProksi int) (string, 
 	if err != nil {
 		return "", fmt.Errorf("запрос адреса выхода не собран: %w", err)
 	}
-	tr := &http.Transport{Proxy: nil}
+	// DisableKeepAlives намеренно. Транспорт тут собирается на вызов, потому что
+	// прокси у каждого вызова свой, а транспорт, собранный на вызов, уносит
+	// соединение в свой пул простоя и хоронит его там навсегда (разбор у
+	// klientKlash в internal/yadra). Держать пул нечему: адрес выхода
+	// спрашивают на подъёме и при смене несущего, а не в цикле.
+	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true}
 	if portProksi > 0 {
 		u := &url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", portProksi)}
 		tr.Proxy = http.ProxyURL(u)

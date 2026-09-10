@@ -34,6 +34,17 @@ type Snimok struct {
 // у нас, а файла нет у оператора.
 var ErrSnimkaNet = errors.New("снимка состояния рядом с подпиской нет")
 
+// klientSnimka это один клиент на пакет. Прежде транспорт собирался на каждый
+// вызов, а транспорт, собранный на вызов, уносит соединение в свой пул простоя
+// и хоронит его там навсегда (см. тот же разбор у klientKlash в internal/yadra).
+//
+// DisableKeepAlives, а не пул: снимок берётся по расписанию подписки, то есть
+// раз в час в лучшем случае. Переиспользовать тут нечего, а закрытое сразу
+// соединение не может протечь даже теоретически.
+var klientSnimka = &http.Client{
+	Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true},
+}
+
 const (
 	suffiksSnimka = ".sostoyanie.json"
 	srokSnimka    = 15 * time.Second
@@ -63,8 +74,7 @@ func ZagruzitSnimok(ctx context.Context, adres string) (Snimok, error) {
 	if err != nil {
 		return Snimok{}, fmt.Errorf("запрос снимка не собран: %w", err)
 	}
-	kl := &http.Client{Transport: &http.Transport{Proxy: nil}}
-	o, err := kl.Do(z)
+	o, err := klientSnimka.Do(z)
 	if err != nil {
 		return Snimok{}, fmt.Errorf("снимок не получен: %w", err)
 	}

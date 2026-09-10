@@ -273,6 +273,35 @@ func zapros(ctx context.Context, metod, u, sekret string, telo io.Reader) ([]byt
 // и в него не умещается, поэтому предел параметром, а не константой в теле.
 const predelTela = 64 * 1024
 
+// klientKlash это ОДИН клиент на пакет, а не клиент на запрос.
+//
+// Свой, а не http.DefaultClient: у общего клиента чужие настройки, и однажды
+// кто-то поменяет их не думая про нас. Прокси не берём из окружения намеренно:
+// адрес петлевой.
+//
+// Почему именно один. Транспорт, собранный на каждый вызов, уносит соединение
+// в СВОЙ пул простоя и хоронит его там: у нулевого транспорта IdleConnTimeout
+// это «никогда», а сам он не собирается сборщиком мусора, потому что на него
+// ссылается живая горутина readLoop. Замер владельца 10.09.2026: 46 156
+// дескрипторов у службы, 3155 соединений с локальным ядром, +2.93 дескриптора
+// в секунду при 2.9 запроса в секунду. Совпадение до второго знака и есть
+// доказательство, что источник тут.
+//
+// Числа маленькие намеренно: хост один и петлевой, больше горстки соединений к
+// нему не нужно никогда. IdleConnTimeout не защита, а второй рубеж: он
+// превращает будущую ошибку того же класса из тихой утечки в закрытое
+// соединение. MaxConnsPerHost сознательно НЕ ставится: потолок на
+// одновременные соединения превратил бы такую ошибку в зависший запрос, а
+// зависший запрос службы хуже лишнего сокета.
+var klientKlash = &http.Client{
+	Transport: &http.Transport{
+		Proxy:               nil,
+		MaxIdleConns:        4,
+		MaxIdleConnsPerHost: 4,
+		IdleConnTimeout:     30 * time.Second,
+	},
+}
+
 func zaprosS(ctx context.Context, metod, u, sekret string, telo io.Reader, predel int64) ([]byte, int, error) {
 	do, otm := context.WithTimeout(ctx, srokZaprosa)
 	defer otm()
@@ -282,11 +311,7 @@ func zaprosS(ctx context.Context, metod, u, sekret string, telo io.Reader, prede
 	}
 	z.Header.Set("Authorization", "Bearer "+sekret)
 
-	// Свой клиент, а не http.DefaultClient: у общего клиента чужие настройки и
-	// общий пул соединений, и однажды кто-то поменяет их не думая про нас.
-	// Прокси не берём из окружения намеренно: адрес петлевой.
-	kl := &http.Client{Transport: &http.Transport{Proxy: nil}}
-	o, err := kl.Do(z)
+	o, err := klientKlash.Do(z)
 	if err != nil {
 		return nil, 0, fmt.Errorf("clash_api не отвечает: %w", err)
 	}
