@@ -182,6 +182,27 @@ if ($Otpechatok) { & $podpisat -Fayly $setup -Otpechatok $Otpechatok }
 $hs = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
 [IO.File]::WriteAllText("$setup.sha256", "$hs  Affory-$Versiya-setup.exe`n")
 
+# Архив исходников.
+#
+# Собирается ЗДЕСЬ, а не руками рядом. При выпуске 1.1.0 (13.09.2026) его чуть
+# не забыли: скрипт печатал список файлов выпуска, исходников в нём не было, и
+# заметить пропажу можно было только сверкой с прошлым выпуском.
+#
+# Берётся из ТЕГА, а не из рабочего дерева: выложенные исходники обязаны быть
+# тем, что лежит в истории, а не тем, что случайно осталось несохранённым.
+$teg = "v$Versiya"
+& git -C $koren rev-parse --verify --quiet "refs/tags/$teg" | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "БЕЗ ИСХОДНИКОВ: тега $teg ещё нет. Поставить его и запустить выпуск заново." -ForegroundColor Yellow
+} else {
+    $ish = Join-Path $vypusk "Affory-$Versiya-sources.zip"
+    Remove-Item $ish -Force -ErrorAction SilentlyContinue
+    & git -C $koren archive --format=zip "--prefix=affory-$Versiya/" -o $ish $teg
+    if ($LASTEXITCODE -ne 0) { throw 'архив исходников не собрался' }
+    $hi = (Get-FileHash $ish -Algorithm SHA256).Hash.ToLower()
+    [IO.File]::WriteAllText("$ish.sha256", "$hi  Affory-$Versiya-sources.zip`n")
+}
+
 Write-Host ''
 Write-Host "=== Выпуск $Versiya ===" -ForegroundColor Cyan
 Get-ChildItem $vypusk | ForEach-Object { Write-Host ("  {0,-34} {1,10:N0} байт" -f $_.Name, $_.Length) }
