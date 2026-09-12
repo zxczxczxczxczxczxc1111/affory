@@ -143,10 +143,15 @@ type Podmena struct {
 }
 
 type Itog struct {
-	Ok     bool      `json:"ok"`
-	Kod    string    `json:"kod,omitempty"`
-	Tekst  string    `json:"tekst,omitempty"`
-	Vremya time.Time `json:"vremya"`
+	Ok    bool   `json:"ok"`
+	Kod   string `json:"kod,omitempty"`
+	Tekst string `json:"tekst,omitempty"`
+	// Versiya это версия программы, которая работала, когда исход случился.
+	// Жалоба на неудачное обновление верна ровно до тех пор, пока версия та же:
+	// человек, поставивший выпуск установщиком руками, уже сделал всё, что она
+	// советует, и повторять ей совет незачем.
+	Versiya string    `json:"versiya,omitempty"`
+	Vremya  time.Time `json:"vremya"`
 }
 
 // Vypolnit подменяет файлы и откатывает, если новая служба не ответила в срок.
@@ -157,6 +162,11 @@ func (p Podmena) Vypolnit() Itog {
 	novye, err := imenaFaylov(p.Novaya)
 	if err != nil || len(novye) == 0 {
 		return Itog{Kod: KodOtkat, Tekst: fmt.Sprintf("новая сборка пуста или не читается: %v", err), Vremya: time.Now()}
+	}
+	// Проба ДО остановки службы: отказ на этом шаге не стоит человеку даже
+	// разрыва туннеля, потому что трогать ещё нечего.
+	if err := proverkaOtodviganiya(p.KatalogProgrammy, novye); err != nil {
+		return Itog{Kod: KodOtkat, Tekst: "обновление отменено до первого изменения: " + err.Error(), Vremya: time.Now()}
 	}
 	if err := p.Ostanovit(); err != nil {
 		return Itog{Kod: KodOtkat, Tekst: "служба не остановлена: " + err.Error(), Vremya: time.Now()}
@@ -205,6 +215,67 @@ func imenaFaylov(dir string) ([]string, error) {
 	return imena, nil
 }
 
+// Шов и отступ для переименования. Переименование здесь спорит не с логикой, а
+// с посторонними процессами, и проверяется это только подменой самой функции.
+var (
+	pereimenovat       = os.Rename
+	otstupOtodviganiya = 300 * time.Millisecond
+)
+
+// popytokOtodviganiya на отступ выше даёт около трёх секунд терпения. Столько
+// держит файл сканер или индексатор; дольше это уже не «занят», а «занят кем-то
+// насовсем», и ждать смысла нет.
+const popytokOtodviganiya = 10
+
+// otodvinut уводит файл в сторону, переживая ПРЕХОДЯЩИЙ отказ доступа.
+//
+// Живой прогон 13.09.2026: обновление 1.0.3 на 1.1.0 встало на
+// `rename affory-ui.exe affory-ui.exe.ubrat: Access is denied`, и следом на том
+// же месте споткнулся откат. Запущенный exe тут ни при чём, он переименовывается
+// (проверено опытом на той же машине при живом окне). Файл держал посторонний
+// процесс доли секунды: в каталог только что легли два новых exe, и на это
+// просыпается индексатор.
+//
+// Одна попытка превращала такую случайность в машину без рабочей программы.
+func otodvinut(chto, kuda string) error {
+	var err error
+	for i := 0; i < popytokOtodviganiya; i++ {
+		if i > 0 {
+			time.Sleep(otstupOtodviganiya)
+		}
+		// Хвост прошлого захода мешает переименованию сильнее, чем занятость, и
+		// снимать его надо перед КАЖДОЙ попыткой: держать его мог тот же сосед.
+		_ = os.Remove(kuda)
+		if err = pereimenovat(chto, kuda); err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
+// proverkaOtodviganiya это сухой прогон перед первым изменением.
+//
+// Подмена, начатая на занятом файле, оставляет каталог в полусостоянии: часть
+// файлов новая, часть прежняя, а откат спотыкается о ту же занятость. Отказать
+// до первого изменения дороже на одно переименование туда и обратно и дешевле
+// на одну сломанную установку.
+func proverkaOtodviganiya(kuda string, imena []string) error {
+	for _, imya := range imena {
+		put := filepath.Join(kuda, imya)
+		if _, err := os.Stat(put); err != nil {
+			continue // файла ещё нет, отодвигать будет нечего
+		}
+		proba := put + ".proba"
+		if err := otodvinut(put, proba); err != nil {
+			return fmt.Errorf("%s занят другой программой: %w", imya, err)
+		}
+		if err := pereimenovat(proba, put); err != nil {
+			return fmt.Errorf("%s не вернулся на место после пробы: %w", imya, err)
+		}
+	}
+	return nil
+}
+
 // skopirovat переносит названные файлы из otkuda в kuda. propuskatNet: файла
 // может не быть в источнике (новая сборка добавила файл, прежней версии его
 // нет), и это не ошибка сохранения.
@@ -234,12 +305,13 @@ func skopirovat(otkuda, kuda string, imena []string, propuskatNet bool) error {
 		ubrat := dst + ".ubrat"
 		_ = os.Remove(ubrat)
 		if _, err := os.Stat(dst); err == nil {
-			if err := os.Rename(dst, ubrat); err != nil {
+			if err := otodvinut(dst, ubrat); err != nil {
+				_ = os.Remove(vrem)
 				return err
 			}
 		}
-		if err := os.Rename(vrem, dst); err != nil {
-			_ = os.Rename(ubrat, dst)
+		if err := pereimenovat(vrem, dst); err != nil {
+			_ = pereimenovat(ubrat, dst)
 			return err
 		}
 		_ = os.Remove(ubrat)

@@ -128,6 +128,9 @@ func podmenit(prog, novaya string) {
 		Srok:        obnovlenie.SrokPodyoma,
 	}
 	itog := p.Vypolnit()
+	// Подменщик это копия ПРЕЖНЕЙ службы, значит его версия и есть та, что
+	// останется работать после отката. Ровно её и надо сравнивать потом.
+	itog.Versiya = versiyaProgrammy
 	log.Printf("подмена закончена: ok=%v %s %s", itog.Ok, itog.Kod, itog.Tekst)
 	if err := obnovlenie.ZapisatItog(sostoyanie.KatalogDannyh(), itog); err != nil {
 		log.Printf("исход обновления не записан: %v", err)
@@ -210,6 +213,14 @@ func (s *Sluzhba) pokazatItogObnovleniya() {
 	}
 	if i.Ok {
 		log.Printf("обновление прошло, новая версия отвечает")
+		return
+	}
+	// Жалоба старше текущей версии никого не касается: раз версия сменилась,
+	// выпуск встал другим путём (установщиком руками), и совет «переустановите
+	// из установщика» человек уже выполнил. Файл при этом забран чтением выше,
+	// то есть всплыть повторно исходу нечем.
+	if i.Versiya != "" && i.Versiya != versiyaProgrammy {
+		log.Printf("исход обновления от версии %s отброшен: сейчас %s", i.Versiya, versiyaProgrammy)
 		return
 	}
 	log.Printf("обновление откачено: %s %s", i.Kod, i.Tekst)
