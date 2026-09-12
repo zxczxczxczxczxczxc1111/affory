@@ -405,6 +405,18 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 	case "refreshSubscription":
 		return s.refreshSubscription(ctx, k)
 
+	case "listSubscriptions":
+		return s.listSubscriptions(k)
+
+	case "addSubscription":
+		return s.addSubscription(ctx, k)
+
+	case "removeSubscription":
+		return s.removeSubscription(k)
+
+	case "setActiveSubscription":
+		return s.setActiveSubscription(ctx, k)
+
 	case "exportProfile":
 		return s.eksportProfilya(ctx, k)
 
@@ -435,6 +447,7 @@ func imenaKomand() []string {
 		"hello", "status", "listServers", "connect", "disconnect", "setServer",
 		"setRouteMode",
 		"addServer", "removeServer", "setSubscription", "refreshSubscription",
+		"listSubscriptions", "addSubscription", "removeSubscription", "setActiveSubscription",
 		"setKillSwitch", "exportProfile", "importProfile",
 		"setAutostart", "setConnectOnStart", "setBandwidth",
 		"listRules", "setRules",

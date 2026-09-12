@@ -45,6 +45,11 @@ var resheniyeOPravah = map[string]bool{
 	"setBandwidth": false,
 	"addServer":    false, "removeServer": false,
 	"setSubscription": false, "refreshSubscription": false, "setRules": false,
+	// Подписки это тот же класс, что и setSubscription: адрес панели, а не
+	// маршрут всей машины. UAC ради переключения между своими панелями
+	// приучал бы жать «да» на запрос прав каждый день.
+	"listSubscriptions": false, "addSubscription": false,
+	"removeSubscription": false, "setActiveSubscription": false,
 	"setKillSwitch": true, "exportProfile": true, "importProfile": true,
 	"downloadUpdate": true, "installUpdate": true,
 }

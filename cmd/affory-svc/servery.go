@@ -18,8 +18,17 @@ type Nabor struct {
 	Servery []protokol.Server `json:"servery"`
 	// Podpiska это АДРЕС, то есть секрет класса ключа. Наружу он не отдаётся
 	// никогда, только признак «задана» и имя узла для экрана.
+	//
+	// С 12.09.2026 поле только ЧИТАЕТСЯ, ради наборов прежних установок:
+	// PrivestiPodpiski переносит его в список. Писать сюда больше нельзя, иначе
+	// два источника правды про одну подписку разъедутся на первом же
+	// переключении активной.
 	Podpiska string `json:"podpiska,omitempty"`
-	Vybran   string `json:"vybran,omitempty"`
+	// Подписки списком: активная одна, остальные лежат про запас. Устройство и
+	// причины в podpiski.go.
+	Podpiski  []ZapisPodpiski `json:"podpiski,omitempty"`
+	Aktivnaya string          `json:"aktivnaya_podpiska,omitempty"`
+	Vybran    string          `json:"vybran,omitempty"`
 	// Пустое поле это НЕ «неизвестно», а «человек про режим ничего не говорил».
 	// Пишут его ровно три места, и каждое это след явного действия человека:
 	// setRouteMode, zapomnitVybor и removeServer при чистке выбора. Бланкетная
@@ -91,6 +100,10 @@ func (s *Sluzhba) naborIzHranilishcha() (Nabor, error) {
 	if n.Rezhim != protokol.RezhimAvto && n.Rezhim != protokol.RezhimRuchnoy {
 		n.Rezhim = ""
 	}
+	// Подписки приводятся ЗДЕСЬ, на единственном чтении, а не в каждой команде:
+	// иначе всякая новая дверь к набору это шанс забыть приведение, а забытое
+	// выглядит как «подписка не задана» при заданной подписке.
+	n.PrivestiPodpiski()
 	return n, nil
 }
 

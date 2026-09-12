@@ -62,6 +62,10 @@ var dolgie = map[string]time.Duration{
 	"addServer":       SrokDolgoy,
 	"removeServer":    SrokDolgoy,
 	"setSubscription": SrokDolgoy,
+	// Обе ходят в сеть тем же путём, что и setSubscription: добавление первой
+	// подписки и переключение активной тянут список сразу.
+	"addSubscription":       SrokDolgoy,
+	"setActiveSubscription": SrokDolgoy,
 	// Argon2id с 64 МиБ памяти и тремя проходами. На слабой машине это секунды,
 	// и они честные: дешёвый вывод ключа означал бы дешёвый подбор пароля.
 	"exportProfile": SrokDolgoy,

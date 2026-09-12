@@ -20,7 +20,7 @@ func sPodpiskoy(t *testing.T, podpiska string) *Sluzhba {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n.Podpiska = podpiska
+	n.ZadatAktivnuyu(podpiska)
 	if err := s.zapisatNabor(n); err != nil {
 		t.Fatal(err)
 	}

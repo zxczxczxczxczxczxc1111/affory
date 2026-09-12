@@ -57,7 +57,7 @@ func TestSetSubscriptionSohranyaetsyaDazheKogdaPanelMolchit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.Podpiska == "" {
+	if n.AdresAktivnoy() == "" {
 		t.Fatal("адрес подписки потерян: верный ввод пропал из-за временной сети")
 	}
 }
@@ -111,7 +111,7 @@ func raspisanieProby(t *testing.T, obnovlena *time.Time, stop int) (*Sluzhba, *c
 	if err != nil {
 		t.Fatal(err)
 	}
-	n.Podpiska = "https://panel.example/zhivaya"
+	n.ZadatAktivnuyu("https://panel.example/zhivaya")
 	if err := s.zapisatNabor(n); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestRaspisaniyeOtstupaetPosleNeudachi(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n.Podpiska = "https://panel.example/nedostupno"
+	n.ZadatAktivnuyu("https://panel.example/nedostupno")
 	if err := s.zapisatNabor(n); err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,11 @@ func TestRaspisaniePodpiskiUderzhivaetZhivyh(t *testing.T) {
 	// тест зелен с нуля и не судит ничего.
 	izPodpiski := serverProby()
 	izPodpiski.IzPodpiski = true
-	n := Nabor{Servery: []protokol.Server{izPodpiski}, Vybran: "nl", Podpiska: "https://x/y"}
+	// Подписка задаётся списком, а не старым полем: шов s.nabor ниже подменён
+	// целиком, и приведения на чтении здесь не случится.
+	n := Nabor{Servery: []protokol.Server{izPodpiski}, Vybran: "nl",
+		Podpiski:  []ZapisPodpiski{{Id: IdPodpiski("https://x/y"), Adres: "https://x/y"}},
+		Aktivnaya: IdPodpiski("https://x/y")}
 	s.nabor = func() (Nabor, error) { return n, nil }
 	s.sekretyPisat = func(b []byte) error { return json.Unmarshal(b, &n) }
 	// Публикация БЕЗ serverProby(): узел из неё пропал, а он сейчас в ядре.

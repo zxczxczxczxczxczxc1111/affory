@@ -20,10 +20,10 @@ func (s *Sluzhba) getServerHealth(ctx context.Context, k protokol.Kadr) protokol
 	if err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, err.Error())
 	}
-	if n.Podpiska == "" {
+	if n.AdresAktivnoy() == "" {
 		return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, "подписка не задана, снимок брать негде")
 	}
-	adres, err := set.AdresSnimka(n.Podpiska)
+	adres, err := set.AdresSnimka(n.AdresAktivnoy())
 	if err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, err.Error())
 	}

@@ -44,10 +44,11 @@ func (s *Sluzhba) obnovitPodpisku(ctx context.Context) (ssylki.Razbor, int, erro
 	if err != nil {
 		return ssylki.Razbor{}, 0, oshibkaNabora{err}
 	}
-	if n.Podpiska == "" {
+	adres := n.AdresAktivnoy()
+	if adres == "" {
 		return ssylki.Razbor{}, 0, errPodpiskaNeZadana
 	}
-	r, err := s.zagruzitPodpisku(ctx, n.Podpiska)
+	r, err := s.zagruzitPodpisku(ctx, adres)
 	if err != nil {
 		return r, 0, err
 	}
@@ -64,6 +65,11 @@ func (s *Sluzhba) obnovitPodpisku(ctx context.Context) (ssylki.Razbor, int, erro
 		// публикации при этом не доехали бы вовсе.
 		uderzhany = s.uderzhatZhivyh(prezhnie, n)
 		serverov = len(n.Servery)
+		// Отметка свежести кладётся в ЗАПИСЬ, а не только в состояние службы:
+		// общая одна на всех и после переключения активной говорит про свежесть
+		// чужой подписки. Строкой ниже, внутри той же правки набора: отдельная
+		// запись означала бы второй поход в хранилище ради одного поля.
+		n.OtmetitObnovlenie(n.Aktivnaya, s.seychas())
 		return nil
 	}); err != nil {
 		return r, 0, oshibkaSohraneniya{err}

@@ -41,7 +41,17 @@ func (s *Sluzhba) adresaKandidatov() ([]netip.Addr, error) {
 	}
 	// Хосты наборов входят наравне с подпиской: загрузка идёт мимо туннеля, а
 	// мимо туннеля ходит только то, что стоит в обоих списках.
-	return s.sobratAdresaSet(n.Servery, n.Podpiska, s.adresaNaborov()...)
+	// Запасные подписки идут наравне с активной: первое же переключение в
+	// запертом режиме иначе упёрлось бы в собственный killswitch, и починить
+	// это изнутри клиента было бы нечем.
+	prochee := make([]string, 0, len(n.Podpiski)+2)
+	for _, z := range n.Podpiski {
+		if z.Id != n.Aktivnaya && z.Adres != "" {
+			prochee = append(prochee, z.Adres)
+		}
+	}
+	prochee = append(prochee, s.adresaNaborov()...)
+	return s.sobratAdresaSet(n.Servery, n.AdresAktivnoy(), prochee...)
 }
 
 // kandidatySIsklyucheniem собирает адреса и НЕ падает из-за одного мёртвого

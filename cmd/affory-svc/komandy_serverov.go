@@ -44,8 +44,8 @@ func (s *Sluzhba) listServers(k protokol.Kadr) protokol.Kadr {
 		"vybran": n.Vybran,
 		// Не сам адрес, а только признак и узел. Адрес подписки это пропуск, и
 		// показывать на экране его целиком незачем.
-		"podpiska_zadana": n.Podpiska != "",
-		"podpiska_uzel":   uzelPodpiski(n.Podpiska),
+		"podpiska_zadana": n.AdresAktivnoy() != "",
+		"podpiska_uzel":   uzelPodpiski(n.AdresAktivnoy()),
 		// Возраст последнего обновления показывается рядом с узлом (задача
 		// 4.9). Статус этого поля не отдаёт, а брать его больше неоткуда.
 		"podpiska_obnovlena": s.podpiskaObnovlena(),
@@ -156,7 +156,7 @@ func (s *Sluzhba) setSubscription(ctx context.Context, k protokol.Kadr) protokol
 	}
 	serverov := 0
 	if err := s.pravitNabor(func(n *Nabor) error {
-		n.Podpiska = adres
+		n.ZadatAktivnuyu(adres)
 		serverov = len(n.Servery)
 		return nil
 	}); err != nil {

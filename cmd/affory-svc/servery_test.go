@@ -179,8 +179,8 @@ func zadatPodpisku(t *testing.T, s *Sluzhba, adres string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.Podpiska != adres {
-		t.Fatalf("адрес подписки не сохранён: %q", n.Podpiska)
+	if n.AdresAktivnoy() != adres {
+		t.Fatalf("адрес подписки не сохранён: %q", n.AdresAktivnoy())
 	}
 }
 
