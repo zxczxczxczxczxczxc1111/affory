@@ -210,3 +210,31 @@ it("pending rule application disables controls instead of losing a second edit",
   fireEvent.click(screen.getByLabelText("YouTube через VPN"));
   expect(send).not.toHaveBeenCalled();
 });
+// Подробный журнал был потерян при переезде на этот экран: тумблер остался в
+// PrezhniePravila, которые показываются, только когда служба не отдаёт trafik.
+// Функция жила в службе и в протоколе, а включить её из окна было нельзя.
+it("detailed log toggle lives on the routes screen, not only on the legacy one", () => {
+  const send = vi.fn();
+  render(
+    <Pravila
+      status={{ sostoyanie: "podnyat", diagnostika: false }}
+      pravila={rules}
+      otlozheno={{}}
+      naKomandu={send}
+    />,
+  );
+  fireEvent.click(screen.getByTestId("diagnostika"));
+  expect(send).toHaveBeenCalledWith("setDiagnostics", { vkl: true });
+  expect(send).not.toHaveBeenCalledWith("setJournal", expect.anything());
+});
+it("detailed log toggle follows the state reported by the service", () => {
+  render(
+    <Pravila
+      status={{ sostoyanie: "podnyat", diagnostika: true }}
+      pravila={rules}
+      otlozheno={{}}
+      naKomandu={vi.fn()}
+    />,
+  );
+  expect((screen.getByTestId("diagnostika") as HTMLInputElement).checked).toBe(true);
+});

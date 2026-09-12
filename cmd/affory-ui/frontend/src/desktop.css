@@ -687,6 +687,13 @@
   padding: 12px 0;
   font-size: var(--af-body-size);
 }
+.af-extra-row small {
+  font-size: var(--af-caption-size);
+  display: block;
+  color: var(--af-muted);
+  margin-top: 3px;
+  max-width: 42ch;
+}
 .af-settings-details {
   padding: 0;
   margin-top: 0;

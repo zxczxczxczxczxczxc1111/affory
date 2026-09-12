@@ -565,6 +565,22 @@ export function Marshruty({
               naSmenu={(vkl) => naKomandu("setJournal", { vkl })}
             />
           </label>
+          <label className="af-extra-row">
+            <span>
+              Подробный журнал для отладки
+              <small>
+                раз в секунду: дескрипторы, занятые порты, соединения, скорость,
+                задержка ядра; нужен, когда связь пропадает без видимой причины
+              </small>
+            </span>
+            <Tumbler
+              testId="diagnostika"
+              podpis="Подробный журнал для отладки"
+              aktiven={!disabled}
+              vkl={status.diagnostika ?? false}
+              naSmenu={(vkl) => naKomandu("setDiagnostics", { vkl })}
+            />
+          </label>
           <button
             type="button"
             className="af-link"
