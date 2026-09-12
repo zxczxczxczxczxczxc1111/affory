@@ -419,3 +419,52 @@ func TestNesyotDonositNeVybralaSNizhnegoEtazha(t *testing.T) {
 		t.Fatalf("ошибка %v не опознаётся как «не выбрала»", err)
 	}
 }
+
+// 404 это «такого исходящего в живом ядре нет», а НЕ отвергнутое рукопожатие.
+//
+// Различие ведёт человека в разные стороны: при 404 помогает переподключение
+// (конфиг ядра собран при подъёме и про новый ключ не знает), при отвергнутом
+// рукопожатии переподключение не поможет никогда, там чинить надо ссылку.
+// 12.09.2026 на живой машине оба кода показывались одной строкой «сервер не
+// принял рукопожатие», и ключ, добавленный подпиской час назад, выглядел
+// сломанным.
+func TestZaderzhka404EtoOtsutstvieTegaANeOtvergnutoeRukopozhatie(t *testing.T) {
+	adres := podstavnoyKlash(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"message":"proxy not found"}`)
+	})
+	_, err := Zaderzhka(context.Background(), adres, "s", "srv-1")
+	if err == nil {
+		t.Fatal("404 принят за успех")
+	}
+	if !errors.Is(err, ErrTegaNetVYadre) {
+		t.Fatalf("404 не опознан как отсутствие тега: %v", err)
+	}
+	if errors.Is(err, ErrServerOtvergKlyuchi) {
+		t.Fatalf("404 выдан за отвергнутое рукопожатие: %v", err)
+	}
+}
+
+// Текст отказа читает человек, а не разработчик. На экране 12.09.2026 стояло
+// «исходящий srv-19460ba974f2 не отвечает (код 504)»: внутренний тег он видит
+// рядом в строке сервера, а число 504 не значит для него ничего. У этого кода
+// причина ровно одна и называется словами: проба не уложилась в срок.
+func TestZaderzhka504GovoritProSrokBezTegaINomeraKoda(t *testing.T) {
+	adres := podstavnoyKlash(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGatewayTimeout)
+		fmt.Fprint(w, `{"message":"timeout"}`)
+	})
+	_, err := Zaderzhka(context.Background(), adres, "s", "srv-19460ba974f2")
+	if err == nil {
+		t.Fatal("504 принят за успех")
+	}
+	if strings.Contains(err.Error(), "srv-19460ba974f2") {
+		t.Fatalf("текст %q тащит внутренний тег на экран", err)
+	}
+	if strings.Contains(err.Error(), "504") {
+		t.Fatalf("текст %q показывает номер кода вместо причины", err)
+	}
+	if !strings.Contains(err.Error(), SrokZamera.String()) {
+		t.Fatalf("текст %q не называет срок, за который проба не уложилась", err)
+	}
+}

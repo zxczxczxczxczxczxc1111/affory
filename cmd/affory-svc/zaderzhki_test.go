@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -135,6 +137,32 @@ func TestZaderzhkiOtkazYadraNeSpisyvaetsyaNaServer(t *testing.T) {
 	}
 	if z[0].RealpingOtkaz == "" {
 		t.Fatal("отказ ядра не назван")
+	}
+}
+
+// Ключ, приехавший подпиской ПОСЛЕ подъёма, ядру неизвестен, и оно отвечает
+// 404. Человеку это надо сказать словами про переподключение: сам ключ
+// исправен, чинить в нём нечего. 12.09.2026 на живой машине такой ключ час
+// показывался как «сервер не принял рукопожатие».
+func TestZaderzhkiNovyyKlyuchPrositPereproverkiAneVinitServer(t *testing.T) {
+	l := zhivoyUzel(t)
+	s := podstavnayaSUzlom(t, l)
+	s.mu.Lock()
+	s.portClash, s.sekretClash = 9090, "sekret"
+	s.mu.Unlock()
+	s.zamerit = func(context.Context, string, string, string) (time.Duration, error) {
+		return 0, fmt.Errorf("%w: srv-1", yadra.ErrTegaNetVYadre)
+	}
+
+	k := s.Obrabotat(context.Background(), protokol.Kadr{
+		Tip: "komanda", Id: 1, Imya: "measureDelays",
+	})
+	z := razobratZaderzhki(t, k)
+	if !strings.Contains(z[0].RealpingOtkaz, "переподключ") {
+		t.Fatalf("отказ %q не говорит, что помогает переподключение", z[0].RealpingOtkaz)
+	}
+	if strings.Contains(z[0].RealpingOtkaz, "рукопожатие") {
+		t.Fatalf("отказ %q винит ключ, хотя ключ исправен", z[0].RealpingOtkaz)
 	}
 }
 

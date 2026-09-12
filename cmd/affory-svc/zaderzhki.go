@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -96,7 +97,15 @@ func (s *Sluzhba) zamerOdnogo(ctx context.Context, srv protokol.Server, adresKla
 		return z
 	}
 	if d, err := s.zamerit(ctx, adresKlash, sekret, genkonfig.TegKandidata(srv.Id)); err != nil {
-		z.RealpingOtkaz = err.Error()
+		// Ключа нет в живом ядре это НЕ отказ ключа. Конфиг ядра собран при
+		// подъёме, а этот ключ приехал подпиской позже; сам он исправен, и
+		// единственное действие человека это переподключение. Пока сюда шёл
+		// голый текст ошибки, свежий ключ на экране выглядел сломанным.
+		if errors.Is(err, yadra.ErrTegaNetVYadre) {
+			z.RealpingOtkaz = "ключ появился после подключения: ядро о нём ещё не знает, нужно переподключение"
+		} else {
+			z.RealpingOtkaz = err.Error()
+		}
 	} else {
 		ms := d.Milliseconds()
 		z.RealpingMs = &ms

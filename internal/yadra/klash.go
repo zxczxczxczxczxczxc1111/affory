@@ -57,9 +57,20 @@ func Zaderzhka(ctx context.Context, adres, sekret, teg string) (time.Duration, e
 	switch {
 	case kod == http.StatusUnauthorized || kod == http.StatusForbidden:
 		return 0, sekretNePrinyat(adres, kod)
+	// 404 это «такого исходящего в живом ядре нет», и ведёт он человека в
+	// ДРУГУЮ сторону: конфиг ядра собран при подъёме, а ключ приехал подпиской
+	// позже, значит помогает переподключение. Пока оба кода схлопывались в
+	// «сервер не принял рукопожатие», свежий ключ на живой машине 12.09.2026
+	// выглядел сломанным, а совет вёл чинить ссылку, с которой всё в порядке.
+	case kod == http.StatusNotFound:
+		return 0, fmt.Errorf("%w: %s", ErrTegaNetVYadre, teg)
+	// 504 это единственный код, у которого причина одна: проба не уложилась в
+	// срок. Тег человек видит рядом, в строке сервера, а номер кода не значит
+	// для него ничего, поэтому в тексте остаётся срок и больше ничего.
+	case kod == http.StatusGatewayTimeout:
+		return 0, fmt.Errorf("%w: не отвечает дольше %s", ErrServerOtvergKlyuchi, SrokZamera)
 	case kod != http.StatusOK:
-		return 0, fmt.Errorf("%w: исходящий %s не отвечает (код %d)",
-			ErrServerOtvergKlyuchi, teg, kod)
+		return 0, fmt.Errorf("%w: ядро отклонило пробу (код %d)", ErrServerOtvergKlyuchi, kod)
 	}
 
 	var o struct {
