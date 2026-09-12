@@ -388,6 +388,10 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                     <Knopka
                       rang="tekst"
                       testId={`udalit-podpisku-${p.id}`}
+                      // Кнопка рисуется одной иконкой, и без подписи у неё нет
+                      // имени вовсе: в дереве доступности 12.09.2026 её было не
+                      // отличить от соседних корзин, и с клавиатуры тоже.
+                      aria-label={`удалить подписку ${p.imya || p.uzel}`}
                       aktiven={aktiven}
                       onClick={() => zadatUdalyayuPodpisku(p.id)}
                     >

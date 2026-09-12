@@ -462,3 +462,21 @@ describe("серверы: несколько подписок", () => {
     expect(na).toHaveBeenCalledWith("addSubscription", { adres: "https://tretya.example.net/sub" });
   });
 });
+
+// Кнопка удаления подписки рисуется одной иконкой. Без подписи у неё нет имени
+// в дереве доступности: 12.09.2026 обход гостя нашёл шесть корзин серверов и
+// ни одной подписки, то есть с клавиатуры её было не назвать.
+it("у корзины подписки есть имя", () => {
+  render(
+    <Servery
+      status={VYKL}
+      spisok={spisok([server(1)])}
+      naKomandu={vi.fn()}
+      podpiski={[
+        { id: "aaa", uzel: "panel.example.net", aktivnaya: true },
+        { id: "bbb", uzel: "zapasnaya.example.net", aktivnaya: false },
+      ]}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "удалить подписку zapasnaya.example.net" })).toBeTruthy();
+});
