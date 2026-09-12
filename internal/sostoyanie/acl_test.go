@@ -2,6 +2,7 @@ package sostoyanie
 
 import (
 	"os"
+	"os/exec"
 	"sort"
 	"testing"
 	"unsafe"
@@ -64,4 +65,69 @@ func TestKatalogDannyhBezNasledovaniya(t *testing.T) {
 			t.Fatalf("список SID не тот: %v", sidy)
 		}
 	}
+}
+
+// Чужая явная запись в списке доступа обязана ИСЧЕЗАТЬ, а не сохраняться.
+//
+// `/inheritance:r` убирает унаследованное, `/grant:r` заменяет права названным
+// доверенным лицам, но запись для постороннего SID не трогает ни то, ни другое.
+// На рабочей машине 12.09.2026 в каталоге ключей так и жила третья запись, на
+// SID учётки человека: доступ к DPAPI-блобам без всякого повышения прав, то
+// есть ровно та дыра, ради закрытия которой каталог и запирается. Заметил это
+// не человек и не судья, а этот тест, и полгода он был единственным, кто её
+// видел, потому что на чистой машине такой записи не заводится.
+func TestChuzhayaZapisVSpiskeDostupaUbiraetsya(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("нужен повышенный процесс: список доступа иначе не переписать")
+	}
+	k := t.TempDir()
+	// Кому дать лишний доступ: своей же учётке. Она заведомо существует, и
+	// именно она оказалась лишней на рабочей машине.
+	tok := windows.GetCurrentProcessToken()
+	kto, err := tok.GetTokenUser()
+	if err != nil {
+		t.Fatalf("свой SID не читается: %v", err)
+	}
+	svoy := kto.User.Sid.String()
+	// Звёздочка перед SID обязательна: без неё icacls ищет УЧЁТКУ с таким
+	// именем и отвечает «no mapping between account names and security IDs».
+	if out, err := exec.Command("icacls", k, "/grant", "*"+svoy+":(OI)(CI)F").CombinedOutput(); err != nil {
+		t.Fatalf("подготовка не удалась: %v: %s", err, out)
+	}
+
+	if err := zavestiKatalog(k); err != nil {
+		t.Fatalf("каталог не заведён: %v", err)
+	}
+
+	for _, sid := range sidyKataloga(t, k) {
+		if sid == svoy {
+			t.Fatalf("чужая запись осталась в списке доступа: %v", sidyKataloga(t, k))
+		}
+	}
+}
+
+// sidyKataloga читает DACL и отдаёт SID его записей строками.
+func sidyKataloga(t *testing.T, put string) []string {
+	t.Helper()
+	sd, err := windows.GetNamedSecurityInfo(put, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatalf("дескриптор не читается: %v", err)
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		t.Fatalf("DACL не читается: %v", err)
+	}
+	if dacl == nil {
+		t.Fatal("DACL пуст, а это не запрет, а разрешение всем")
+	}
+	var sidy []string
+	for i := uint16(0); i < dacl.AceCount; i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, uint32(i), &ace); err != nil {
+			t.Fatalf("запись %d не читается: %v", i, err)
+		}
+		sidy = append(sidy, (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String())
+	}
+	sort.Strings(sidy)
+	return sidy
 }
