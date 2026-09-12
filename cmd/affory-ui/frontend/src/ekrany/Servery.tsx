@@ -30,6 +30,18 @@ export interface SpisokServerov {
   podpiska_obnovlena?: string;
 }
 
+/** Одна подписка в списке экрана.
+ *
+ *  Адреса здесь нет: он секрет класса ключа и из службы не выезжает. Опознают
+ *  подписку по узлу и по имени, которое человек ей дал. */
+export interface PodpiskaNaEkrane {
+  id: string;
+  uzel: string;
+  imya?: string;
+  obnovlena?: string;
+  aktivnaya: boolean;
+}
+
 /** Замер одного сервера: два числа, потому что они про разное.
  *
  *  `tcping` это дорога до узла, мимо туннеля, и туннель для неё не нужен.
@@ -64,6 +76,9 @@ export interface ServeryProps {
   chitatBufer?: () => Promise<string>;
   /** Shell-side screen QR: resolves with the added server name, rejects with the reason. */
   naQrSEkrana?: () => Promise<string>;
+  /** Подписки списком: активная одна, остальные про запас. Пустой список это
+   *  «подписок нет», и тогда раздела нет вовсе. */
+  podpiski?: PodpiskaNaEkrane[];
   /** Последний замер задержек, по одному на сервер. Пусто значит «не мерили»,
    *  и тогда строки задержки нет вовсе: пустая строка врала бы про замер,
    *  которого не было. */
@@ -106,7 +121,7 @@ function sovpadaet(s: Server, zapros: string): boolean {
   return s.imya.toLowerCase().includes(z) || s.host.toLowerCase().includes(z);
 }
 
-export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, otkazyPodpiski = [], chitatBufer, naQrSEkrana, zaderzhki = [] }: ServeryProps) {
+export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, otkazyPodpiski = [], chitatBufer, naQrSEkrana, zaderzhki = [], podpiski = [] }: ServeryProps) {
   const aktiven = status.sostoyanie !== "sluzhba-molchit";
   const [poisk, zadatPoisk] = useState("");
   // One "Добавить", one question: what is being added. A server link and a
@@ -129,6 +144,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // second answers it. One click on a trash icon next to the row you are
   // hovering is how a server disappears by accident.
   const [udalyayu, zadatUdalyayu] = useState<string | null>(null);
+  const [udalyayuPodpisku, zadatUdalyayuPodpisku] = useState<string | null>(null);
 
   const servery = spisok?.servery ?? [];
   const vidimye = useMemo(() => servery.filter((s) => sovpadaet(s, poisk)), [servery, poisk]);
@@ -139,6 +155,15 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   const vybranPropal = vybran !== "" && !servery.some((s) => s.id === vybran);
   const avto = status.rezhim_marshruta === "avto";
   const izPodpiski = servery.filter((s) => s.iz_podpiski).length;
+
+  // Служба старее окна не знает команды listSubscriptions, и список приходит
+  // пустым. Одна строка из полей listServers это не украшение, а единственное,
+  // что тогда вообще можно показать про подписку.
+  const stroki: PodpiskaNaEkrane[] = podpiski.length > 0
+    ? podpiski
+    : spisok?.podpiska_zadana
+      ? [{ id: "odna", uzel: spisok.podpiska_uzel, obnovlena: spisok.podpiska_obnovlena, aktivnaya: true }]
+      : [];
 
   // The form opens by itself only on the honest empty list (§9.2 first run).
   // A refused list is NOT an empty one, so it gets the header button instead.
@@ -187,7 +212,10 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   const otpravitAdres = () => {
     const a = adres.trim();
     if (!a) return;
-    naKomandu("setSubscription", { adres: a });
+    // addSubscription, а не setSubscription: вторая подписка ложится ПРО ЗАПАС.
+    // Подменять ту, по которой человек сейчас работает, нажатием «добавить»
+    // значило бы менять список серверов действием, которое об этом не говорит.
+    naKomandu("addSubscription", { adres: a });
     zadatAdres("");
     zadatDobavlyayu(false);
   };
@@ -311,22 +339,64 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
 
       {!pervyyZapusk && dobavlyayu && forma}
 
-      {spisok !== null && spisok.podpiska_zadana && (
-        <Razdel nazvanie="подписка">
+      {spisok !== null && (spisok.podpiska_zadana || stroki.length > 0) && (
+        <Razdel nazvanie={stroki.length > 1 ? "подписки" : "подписка"}>
           <Karta testId="podpiska">
-            <Ryad
-              nazvanie={spisok.podpiska_uzel || "подписка задана"}
-              poyasnenie={[
-                vozrast(spisok.podpiska_obnovlena) ? `обновлена ${vozrast(spisok.podpiska_obnovlena)}` : "ещё не обновлялась",
-                izPodpiski ? `${izPodpiski} ${sklon(izPodpiski)}` : undefined,
-                "проверка раз в 12 часов",
-              ].filter(Boolean).join(" · ")}
-              aktiven={aktiven}
-            >
-              <Knopka rang="vtoraya" testId="obnovit-podpisku" aktiven={aktiven} onClick={() => naKomandu("refreshSubscription", {})}>
-                <Obnovit />Обновить
-              </Knopka>
-            </Ryad>
+            {stroki.map((p) => (
+              <Ryad
+                key={p.id}
+                testId={`podpiska-${p.id}`}
+                nazvanie={
+                  <span className="flex items-center gap-2">
+                    {p.imya || p.uzel || "подписка задана"}
+                    {p.aktivnaya && <Teg ton="akcent">активна</Teg>}
+                  </span>
+                }
+                poyasnenie={[
+                  // Про запас лежит АДРЕС, а не список: у неактивной записи
+                  // возраст обновления сказал бы про ключи, которых в наборе нет.
+                  p.aktivnaya
+                    ? vozrast(p.obnovlena) ? `обновлена ${vozrast(p.obnovlena)}` : "ещё не обновлялась"
+                    : "про запас: ключи приедут при переключении",
+                  p.aktivnaya && izPodpiski ? `${izPodpiski} ${sklon(izPodpiski)}` : undefined,
+                  p.aktivnaya ? "проверка раз в 12 часов" : undefined,
+                ].filter(Boolean).join(" · ")}
+                aktiven={aktiven}
+              >
+                {p.aktivnaya ? (
+                  <Knopka rang="vtoraya" testId="obnovit-podpisku" aktiven={aktiven} onClick={() => naKomandu("refreshSubscription", {})}>
+                    <Obnovit />Обновить
+                  </Knopka>
+                ) : (
+                  <Knopka rang="vtoraya" testId={`vklyuchit-${p.id}`} aktiven={aktiven} onClick={() => naKomandu("setActiveSubscription", { id: p.id })}>
+                    Сделать активной
+                  </Knopka>
+                )}
+                {/* Удаление в два нажатия, как у сервера: подписка уносит с
+                    собой весь список ключей, а отмены у этого действия нет. */}
+                {stroki.length > 1 && (
+                  udalyayuPodpisku === p.id ? (
+                    <Knopka
+                      rang="opasnaya"
+                      testId={`udalit-podpisku-${p.id}`}
+                      aktiven={aktiven}
+                      onClick={() => { naKomandu("removeSubscription", { id: p.id }); zadatUdalyayuPodpisku(null); }}
+                    >
+                      удалить?
+                    </Knopka>
+                  ) : (
+                    <Knopka
+                      rang="tekst"
+                      testId={`udalit-podpisku-${p.id}`}
+                      aktiven={aktiven}
+                      onClick={() => zadatUdalyayuPodpisku(p.id)}
+                    >
+                      <IkonkaKorzina />
+                    </Knopka>
+                  )
+                )}
+              </Ryad>
+            ))}
           </Karta>
 
           {/* Строки, которые панель прислала, а клиент не понял. Без этой

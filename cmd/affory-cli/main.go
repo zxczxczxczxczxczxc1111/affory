@@ -39,6 +39,10 @@ const pomoshch = `команды:
   autoconnect on|off     туннель при старте службы
   subscription set <url>
   subscription refresh
+  subscription list
+  subscription add <url>
+  subscription remove <id>
+  subscription use <id>
   profile export --out <файл>
   profile import --in <файл>
 
@@ -255,8 +259,26 @@ func podpiska(k *kanal.Klient, pod string, slova []string) {
 		pechat(k.Zvat("setSubscription", map[string]string{"adres": slova[2]}))
 	case "refresh":
 		pechat(k.Zvat("refreshSubscription", nil))
+	case "list":
+		pechat(k.Zvat("listSubscriptions", nil))
+	case "add":
+		if len(slova) < 3 {
+			vyhod("subscription add ждёт адрес")
+		}
+		fmt.Fprintln(os.Stderr, "внимание: адрес подписки остался в истории оболочки, это пропуск")
+		pechat(k.Zvat("addSubscription", map[string]string{"adres": slova[2]}))
+	case "remove":
+		if len(slova) < 3 {
+			vyhod("subscription remove ждёт идентификатор")
+		}
+		pechat(k.Zvat("removeSubscription", map[string]string{"id": slova[2]}))
+	case "use":
+		if len(slova) < 3 {
+			vyhod("subscription use ждёт идентификатор")
+		}
+		pechat(k.Zvat("setActiveSubscription", map[string]string{"id": slova[2]}))
 	default:
-		vyhod("subscription принимает set и refresh")
+		vyhod("subscription принимает set, refresh, list, add, remove, use")
 	}
 }
 

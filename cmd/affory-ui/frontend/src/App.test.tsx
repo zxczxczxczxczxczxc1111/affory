@@ -376,6 +376,47 @@ describe("ни один отказ не пропадает молча", () => {
     expect(pustye.map((m) => m[0])).toEqual([]);
   });
 
+  // Список подписок приходит ОТДЕЛЬНОЙ командой: listServers говорит только про
+  // активную, а экрану нужны все. Окно обязано спросить его при открытии
+  // вкладки и перезапросить после каждого действия с подписками.
+  it("вкладка серверов спрашивает список подписок и перезапрашивает после переключения", async () => {
+    const most = mostProby();
+    most.otvechatTelom("listSubscriptions", {
+      podpiski: [
+        { id: "aaa", uzel: "panel.example.net", aktivnaya: true },
+        { id: "bbb", uzel: "zapasnaya.example.net", aktivnaya: false },
+      ],
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Управлять" }));
+    await waitFor(() => expect(most.skolkoRaz("listSubscriptions")).toBeGreaterThan(0));
+
+    const stroka = await screen.findByTestId("podpiska-bbb");
+    expect(stroka).toHaveTextContent(/zapasnaya\.example\.net/);
+
+    const bylo = most.skolkoRaz("listSubscriptions");
+    fireEvent.click(screen.getByTestId("vklyuchit-bbb"));
+    await waitFor(() => expect(most.skolkoRaz("setActiveSubscription")).toBe(1));
+    await waitFor(() => expect(most.skolkoRaz("listSubscriptions")).toBeGreaterThan(bylo));
+  });
+
+  // Служба прежней версии этой команды не знает. Её отказ это НЕ повод для
+  // баннера: он рассказал бы человеку про наш порядок обновления вместо его
+  // подписок, а экран и без списка рисует строку по полям listServers.
+  it("служба без listSubscriptions не даёт баннера", async () => {
+    const most = mostProby();
+    most.otvechatOtkazom("listSubscriptions", "protocol-mismatch");
+    most.otvechatTelom("listServers", {
+      servery: [], vybran: "", podpiska_zadana: true, podpiska_uzel: "panel.example.net",
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Управлять" }));
+    await waitFor(() => expect(most.skolkoRaz("listSubscriptions")).toBeGreaterThan(0));
+
+    expect(await screen.findByTestId("podpiska-odna")).toHaveTextContent(/panel\.example\.net/);
+    expect(screen.queryByText(/listSubscriptions/)).toBeNull();
+  });
+
   it("отказ listServers виден на экране и даёт повтор", async () => {
     const most = mostProby();
     most.otvechatOtkazom("listServers", "secrets-unreadable");

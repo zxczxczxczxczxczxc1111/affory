@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Servery, pohozheNaSsylku, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
+import { Servery, pohozheNaSsylku, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { Server, StatusOtvet } from "../protokol";
 
 afterEach(cleanup);
@@ -23,8 +23,8 @@ function spisok(servery: Server[], pere: Partial<SpisokServerov> = {}): SpisokSe
 
 const VYKL: StatusOtvet = { sostoyanie: "vyklyuchen", rezhim_marshruta: "ruchnoy" };
 
-function risovat(s: SpisokServerov | null, status: StatusOtvet = VYKL, naKomandu = vi.fn()) {
-  render(<Servery status={status} spisok={s} naKomandu={naKomandu} />);
+function risovat(s: SpisokServerov | null, status: StatusOtvet = VYKL, naKomandu = vi.fn(), podpiski: PodpiskaNaEkrane[] = []) {
+  render(<Servery status={status} spisok={s} naKomandu={naKomandu} podpiski={podpiski} />);
   return naKomandu;
 }
 
@@ -127,7 +127,9 @@ describe("серверы: подписка и добавление", () => {
     fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
     fireEvent.change(screen.getByTestId("adres-podpiski"), { target: { value: "  https://p.example/sub  " } });
     fireEvent.click(screen.getByTestId("sohranit-podpisku"));
-    expect(na).toHaveBeenCalledWith("setSubscription", { adres: "https://p.example/sub" });
+    // addSubscription с 12.09.2026: подписок стало несколько, и «добавить» не
+    // имеет права подменить ту, по которой человек сейчас работает.
+    expect(na).toHaveBeenCalledWith("addSubscription", { adres: "https://p.example/sub" });
   });
 
   it("непонятые строки подписки видны на экране, с номером и причиной", () => {
@@ -407,5 +409,56 @@ describe("серверы: замер задержки", () => {
   it("без замера строка задержки не появляется вовсе", () => {
     render(<Servery {...svoystva({})} />);
     expect(screen.queryByTestId("zaderzhka-s1")).toBeNull();
+  });
+});
+
+// Несколько подписок: активная одна, остальные про запас. Экран обязан
+// показывать обе и говорить, какая сейчас работает, иначе «переключить» это
+// действие вслепую.
+describe("серверы: несколько подписок", () => {
+  const dve: PodpiskaNaEkrane[] = [
+    { id: "aaa", uzel: "panel.example.net", aktivnaya: true, obnovlena: new Date().toISOString() },
+    { id: "bbb", uzel: "zapasnaya.example.net", aktivnaya: false },
+  ];
+
+  it("показывает обе подписки и помечает активную", () => {
+    risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
+    const stroki = screen.getAllByTestId(/^podpiska-/);
+    expect(stroki).toHaveLength(2);
+    expect(stroki[0]).toHaveTextContent(/panel\.example\.net/);
+    expect(stroki[0]).toHaveTextContent(/активна/);
+    expect(stroki[1]).toHaveTextContent(/zapasnaya\.example\.net/);
+    expect(stroki[1]).not.toHaveTextContent(/активна/);
+  });
+
+  it("кнопка переключения шлёт setActiveSubscription", () => {
+    const na = risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
+    fireEvent.click(screen.getByTestId("vklyuchit-bbb"));
+    expect(na).toHaveBeenCalledWith("setActiveSubscription", { id: "bbb" });
+  });
+
+  it("у активной подписки переключателя нет, а обновление есть", () => {
+    risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
+    expect(screen.queryByTestId("vklyuchit-aaa")).toBeNull();
+    expect(screen.getByTestId("obnovit-podpisku")).toBeTruthy();
+  });
+
+  it("удаление подписки спрашивает подтверждение и шлёт removeSubscription", () => {
+    const na = risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
+    fireEvent.click(screen.getByTestId("udalit-podpisku-bbb"));
+    expect(na).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("udalit-podpisku-bbb"));
+    expect(na).toHaveBeenCalledWith("removeSubscription", { id: "bbb" });
+  });
+
+  // Форма шлёт addSubscription, а не setSubscription: вторая подписка ложится
+  // про запас и не подменяет ту, по которой человек сейчас работает.
+  it("форма добавления кладёт подписку про запас", () => {
+    const na = risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
+    fireEvent.click(screen.getByTestId("dobavit"));
+    fireEvent.click(screen.getByText("подписка"));
+    fireEvent.change(screen.getByTestId("adres-podpiski"), { target: { value: "https://tretya.example.net/sub" } });
+    fireEvent.click(screen.getByTestId("sohranit-podpisku"));
+    expect(na).toHaveBeenCalledWith("addSubscription", { adres: "https://tretya.example.net/sub" });
   });
 });

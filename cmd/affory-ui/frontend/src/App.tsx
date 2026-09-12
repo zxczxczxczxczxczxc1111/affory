@@ -13,7 +13,7 @@ import {
   dobavitSEkrana, perezapustitSPravami, prochitatProfil, sohranitProfil, spisokProtsessov,
   tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, type Zapushchennyy,
 } from "./most";
-import { Servery, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
+import { Servery, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
 import type { Vkladka } from "./ekrany/vkladki";
 import {
   KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
@@ -151,7 +151,11 @@ function polosaIz(telo: unknown, vremya: string): ZamerPolosy | null {
 }
 
 // Commands after which the server list on screen is stale.
-const MENYAYUT_SPISOK = new Set(["addServer", "removeServer", "setSubscription", "refreshSubscription", "setServer", "setRouteMode", "connect"]);
+const MENYAYUT_SPISOK = new Set(["addServer", "removeServer", "setSubscription", "refreshSubscription", "setServer", "setRouteMode", "connect",
+  "addSubscription", "removeSubscription", "setActiveSubscription"]);
+// Команды, после которых меняется САМ список подписок. Переключение активной
+// сюда входит: строка «активна» переезжает на другую запись.
+const MENYAYUT_PODPISKI = new Set(["setSubscription", "addSubscription", "removeSubscription", "setActiveSubscription", "refreshSubscription"]);
 // Same for the rules list.
 const MENYAYUT_PRAVILA = new Set(["setRules"]);
 
@@ -182,6 +186,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // списка серверов намеренно: список это то, что получилось, а это то, что не
   // получилось, и второе исчезало молча.
   const [otkazyPodpiski, zadatOtkazyPodpiski] = useState<OtkazStroki[]>([]);
+  const [podpiski, zadatPodpiski] = useState<PodpiskaNaEkrane[]>([]);
   const [zaderzhki, zadatZaderzhki] = useState<ZamerZaderzhki[]>([]);
 
   const [otkaz, zadatOtkaz] = useState<Otkazano | null>(null);
@@ -267,6 +272,25 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     }
   }, [zhaloba]);
 
+  // Подписки отдельной командой, а не полями listServers: их список нужен
+  // экрану серверов целиком, а listServers говорит только про активную.
+  const obnovitPodpiski = useCallback(async () => {
+    try {
+      const kadr = await zvat("listSubscriptions");
+      // Отказ здесь МОЛЧАЛИВ намеренно: служба старее окна этой команды не
+      // знает, и баннер «команда не существует» сказал бы человеку про наш
+      // порядок обновления, а не про его подписки. Экран в этом случае рисует
+      // одну строку по полям listServers.
+      if (kadr.oshibka) return;
+      const telo = kadr.telo as { podpiski?: PodpiskaNaEkrane[] } | undefined;
+      zadatPodpiski(Array.isArray(telo?.podpiski) ? telo.podpiski : []);
+    } catch (e: unknown) {
+      // Исключение это НЕ «команды нет», а оборванный канал: такое молчать
+      // нельзя, иначе экран подписок выглядит пустым при живой подписке.
+      zhaloba("listSubscriptions", e);
+    }
+  }, [zhaloba]);
+
   const zagruzitOtlozhennye = useCallback(async () => {
     try {
       const kadr = await zvat("hello", { protocol: VERSIYA_PROTOKOLA });
@@ -321,9 +345,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       // Обе команды подписки отдают строки, которые не разобрались. Пустой
       // ответ ОБНУЛЯЕТ прежний список: старые отказы после удачного обновления
       // это разговор о позапрошлой подписке.
-      if (komanda === "setSubscription" || komanda === "refreshSubscription") {
+      if (komanda === "setSubscription" || komanda === "refreshSubscription" || komanda === "addSubscription" || komanda === "setActiveSubscription") {
         zadatOtkazyPodpiski(otkazyIz(kadr.telo));
       }
+      if (MENYAYUT_PODPISKI.has(komanda)) void obnovitPodpiski();
       // Замеры задержки. Ответ ЗАМЕЩАЕТ прежний целиком: показывать замер
       // позапрошлого прохода рядом со свежим значит врать про оба.
       if (komanda === "measureDelays" && !kadr.oshibka) {
@@ -598,8 +623,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // The service refreshes the subscription on its own schedule; opening the
   // tab is the cheap moment to catch up with that.
   useEffect(() => {
-    if (vkladka === "servery") void obnovitSpisok();
-  }, [vkladka, obnovitSpisok]);
+    if (vkladka === "servery") {
+      void obnovitSpisok();
+      void obnovitPodpiski();
+    }
+  }, [vkladka, obnovitSpisok, obnovitPodpiski]);
 
   // most.ts now throws instead of turning a broken clipboard into "": the
   // screen still wants a string, so the reason goes to the banner and the
@@ -771,6 +799,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             obnovitSpisok={() => void obnovitSpisok()}
             naKomandu={(komanda, telo) => void vypolnit(komanda, telo)}
             otkazyPodpiski={otkazyPodpiski}
+            podpiski={podpiski}
             zaderzhki={zaderzhki}
             chitatBufer={chitatBufer}
             // The shell adds the server itself, so the list is reloaded here:
