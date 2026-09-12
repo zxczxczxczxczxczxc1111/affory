@@ -76,6 +76,14 @@ describe("серверы: список", () => {
     expect(rows[1]).toHaveTextContent(/проверка сертификата/);
   });
 
+  it("удержанная запись говорит про переподключение, а не «добавлен вручную»", () => {
+    risovat(spisok([server(1, { iz_podpiski: false, uderzhan: true }), server(2, { iz_podpiski: false })]));
+    const rows = screen.getAllByRole("option");
+    expect(rows[0]).toHaveTextContent(/пропал из подписки/);
+    expect(rows[0]).not.toHaveTextContent(/добавлен вручную/);
+    expect(rows[1]).toHaveTextContent(/добавлен вручную/);
+  });
+
   it("пометка строки: пин сертификата у hy2 с pinSHA256", () => {
     risovat(spisok([server(1, { transport: "hy2", s_pinom: true }), server(2, { transport: "hy2" })]));
     const rows = screen.getAllByRole("option");

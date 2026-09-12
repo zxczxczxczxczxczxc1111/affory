@@ -109,6 +109,8 @@ export interface Server {
   host: string;
   port: number;
   iz_podpiski: boolean;
+  /** Пропал из подписки, но ядро ещё держит его кандидатом: уйдёт сам после переподключения. */
+  uderzhan?: boolean;
   nebezopasnyy_ignorirovan?: boolean;
   /** hy2 with pinSHA256: the pin stays in the service, only the mark travels. */
   s_pinom?: boolean;

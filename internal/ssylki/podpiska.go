@@ -390,7 +390,7 @@ func Slit(bylo, stalo []protokol.Server) []protokol.Server {
 		vzyaty[s.Id] = true
 	}
 	for _, s := range bylo {
-		if !s.IzPodpiski && !vzyaty[s.Id] {
+		if !s.IzPodpiski && !s.Uderzhan && !vzyaty[s.Id] {
 			itog = append(itog, s)
 		}
 	}

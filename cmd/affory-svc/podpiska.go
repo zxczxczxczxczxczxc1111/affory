@@ -177,6 +177,11 @@ func (s *Sluzhba) uderzhatZhivyh(prezhnie []protokol.Server, n *Nabor) []string 
 	var imena []string
 	for _, srv := range prezhnie {
 		if !est[srv.Id] {
+			// Флаг снимается, иначе экран считает её восьмой записью подписки, а
+			// подписка отдала семь. Пометка удержания ставится взамен: по ней
+			// слияние отличит её от ручной и выбросит при опущенном ядре.
+			srv.IzPodpiski = false
+			srv.Uderzhan = true
 			n.Servery = append(n.Servery, srv)
 			imena = append(imena, srv.Id)
 		}

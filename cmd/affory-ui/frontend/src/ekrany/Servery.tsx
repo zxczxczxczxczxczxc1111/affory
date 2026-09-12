@@ -418,7 +418,9 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                     </span>
                     <span className="text-fg-muted truncate text-xs">
                       {s.host}:{s.port} · {TRANSPORT[s.transport] ?? s.transport}
-                      {!s.iz_podpiski && " · добавлен вручную"}
+                      {s.uderzhan
+                        ? " · пропал из подписки, работает до переподключения"
+                        : !s.iz_podpiski && " · добавлен вручную"}
                     </span>
                   </div>
                   <Zaderzhka zamer={poZaderzhkam.get(s.id)} />
