@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Servery, pohozheNaSsylku, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
+import { Servery, pohozheNaAdres, pohozheNaSsylku, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { Server, StatusOtvet } from "../protokol";
 
 afterEach(cleanup);
@@ -495,4 +495,58 @@ it("у корзины подписки есть имя", () => {
     />,
   );
   expect(screen.getByRole("button", { name: "удалить подписку zapasnaya.example.net" })).toBeTruthy();
+});
+
+// Жалоба 13.09.2026: «нет кнопки из буфера для вставки ссылки подписки», и
+// при переключении сегмента вокруг кнопки «из буфера» оставалась рамка
+// выделения. Адрес подписки человек получает тем же способом, что и ссылку на
+// сервер: копирует. Печатать его руками негде.
+describe("серверы: адрес подписки из буфера", () => {
+  it("похоже на адрес подписки: только http и https, регистр и пробелы не мешают", () => {
+    for (const a of ["https://a.example/x", " HTTP://b.example ", "https://c.example"]) expect(pohozheNaAdres(a)).toBe(true);
+    // Ссылка на сервер это НЕ адрес подписки: перепутанные кнопки дали бы
+    // команду, которой служба откажет кодом, а человеку нечего было бы понять.
+    for (const a of ["", "vless://x", "example.org", "ftp://d.example", "просто текст"]) expect(pohozheNaAdres(a)).toBe(false);
+  });
+
+  it("кнопки нет, пока оболочка не дала способа читать буфер", () => {
+    risovat(spisok([server(1)]));
+    fireEvent.click(screen.getByTestId("dobavit"));
+    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
+    expect(screen.queryByTestId("adres-iz-bufera")).toBeNull();
+  });
+
+  it("адрес из буфера уходит в addSubscription, поле остаётся пустым", async () => {
+    const naKomandu = vi.fn();
+    render(<Servery status={VYKL} spisok={spisok([server(1)])} naKomandu={naKomandu} chitatBufer={async () => " https://zxc.example/dbae9043 "} />);
+    fireEvent.click(screen.getByTestId("dobavit"));
+    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
+    fireEvent.click(screen.getByTestId("adres-iz-bufera"));
+    await vi.waitFor(() => expect(naKomandu).toHaveBeenCalledWith("addSubscription", { adres: "https://zxc.example/dbae9043" }));
+    expect(screen.queryByTestId("adres-podpiski")).toBeNull();
+  });
+
+  it("не адрес в буфере: отказ словами, команды нет, текст буфера не показан", async () => {
+    const naKomandu = vi.fn();
+    render(<Servery status={VYKL} spisok={spisok([server(1)])} naKomandu={naKomandu} chitatBufer={async () => "секретный текст"} />);
+    fireEvent.click(screen.getByTestId("dobavit"));
+    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
+    fireEvent.click(screen.getByTestId("adres-iz-bufera"));
+    const ishod = await screen.findByTestId("ishod-vvoda");
+    expect(ishod).toHaveTextContent(/не адрес подписки/);
+    expect(ishod).not.toHaveTextContent(/секретный/);
+    expect(naKomandu).not.toHaveBeenCalled();
+  });
+
+  // Рамка выделения оставалась на кнопке позади формы, потому что фокус после
+  // переключения висел на кнопке сегмента, а поле ввода стояло пустым. Курсор
+  // в поле снимает и рамку, и лишний щелчок перед вводом.
+  it("переключение сегмента уводит фокус в поле этой ветки", () => {
+    risovat(spisok([server(1)]));
+    fireEvent.click(screen.getByTestId("dobavit"));
+    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
+    expect(document.activeElement).toBe(screen.getByTestId("adres-podpiski"));
+    fireEvent.click(screen.getByRole("radio", { name: "сервер по ссылке" }));
+    expect(document.activeElement).toBe(screen.getByTestId("ssylka"));
+  });
 });

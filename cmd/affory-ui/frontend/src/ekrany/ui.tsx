@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { tekstOtkaza } from "./otkazy";
 
 // The layout grammar of the whole window, accepted on the mockup 02.09.2026.
@@ -247,19 +247,24 @@ export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktive
   );
 }
 
-/** Text field, same height as a button so the two sit in one line. */
-export function Pole({ testId, znachenie, naVvod, placeholder, aktiven = true, tip = "text", "aria-label": podpis, className = "" }: {
+/** Text field, same height as a button so the two sit in one line.
+ *
+ *  `priv` exists so a screen can put the caret where the human is about to
+ *  type. Nothing else reaches into the input from outside. */
+export function Pole({ testId, znachenie, naVvod, placeholder, aktiven = true, tip = "text", priv, "aria-label": podpis, className = "" }: {
   testId?: string;
   znachenie: string;
   naVvod: (v: string) => void;
   placeholder?: string;
   aktiven?: boolean;
   tip?: "text" | "search";
+  priv?: Ref<HTMLInputElement>;
   "aria-label"?: string;
   className?: string;
 }) {
   return (
     <input
+      ref={priv}
       type={tip}
       data-testid={testId}
       aria-label={podpis}

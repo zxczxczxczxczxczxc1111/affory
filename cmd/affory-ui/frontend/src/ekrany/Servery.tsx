@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { OtkazNaEkrane, OtkazStroki, Server, StatusOtvet } from "../protokol";
 import { slovoPosleChisla } from "../chisla";
 import { IkonkaKorzina, Karta, Knopka, Kolonka, Neudacha, Pole, Razdel, Ryad, Segment, Shapka, Teg } from "./ui";
@@ -18,6 +18,15 @@ const SHEMY = ["vless://", "hy2://", "hysteria2://", "ss://", "trojan://", "vmes
 export function pohozheNaSsylku(t: string): boolean {
   const s = t.trim().toLowerCase();
   return SHEMY.some((sh) => s.startsWith(sh));
+}
+
+/** A subscription address is an http(s) URL and nothing else. The check lives
+ *  here for the same reason as the one above: the clipboard button refuses
+ *  junk on the spot instead of sending the service a command it will refuse
+ *  with a code the human cannot read. A server link is junk here too. */
+export function pohozheNaAdres(t: string): boolean {
+  const a = t.trim().toLowerCase();
+  return a.startsWith("http://") || a.startsWith("https://");
 }
 
 export interface SpisokServerov {
@@ -146,6 +155,11 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // ни в словаре протокола, ни в §9.1, ни в otkazy.ts.
   const [otkazQr, zadatOtkazQr] = useState<string | null>(null);
   const [adres, zadatAdres] = useState("");
+  // Caret goes where the human is about to type. Without it the focus stayed
+  // on the segment button, and its :focus-visible ring hung around the form
+  // like a selection nobody made (живой отзыв 13.09.2026).
+  const poleSsylki = useRef<HTMLInputElement>(null);
+  const poleAdresa = useRef<HTMLInputElement>(null);
   // Two-click delete: the first click turns the icon into a question, the
   // second answers it. One click on a trash icon next to the row you are
   // hovering is how a server disappears by accident.
@@ -175,6 +189,12 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // A refused list is NOT an empty one, so it gets the header button instead.
   const pervyyZapusk = spisok !== null && servery.length === 0;
 
+  // Открытая форма и смена ветки ставят курсор в поле этой ветки.
+  useEffect(() => {
+    if (!dobavlyayu && !pervyyZapusk) return;
+    (chto === "server" ? poleSsylki : poleAdresa).current?.focus();
+  }, [dobavlyayu, pervyyZapusk, chto]);
+
   const svodka = spisok === null
     ? spisokOtkaz
       ? "список серверов не прочитался"
@@ -195,6 +215,20 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
     naKomandu("addServer", { ssylka: t });
     zadatIshodVvoda(null);
     zadatSsylku("");
+    zadatDobavlyayu(false);
+  };
+  const adresIzBufera = async () => {
+    if (!chitatBufer) return;
+    const a = (await chitatBufer()).trim();
+    if (!pohozheNaAdres(a)) {
+      zadatIshodVvoda(a ? "в буфере не адрес подписки" : "буфер обмена пуст");
+      return;
+    }
+    // Адрес подписки это секрет того же разряда, что и ключ: он уходит в
+    // службу и на экран не попадает ни здесь, ни в строке исхода.
+    naKomandu("addSubscription", { adres: a });
+    zadatIshodVvoda(null);
+    zadatAdres("");
     zadatDobavlyayu(false);
   };
   const sEkrana = async () => {
@@ -235,12 +269,13 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
           aria-label="что добавить"
           znacheniya={[{ z: "server", podpis: "сервер по ссылке" }, { z: "podpiska", podpis: "подписка" }]}
           vybrano={chto}
-          naVybor={zadatChto}
+          naVybor={(z) => { zadatChto(z); zadatIshodVvoda(null); zadatOtkazQr(null); }}
         />
         {chto === "server" ? (
           <div className="flex items-center gap-2">
             <Pole
               testId="ssylka"
+              priv={poleSsylki}
               aria-label="ссылка на сервер"
               znachenie={ssylka}
               naVvod={zadatSsylku}
@@ -267,6 +302,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
           <div className="flex items-center gap-2">
             <Pole
               testId="adres-podpiski"
+              priv={poleAdresa}
               aria-label="адрес подписки"
               znachenie={adres}
               naVvod={zadatAdres}
@@ -277,10 +313,15 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
             <Knopka rang="glavnaya" testId="sohranit-podpisku" aktiven={aktiven && adres.trim() !== ""} onClick={otpravitAdres}>
               Сохранить
             </Knopka>
+            {chitatBufer && (
+              <Knopka rang="vtoraya" testId="adres-iz-bufera" aktiven={aktiven} onClick={() => void adresIzBufera()}>
+                из буфера
+              </Knopka>
+            )}
             {otmena}
           </div>
         )}
-        {ishodVvoda && chto === "server" && (
+        {ishodVvoda && (
           <p className="text-fg-secondary text-xs" data-testid="ishod-vvoda">{ishodVvoda}</p>
         )}
         {otkazQr && chto === "server" && (
