@@ -421,6 +421,22 @@ describe("серверы: несколько подписок", () => {
     { id: "bbb", uzel: "zapasnaya.example.net", aktivnaya: false },
   ];
 
+  it("у запасной видно, есть ли готовые ключи", () => {
+    risovat(spisok([server(1)]), VYKL, vi.fn(), [
+      { id: "aaa", uzel: "panel.example.net", aktivnaya: true, serverov: 7 },
+      { id: "bbb", uzel: "zapasnaya.example.net", aktivnaya: false, serverov: 4, obnovlena: new Date().toISOString() },
+    ]);
+    expect(screen.getByTestId("podpiska-bbb")).toHaveTextContent(/4 сервера наготове/);
+  });
+
+  it("отказ запасной подписки виден её строкой, а не молчанием", () => {
+    risovat(spisok([server(1)]), VYKL, vi.fn(), [
+      { id: "aaa", uzel: "panel.example.net", aktivnaya: true, serverov: 7 },
+      { id: "bbb", uzel: "zapasnaya.example.net", aktivnaya: false, serverov: 0, otkaz: "подписка истекла" },
+    ]);
+    expect(screen.getByTestId("podpiska-bbb")).toHaveTextContent(/подписка истекла/);
+  });
+
   it("показывает обе подписки и помечает активную", () => {
     risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
     const stroki = screen.getAllByTestId(/^podpiska-/);

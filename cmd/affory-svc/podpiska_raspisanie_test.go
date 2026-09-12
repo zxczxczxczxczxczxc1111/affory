@@ -204,6 +204,9 @@ func TestRaspisaniyeOtstupaetPosleNeudachi(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Подписка РОВНО одна: обход ходит во все, и оставленная фикстурой живая
+	// дала бы вторую загрузку, то есть тест мерил бы не отступ, а число записей.
+	n.Podpiski, n.Aktivnaya = nil, ""
 	n.ZadatAktivnuyu("https://panel.example/nedostupno")
 	if err := s.zapisatNabor(n); err != nil {
 		t.Fatal(err)

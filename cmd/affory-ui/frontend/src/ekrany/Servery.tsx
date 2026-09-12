@@ -40,6 +40,12 @@ export interface PodpiskaNaEkrane {
   imya?: string;
   obnovlena?: string;
   aktivnaya: boolean;
+  /** Сколько ключей у этой подписки готово. У запасной они приезжают обходом
+   *  раз в 12 часов, поэтому переключение мгновенно. */
+  serverov?: number;
+  /** Причина последней неудачи обхода. Без неё живая запасная и просроченная
+   *  выглядят одинаково, и узнать разницу можно только переключившись. */
+  otkaz?: string;
 }
 
 /** Замер одного сервера: два числа, потому что они про разное.
@@ -353,13 +359,18 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                   </span>
                 }
                 poyasnenie={[
-                  // Про запас лежит АДРЕС, а не список: у неактивной записи
-                  // возраст обновления сказал бы про ключи, которых в наборе нет.
+                  vozrast(p.obnovlena) ? `обновлена ${vozrast(p.obnovlena)}` : "ещё не обновлялась",
+                  // У активной ключи в рабочем списке, у запасной сложены в её
+                  // записи и ждут переключения. Число там и там про одно и то
+                  // же, а слово разное: «наготове» говорит, что переключение не
+                  // пойдёт в сеть.
                   p.aktivnaya
-                    ? vozrast(p.obnovlena) ? `обновлена ${vozrast(p.obnovlena)}` : "ещё не обновлялась"
-                    : "про запас: ключи приедут при переключении",
-                  p.aktivnaya && izPodpiski ? `${izPodpiski} ${sklon(izPodpiski)}` : undefined,
+                    ? (izPodpiski ? `${izPodpiski} ${sklon(izPodpiski)}` : undefined)
+                    : (p.serverov ? `${p.serverov} ${sklon(p.serverov)} наготове` : "ключей ещё нет"),
                   p.aktivnaya ? "проверка раз в 12 часов" : undefined,
+                  // Причина отказа последней в строке: она важнее остального,
+                  // но и длиннее всего, а перенос строки тут один.
+                  p.otkaz || undefined,
                 ].filter(Boolean).join(" · ")}
                 aktiven={aktiven}
               >

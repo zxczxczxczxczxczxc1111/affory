@@ -130,7 +130,12 @@ func (s *Sluzhba) raspisaniePodpiski(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if _, _, err := s.obnovitPodpisku(ctx); err != nil {
+		// Обход ВСЕХ подписок, а не только активной: запасная, за которой не
+		// ходят, это адрес, а не подписка, и переключение на неё означало бы
+		// поход в сеть ровно в ту минуту, когда человеку нужен туннель.
+		// Отступ считается по отказу АКТИВНОЙ: молчащая запасная панель не
+		// повод долбить остальные чаще положенного.
+		if _, _, err := s.obnovitVsePodpiski(ctx); err != nil {
 			povtor = s.seychas().Add(otstupPodpiski)
 			continue
 		}

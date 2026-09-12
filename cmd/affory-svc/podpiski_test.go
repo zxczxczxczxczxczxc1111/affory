@@ -372,3 +372,203 @@ func TestObnovlenieStavitOtmetkuAktivnoyZapisi(t *testing.T) {
 		t.Fatal("у запасной записи стоит отметка обновления, хотя её никто не грузил")
 	}
 }
+
+// Раз в 12 часов обновляются ВСЕ добавленные подписки, а не только активная.
+// Ключи запасной складываются в её запись и в список серверов не лезут: список
+// на экране и конфиг ядра остаются про ту подписку, по которой человек работает.
+func TestObnovlenieHoditVoVsePodpiski(t *testing.T) {
+	s := podstavnaya(t, nil)
+	hranilishcheProby(t, s, Nabor{})
+	var sprosili []string
+	s.zagruzitPodpisku = func(_ context.Context, adres string) (ssylki.Razbor, error) {
+		sprosili = append(sprosili, adres)
+		if adres == "https://zapasnaya.example/sub" {
+			return ssylki.Razbor{Servery: []protokol.Server{izPodpiski(vtoroyServer())}}, nil
+		}
+		return ssylki.Razbor{Servery: []protokol.Server{izPodpiski(serverProby())}}, nil
+	}
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://aktivnaya.example/sub"})
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://zapasnaya.example/sub"})
+
+	sprosili = nil
+	if _, _, err := s.obnovitVsePodpiski(context.Background()); err != nil {
+		t.Fatalf("обход подписок отказал: %v", err)
+	}
+	if !slices.Contains(sprosili, "https://aktivnaya.example/sub") || !slices.Contains(sprosili, "https://zapasnaya.example/sub") {
+		t.Fatalf("обошли %v, а подписки две", sprosili)
+	}
+
+	n, err := s.nabor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	zapas := n.zapisPodpiski(IdPodpiski("https://zapasnaya.example/sub"))
+	if zapas == nil || len(zapas.Servery) != 1 {
+		t.Fatalf("ключи запасной не сложены в её запись: %+v", zapas)
+	}
+	if zapas.Obnovlena == nil {
+		t.Fatal("у запасной нет отметки обновления, хотя её только что тянули")
+	}
+	for _, srv := range n.Servery {
+		if srv.Id == vtoroyServer().Id {
+			t.Fatal("сервер запасной подписки попал в рабочий список")
+		}
+	}
+}
+
+// Отказ одной подписки не отменяет обход остальных и записывается в её строку:
+// иначе одна просроченная панель молча останавливает обновление всех.
+func TestOtkazOdnoyPodpiskiNeLomaetObhod(t *testing.T) {
+	s := podstavnaya(t, nil)
+	hranilishcheProby(t, s, Nabor{})
+	s.zagruzitPodpisku = func(_ context.Context, adres string) (ssylki.Razbor, error) {
+		if adres == "https://mertvaya.example/sub" {
+			return ssylki.Razbor{}, ssylki.ErrPodpiskaNedostupna
+		}
+		return ssylki.Razbor{Servery: []protokol.Server{serverProby()}}, nil
+	}
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://aktivnaya.example/sub"})
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://mertvaya.example/sub"})
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://tretya.example/sub"})
+
+	if _, _, err := s.obnovitVsePodpiski(context.Background()); err != nil {
+		t.Fatalf("обход упал целиком из-за одной подписки: %v", err)
+	}
+
+	n, err := s.nabor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mertvaya := n.zapisPodpiski(IdPodpiski("https://mertvaya.example/sub"))
+	if mertvaya == nil || mertvaya.Otkaz == "" {
+		t.Fatalf("причина отказа не записана в строку подписки: %+v", mertvaya)
+	}
+	tretya := n.zapisPodpiski(IdPodpiski("https://tretya.example/sub"))
+	if tretya == nil || len(tretya.Servery) != 1 {
+		t.Fatalf("третью подписку не обошли после отказа второй: %+v", tretya)
+	}
+}
+
+// Переключение берёт ключи ИЗ ЗАПИСИ и в сеть не ходит: они уже приехали
+// расписанием. Это и есть смысл обхода всех подписок, и заодно переключение
+// работает, когда панель молчит.
+func TestPereklyuchenieNeHoditVSetIRabotaetPriMolchashcheyPaneli(t *testing.T) {
+	s := podstavnaya(t, nil)
+	hranilishcheProby(t, s, Nabor{})
+	s.zagruzitPodpisku = func(_ context.Context, adres string) (ssylki.Razbor, error) {
+		if adres == "https://zapasnaya.example/sub" {
+			return ssylki.Razbor{Servery: []protokol.Server{izPodpiski(vtoroyServer())}}, nil
+		}
+		return ssylki.Razbor{Servery: []protokol.Server{izPodpiski(serverProby())}}, nil
+	}
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://aktivnaya.example/sub"})
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://zapasnaya.example/sub"})
+	if _, _, err := s.obnovitVsePodpiski(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Панель молчит: после этого ни один поход в сеть не может помочь.
+	s.zagruzitPodpisku = func(context.Context, string) (ssylki.Razbor, error) {
+		return ssylki.Razbor{}, ssylki.ErrPodpiskaNedostupna
+	}
+	o := vypolnit(t, s, "setActiveSubscription", map[string]string{"id": IdPodpiski("https://zapasnaya.example/sub")})
+	if o.Oshib != nil {
+		t.Fatalf("переключение отказало при готовых ключах: %+v", o.Oshib)
+	}
+
+	n, err := s.nabor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(n.Servery) != 1 || n.Servery[0].Id != vtoroyServer().Id {
+		t.Fatalf("после переключения в списке %+v, ждали сервер запасной", n.Servery)
+	}
+}
+
+// Ручные серверы не принадлежат ни одной подписке и переключение их не трогает.
+func TestPereklyuchenieNeTeryaetRuchnyeServery(t *testing.T) {
+	s := podstavnaya(t, nil)
+	ruchnoy := vtoroyServer()
+	hranilishcheProby(t, s, Nabor{Servery: []protokol.Server{ruchnoy}})
+	s.zagruzitPodpisku = func(context.Context, string) (ssylki.Razbor, error) {
+		return ssylki.Razbor{Servery: []protokol.Server{izPodpiski(serverProby())}}, nil
+	}
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://pervaya.example/sub"})
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://vtoraya.example/sub"})
+	if _, _, err := s.obnovitVsePodpiski(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	vypolnit(t, s, "setActiveSubscription", map[string]string{"id": IdPodpiski("https://vtoraya.example/sub")})
+
+	n, err := s.nabor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nashli := false
+	for _, srv := range n.Servery {
+		if srv.Id == ruchnoy.Id {
+			nashli = true
+		}
+	}
+	if !nashli {
+		t.Fatalf("ручной сервер пропал при переключении подписки: %+v", n.Servery)
+	}
+}
+
+// Разбор подписки метит свои серверы (ssylki/podpiska.go). Фикстура, которая
+// этого не делает, подсовывает службе ручной сервер под видом подписочного, и
+// тест начинает судить не то, что думает.
+func izPodpiski(s protokol.Server) protokol.Server {
+	s.IzPodpiski = true
+	return s
+}
+
+// Строка запасной подписки обязана говорить, есть ли у неё готовые ключи и не
+// отказала ли она в прошлый обход. Без этих двух полей живая запасная и
+// просроченная выглядят на экране одинаково, а узнать разницу можно только
+// переключившись на неё.
+func TestSpisokPodpisokNazyvaetKlyuchiIOtkaz(t *testing.T) {
+	s := podstavnaya(t, nil)
+	hranilishcheProby(t, s, Nabor{})
+	s.zagruzitPodpisku = func(_ context.Context, adres string) (ssylki.Razbor, error) {
+		if adres == "https://mertvaya.example/sub" {
+			return ssylki.Razbor{}, ssylki.ErrPodpiskaIstekla
+		}
+		return ssylki.Razbor{Servery: []protokol.Server{izPodpiski(serverProby()), izPodpiski(vtoroyServer())}}, nil
+	}
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://aktivnaya.example/sub"})
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://zapasnaya.example/sub"})
+	vypolnit(t, s, "addSubscription", map[string]string{"adres": "https://mertvaya.example/sub"})
+	if _, _, err := s.obnovitVsePodpiski(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	o := vypolnit(t, s, "listSubscriptions", nil)
+	var telo struct {
+		Podpiski []struct {
+			Id       string `json:"id"`
+			Serverov int    `json:"serverov"`
+			Otkaz    string `json:"otkaz"`
+		} `json:"podpiski"`
+	}
+	if err := json.Unmarshal(o.Telo, &telo); err != nil {
+		t.Fatalf("ответ не разбирается: %v", err)
+	}
+	po := map[string]struct {
+		Id       string `json:"id"`
+		Serverov int    `json:"serverov"`
+		Otkaz    string `json:"otkaz"`
+	}{}
+	for _, p := range telo.Podpiski {
+		po[p.Id] = p
+	}
+	if n := po[IdPodpiski("https://zapasnaya.example/sub")].Serverov; n != 2 {
+		t.Fatalf("у запасной %d серверов, а обход привёз два", n)
+	}
+	if po[IdPodpiski("https://mertvaya.example/sub")].Otkaz == "" {
+		t.Fatal("просроченная подписка выглядит как живая: причины нет")
+	}
+	if n := po[IdPodpiski("https://aktivnaya.example/sub")].Serverov; n != 2 {
+		t.Fatalf("у активной %d серверов: её ключи лежат в рабочем списке и считаются оттуда", n)
+	}
+}

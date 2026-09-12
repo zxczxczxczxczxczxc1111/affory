@@ -179,7 +179,10 @@ func (s *Sluzhba) setSubscription(ctx context.Context, k protokol.Kadr) protokol
 }
 
 func (s *Sluzhba) refreshSubscription(ctx context.Context, k protokol.Kadr) protokol.Kadr {
-	r, serverov, err := s.obnovitPodpisku(ctx)
+	// За всеми подписками сразу: «Обновить» означает «сходи за свежим», и
+	// запасная тут ничем не хуже активной. Наверх поднимается только отказ
+	// активной, отказы запасных лежат в их строках.
+	r, serverov, err := s.obnovitVsePodpiski(ctx)
 	if err != nil {
 		return otkazPodpiski(k, r, err)
 	}
