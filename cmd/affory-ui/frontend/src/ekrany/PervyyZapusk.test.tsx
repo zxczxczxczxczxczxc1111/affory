@@ -47,3 +47,18 @@ describe("первый запуск", () => {
     expect(aktivnye()).toHaveLength(1);
   });
 });
+
+// Строка «установка идёт» без единого движущегося пикселя неотличима от
+// зависшей программы: запрос UAC может быть за окном, а служба поднимается
+// несколько секунд. Та же полоса, что у обновления (13.09.2026).
+it("пока установка идёт, на экране есть полоса ожидания", () => {
+  render(<PervyyZapusk sostoyanie="ustanavlivaetsya" naUstanovku={() => undefined} />);
+  expect(screen.getByRole("progressbar", { name: /установк/i })).toBeTruthy();
+});
+
+it("до нажатия и после отказа полосы нет", () => {
+  const { rerender } = render(<PervyyZapusk sostoyanie="net-sluzhby" naUstanovku={() => undefined} />);
+  expect(screen.queryByRole("progressbar")).toBeNull();
+  rerender(<PervyyZapusk sostoyanie="otkaz" prichina="UAC отклонён" naUstanovku={() => undefined} />);
+  expect(screen.queryByRole("progressbar")).toBeNull();
+});

@@ -1,3 +1,4 @@
+import { Polosa } from "./ui";
 // First run (spec §9.2): the service is not installed, and exactly one thing
 // is active, the install button. Pure over props; App owns the UAC call and
 // the status polling that follows it.
@@ -24,9 +25,15 @@ export function PervyyZapusk({ sostoyanie, prichina, naUstanovku }: PervyyZapusk
         <p className="text-danger text-sm" data-testid="prichina">{prichina}</p>
       )}
       {idyot ? (
-        <p className="text-fg-muted text-sm" data-testid="hod">
-          установка идёт, ответь на запрос Windows и подожди
-        </p>
+        <div className="flex flex-col gap-2">
+          <p className="text-fg-muted text-sm" data-testid="hod">
+            установка идёт, ответь на запрос Windows и подожди
+          </p>
+          {/* Запрос UAC может оказаться за окном, а служба поднимается
+              несколько секунд: без движения на экране это неотличимо от
+              зависшей программы. */}
+          <Polosa podpis="ход установки службы" />
+        </div>
       ) : (
         <button
           type="button"

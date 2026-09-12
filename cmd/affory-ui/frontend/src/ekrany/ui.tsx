@@ -280,3 +280,37 @@ export const PROCHERK = "-";
 export function IkonkaKorzina() {
   return <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
 }
+
+/** Полоса ожидания.
+ *
+ *  `dolya` в процентах, когда считать есть из чего; `null` оставляет полосу
+ *  бегущей. Второе не украшение: на сверке хеша, распаковке и установке службы
+ *  считать нечего, а строка без единого движущегося пикселя неотличима от
+ *  зависшей программы. Живой отзыв 13.09.2026 про обновление был ровно об этом.
+ *
+ *  Разметка одна на все места: у обновления в настройках и у установки службы
+ *  на первом запуске полоса обязана выглядеть одинаково. */
+export function Polosa({ dolya, podpis, testId }: {
+  dolya?: number | null;
+  /** Идёт в aria-label: у полосы обязано быть имя, иначе она немая. */
+  podpis: string;
+  testId?: string;
+}) {
+  const znaem = typeof dolya === "number";
+  return (
+    <span
+      role="progressbar"
+      data-testid={testId}
+      aria-label={podpis}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      {...(znaem ? { "aria-valuenow": dolya } : {})}
+      className="bg-fill-subtle relative block h-1 w-full max-w-[220px] overflow-hidden rounded-full"
+    >
+      <span
+        className={znaem ? "bg-accent absolute inset-y-0 left-0 rounded-full transition-[width] duration-300" : "bg-accent af-hod-begushchaya absolute inset-y-0 rounded-full"}
+        style={znaem ? { width: `${dolya}%` } : undefined}
+      />
+    </span>
+  );
+}

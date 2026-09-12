@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { HodObnovleniya, OtkazNaEkrane, RezultatProverki, ShagObnovleniya, Sostoyanie, StatusOtvet } from "../protokol";
 import { otlozhenaDo } from "./Pravila";
 import { Udalenie } from "./Udalenie";
-import { Karta, Knopka, Kolonka, Neudacha, Pole, Razdel, Ryad, Shapka, Tumbler } from "./ui";
+import { Karta, Knopka, Kolonka, Neudacha, Pole, Polosa, Razdel, Ryad, Shapka, Tumbler } from "./ui";
 import { obyom } from "./Glavnyy";
 
 // Settings tab. 4.8 brought the two launch switches, 4.7 the uninstall, 4.11
@@ -666,19 +666,7 @@ function PolosaObnovleniya({ hod, ostalosS }: { hod: HodObnovleniya | null; osta
   return (
     <span className="flex flex-col gap-1.5">
       <span>{podpis + hvost}</span>
-      <span
-        role="progressbar"
-        aria-label="ход обновления"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        {...(dolya !== null ? { "aria-valuenow": dolya } : {})}
-        className="bg-fill-subtle relative block h-1 w-full max-w-[220px] overflow-hidden rounded-full"
-      >
-        <span
-          className={dolya !== null ? "bg-accent absolute inset-y-0 left-0 rounded-full transition-[width] duration-300" : "bg-accent af-hod-begushchaya absolute inset-y-0 rounded-full"}
-          style={dolya !== null ? { width: `${dolya}%` } : undefined}
-        />
-      </span>
+      <Polosa dolya={dolya} podpis="ход обновления" />
     </span>
   );
 }
