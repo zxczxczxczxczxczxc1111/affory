@@ -19,6 +19,7 @@ import {
   KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
   udalitProgrammu, ustanovitSluzhbu, zvat, type Kadr,
 } from "./most";
+import { naladitVstavku } from "./vstavka";
 import { VERSIYA_PROTOKOLA, type OtkazStroki, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
 
 // The only place that talks to most.ts. Screens get whole StatusOtvet values
@@ -611,6 +612,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       return "";
     }
   }, [zhaloba]);
+
+  // Подстраховка Ctrl+V: WebView2 у Wails идёт с выключенными браузерными
+  // акселераторами, и на рабочей машине вставка с клавиатуры не доходила до
+  // поля вовсе. Слушатель ничего не делает там, где родная вставка работает.
+  useEffect(() => naladitVstavku(chitatBufer), [chitatBufer]);
 
   /** Export: the path comes from the native dialog, the password from the
    *  person. `exportProfile` needs an administrator, and its refusal is a
