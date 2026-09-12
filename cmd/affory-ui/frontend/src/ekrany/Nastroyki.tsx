@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { OtkazNaEkrane, RezultatProverki, Sostoyanie, StatusOtvet } from "../protokol";
+import { useEffect, useRef, useState } from "react";
+import type { HodObnovleniya, OtkazNaEkrane, RezultatProverki, ShagObnovleniya, Sostoyanie, StatusOtvet } from "../protokol";
 import { otlozhenaDo } from "./Pravila";
 import { Udalenie } from "./Udalenie";
 import { Karta, Knopka, Kolonka, Neudacha, Pole, Razdel, Ryad, Shapka, Tumbler } from "./ui";
@@ -46,6 +46,13 @@ export interface NastroykiProps {
   /** Последний замер полосы. Кнопка тратит настоящий трафик человека, и
    *  молчание после неё читается как «ничего не делает». */
   zamerPolosy?: ZamerPolosy | null;
+  /** Шаг идущего обновления. `null` значит «не идёт», и это не то же самое,
+   *  что «идёт, но неизвестно что»: пустая карточка во время загрузки и была
+   *  жалобой 13.09.2026. */
+  hodObnovleniya?: HodObnovleniya | null;
+  /** Растёт, когда трей просит показать обновление. Числом, а не флагом:
+   *  второе нажатие обязано подсветить карточку снова. */
+  vestiKObnovleniyu?: number;
 }
 
 /** Замер полосы, обе стороны. Число и его отсутствие здесь разные вещи:
@@ -98,12 +105,28 @@ const ITOG: Record<string, string> = {
 export function Nastroyki({
   status, otlozheno, svyaz, povtorit, naKomandu, naUdalenie,
   proverka = null, proverkaOtkaz = null, naObnovlenie, adresVyhoda = null, zamerPolosy = null,
-  vyvestiProfil, vvestiProfil, itogProfilya = null,
+  vyvestiProfil, vvestiProfil, itogProfilya = null, hodObnovleniya = null, vestiKObnovleniyu = 0,
 }: NastroykiProps) {
   // The password lives exactly as long as this screen does, goes into the body
   // of one command and nowhere else: not a file name, not an argument, not a
   // log line. It is deliberately NOT lifted to App.
   const [parolProfilya, zadatParolProfilya] = useState("");
+  // Обновление идёт, пока последний шаг не отказ: отказ гасит полосу, а его
+  // причина приезжает отдельным отказом команды, как у всех прочих кнопок.
+  const idyot = hodObnovleniya !== null && hodObnovleniya.shag !== "otkaz";
+  const ostalosPodmeny = otschetPodmeny(hodObnovleniya);
+  const ryadObnovleniya = useRef<HTMLDivElement>(null);
+  // Трей привёл человека сюда: карточку надо не просто показать, а показать
+  // так, чтобы он её нашёл. Прокрутка и подсветка на две секунды.
+  useEffect(() => {
+    if (!vestiKObnovleniyu) return;
+    const uzel = ryadObnovleniya.current;
+    if (!uzel) return;
+    uzel.scrollIntoView({ block: "center", behavior: "smooth" });
+    uzel.classList.add("af-privlech");
+    const t = setTimeout(() => uzel.classList.remove("af-privlech"), 2000);
+    return () => clearTimeout(t);
+  }, [vestiKObnovleniyu]);
   const [dialog, zadatDialog] = useState(false);
   // The mode question waits for an answer: switching re-raises the tunnel
   // and drops every connection, which is not what a toggle usually does.
@@ -464,20 +487,32 @@ export function Nastroyki({
           {/* The service checks the update server daily on its own; this row
               shows what it found and lets the human act. The archive-from-disk
               path below stays as the second way in. */}
+          <div ref={ryadObnovleniya}>
           <Ryad
             testId="obnovlenie"
-            nazvanie={nahodka ? `есть ${nahodka.versiya}, ${obyom(nahodka.razmer)}` : `программа ${status.versiya_programmy ?? "dev"}`}
-            poyasnenie={
-              pochemuSero(undefined) ??
-              (nahodka
-                ? "служба скачает архив, сверит хеш и перезапустится; при неудаче за 20 секунд остаётся прежняя версия"
-                : status.obnovlenie_provereno
-                  ? `проверено ${vremya(status.obnovlenie_provereno)}, новее нет; проверяется раз в сутки`
-                  : "ещё не проверялось; служба проверяет раз в сутки")
+            nazvanie={
+              idyot
+                ? <span className="flex items-center gap-2">{zagolovokHoda(hodObnovleniya, status.versiya_programmy)}</span>
+                : nahodka
+                  ? `есть ${nahodka.versiya}, ${obyom(nahodka.razmer)}`
+                  : versiyaStrokoy(status.versiya_programmy)
             }
-            aktiven={aktiven}
+            poyasnenie={
+              idyot
+                ? <PolosaObnovleniya hod={hodObnovleniya} ostalosS={ostalosPodmeny} />
+                : pochemuSero(undefined) ??
+                  (nahodka
+                    ? "служба скачает архив, сверит хеш и перезапустится; при неудаче за 20 секунд остаётся прежняя версия"
+                    : status.obnovlenie_provereno
+                      ? `проверено ${vremya(status.obnovlenie_provereno)}, новее нет; проверяется раз в сутки`
+                      : "ещё не проверялось; служба проверяет раз в сутки")
+            }
+            aktiven={aktiven || idyot}
           >
-            {nahodka ? (
+            {/* Пока обновление идёт, кнопок нет вовсе. Второе нажатие
+                отправило бы вторую загрузку службе, которой на шаге подмены
+                уже не существует. */}
+            {idyot ? null : nahodka ? (
               <Knopka rang="glavnaya" testId="ustanovit-obnovlenie" aktiven={mozhnoZvat} onClick={() => naKomandu("downloadUpdate", {})}>
                 Установить
               </Knopka>
@@ -487,6 +522,7 @@ export function Nastroyki({
               </Knopka>
             )}
           </Ryad>
+          </div>
           <Ryad
             testId="arhiv-sborki"
             nazvanie="архив сборки"
@@ -582,4 +618,82 @@ export function Nastroyki({
 function vremya(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Версия программы строкой. Отсутствие версии это молчащая служба или сборка
+ *  из дерева, и ни то, ни другое не называется словом «dev»: 13.09.2026 окно
+ *  подписало им минуту обновления, и это прочли как «перебросило на dev». */
+function versiyaStrokoy(versiya?: string): string {
+  return versiya ? `программа ${versiya}` : "версия неизвестна";
+}
+
+const PODPISI_SHAGOV: Record<ShagObnovleniya, string> = {
+  skachivanie: "скачивание",
+  sverka: "проверка контрольной суммы",
+  raspakovka: "распаковка архива",
+  podmena: "подмена файлов, служба перезапускается",
+  otkaz: "не удалось",
+};
+
+/** Заголовок строки во время обновления. Номер выпуска, а не своя версия:
+ *  своя в эту минуту уже ничего не значит. */
+function zagolovokHoda(hod: HodObnovleniya | null, svoya?: string): string {
+  const kuda = hod?.versiya ?? svoya;
+  return kuda ? `обновление до ${kuda}` : "обновление";
+}
+
+/** Доля загрузки в процентах; null, когда считать не из чего. */
+function dolyaHoda(hod: HodObnovleniya | null): number | null {
+  if (!hod || hod.shag !== "skachivanie") return null;
+  const vsego = hod.vsego ?? 0;
+  const skachano = hod.skachano ?? 0;
+  if (vsego <= 0) return null;
+  return Math.min(100, Math.round((skachano / vsego) * 100));
+}
+
+/** Полоса и подпись под ней. Полоса без известной доли остаётся бегущей: на
+ *  сверке и распаковке считать нечего, а замереть на месте она не должна. */
+function PolosaObnovleniya({ hod, ostalosS }: { hod: HodObnovleniya | null; ostalosS: number | null }) {
+  if (!hod) return null;
+  const dolya = dolyaHoda(hod);
+  const podpis = PODPISI_SHAGOV[hod.shag];
+  const hvost =
+    hod.shag === "skachivanie" && dolya !== null
+      ? ` ${dolya} %`
+      : hod.shag === "podmena" && ostalosS !== null
+        ? `, осталось ${ostalosS} с`
+        : "";
+  return (
+    <span className="flex flex-col gap-1.5">
+      <span>{podpis + hvost}</span>
+      <span
+        role="progressbar"
+        aria-label="ход обновления"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        {...(dolya !== null ? { "aria-valuenow": dolya } : {})}
+        className="bg-fill-subtle relative block h-1 w-full max-w-[220px] overflow-hidden rounded-full"
+      >
+        <span
+          className={dolya !== null ? "bg-accent absolute inset-y-0 left-0 rounded-full transition-[width] duration-300" : "bg-accent af-hod-begushchaya absolute inset-y-0 rounded-full"}
+          style={dolya !== null ? { width: `${dolya}%` } : undefined}
+        />
+      </span>
+    </span>
+  );
+}
+
+/** Отсчёт секунд на шаге подмены. Ведёт его ОКНО, а не служба: службы в эту
+ *  минуту нет, сказать ей нечем, и молчаливое ожидание без счётчика читается
+ *  как зависшая программа. */
+function otschetPodmeny(hod: HodObnovleniya | null): number | null {
+  const srok = hod?.shag === "podmena" ? (hod.srok_s ?? 0) : 0;
+  const [ostalos, zadat] = useState(srok);
+  useEffect(() => {
+    if (srok <= 0) return;
+    zadat(srok);
+    const t = setInterval(() => zadat((o) => (o > 0 ? o - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [srok]);
+  return srok > 0 ? ostalos : null;
 }

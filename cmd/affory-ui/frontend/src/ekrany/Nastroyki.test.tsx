@@ -548,3 +548,86 @@ describe("настройки: профиль", () => {
     expect(screen.queryByTestId("vyvesti-profil")).toBeNull();
   });
 });
+
+// Обновление это минута, в которую окно раньше молчало: служба качает два
+// десятка мегабайт, потом намеренно останавливается. 13.09.2026 живой отзыв
+// об этой минуте: «перебросило на dev версию и сломалось».
+describe("настройки: ход обновления", () => {
+  it("показывает долю загрузки словами и полосой", () => {
+    render(
+      <Nastroyki
+        status={{ sostoyanie: "podnyat", avtozapusk: true, podklyuchat_pri_starte: false, kill_switch: false, port_proksi: 10809, versiya_programmy: "1.0.3" }}
+        otlozheno={OTLOZHENO}
+        naKomandu={vi.fn()}
+        naUdalenie={vi.fn()}
+        hodObnovleniya={{ shag: "skachivanie", versiya: "1.1.0", skachano: 13790155, vsego: 27580311 }}
+      />,
+    );
+    const ryad = screen.getByTestId("obnovlenie");
+    expect(ryad).toHaveTextContent(/1\.1\.0/);
+    expect(ryad).toHaveTextContent(/50\s?%/);
+    const polosa = screen.getByRole("progressbar", { name: /обновлени/i });
+    expect(polosa).toHaveAttribute("aria-valuenow", "50");
+  });
+
+  it("на подмене говорит, что служба перезапускается, и сколько это займёт", () => {
+    render(
+      <Nastroyki
+        status={{ sostoyanie: "vyklyuchen", avtozapusk: true, podklyuchat_pri_starte: false, kill_switch: false, port_proksi: 10809 }}
+        otlozheno={OTLOZHENO}
+        naKomandu={vi.fn()}
+        naUdalenie={vi.fn()}
+        hodObnovleniya={{ shag: "podmena", versiya: "1.1.0", srok_s: 20 }}
+      />,
+    );
+    const ryad = screen.getByTestId("obnovlenie");
+    expect(ryad).toHaveTextContent(/подменя|перезапуск/i);
+    expect(ryad).toHaveTextContent(/20 с|20 сек/);
+    // Второе нажатие во время подмены отправило бы вторую загрузку в службу,
+    // которой в этот момент уже нет.
+    expect(screen.queryByTestId("ustanovit-obnovlenie")).toBeNull();
+    expect(screen.queryByTestId("proverit-versiyu")).toBeNull();
+  });
+
+  it("молчащая служба не выдаётся за версию dev", () => {
+    render(
+      <Nastroyki
+        status={{ sostoyanie: "sluzhba-molchit", avtozapusk: false, podklyuchat_pri_starte: false, kill_switch: false, port_proksi: 0 }}
+        otlozheno={OTLOZHENO}
+        naKomandu={vi.fn()}
+        naUdalenie={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("obnovlenie")).not.toHaveTextContent(/\bdev\b/);
+  });
+});
+
+// Трей ведёт человека сюда пунктом «Обновить до X». Показать карточку мало:
+// она внизу длинного экрана, и без прокрутки с подсветкой нажатие в трее
+// по-прежнему выглядит как «ничего не произошло».
+it("по зову из трея подсвечивает карточку обновления", () => {
+  const scrollIntoView = vi.fn();
+  Element.prototype.scrollIntoView = scrollIntoView;
+  const { rerender } = render(
+    <Nastroyki
+      status={{ sostoyanie: "podnyat", avtozapusk: true, podklyuchat_pri_starte: false, kill_switch: false, port_proksi: 10809, versiya_programmy: "1.0.3", obnovlenie: { versiya: "1.1.0", razmer: 27580311, provereno: "2026-09-13T02:00:00Z" } }}
+      otlozheno={OTLOZHENO}
+      naKomandu={vi.fn()}
+      naUdalenie={vi.fn()}
+      vestiKObnovleniyu={0}
+    />,
+  );
+  expect(scrollIntoView).not.toHaveBeenCalled();
+
+  rerender(
+    <Nastroyki
+      status={{ sostoyanie: "podnyat", avtozapusk: true, podklyuchat_pri_starte: false, kill_switch: false, port_proksi: 10809, versiya_programmy: "1.0.3", obnovlenie: { versiya: "1.1.0", razmer: 27580311, provereno: "2026-09-13T02:00:00Z" } }}
+      otlozheno={OTLOZHENO}
+      naKomandu={vi.fn()}
+      naUdalenie={vi.fn()}
+      vestiKObnovleniyu={1}
+    />,
+  );
+  expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId("obnovlenie").parentElement).toHaveClass("af-privlech");
+});

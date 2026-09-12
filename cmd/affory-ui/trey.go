@@ -145,6 +145,9 @@ type Trey struct {
 	// требуют живого Wails, которого у набора нет.
 	pokazat func()
 	zakryt  func()
+	// vesti просит окно открыть названную вкладку. Может быть nil: трей обязан
+	// показывать окно и тогда, когда сказать ему некому.
+	vesti func(vkladka string)
 
 	mu               sync.Mutex
 	sost             protokol.Sostoyanie
@@ -261,6 +264,7 @@ func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(
 	t.naGlavnom = vybratPotok(&t.gotov, application.InvokeAsync)
 	t.risovat = t.risovatZhivo
 	t.pokazat = t.Pokazat
+	t.vesti = func(vkladka string) { app.Event.Emit(sobytieVkladki, vkladka) }
 	t.zakryt = app.Quit
 	t.sistemnyy = app.SystemTray.New()
 	t.menu = app.NewMenu()
@@ -277,7 +281,7 @@ func novyyTrey(app *application.App, okno *application.WebviewWindow, zvat func(
 	// за него.
 	t.punktObnovleniya = t.menu.Add("Обновить")
 	t.punktObnovleniya.SetHidden(true)
-	t.punktObnovleniya.OnClick(func(*application.Context) { t.Pokazat() })
+	t.punktObnovleniya.OnClick(func(*application.Context) { t.otkrytObnovlenie() })
 	t.punktDeystviya = t.menu.Add("Подключить")
 	t.punktDeystviya.OnClick(func(*application.Context) {
 		t.mu.Lock()
@@ -347,6 +351,24 @@ func (t *Trey) vyytiSinhronno() {
 }
 
 // Pokazat brings the window up from the tray.
+// vkladkaNastroyek это имя вкладки из frontend/src/ekrany/vkladki.ts. Строка,
+// а не тип: вкладки живут на той стороне, и заводить их перечисление здесь
+// значило бы завести второе место, где их список однажды разойдётся.
+const vkladkaNastroyek = "nastroyki"
+
+// otkrytObnovlenie это нажатие на «Обновить до X» в трее.
+//
+// Показать окно мало. 13.09.2026 живой отзыв: «нельзя обновиться из трея, ничего
+// не происходит». Окно и правда открывалось, но на брошенной вкладке, чаще
+// всего «Подключение», а обновление живёт в «Настройках» внизу экрана. Между
+// нажатием и увиденным не было никакой видимой связи.
+func (t *Trey) otkrytObnovlenie() {
+	t.pokazat()
+	if t.vesti != nil {
+		t.vesti(vkladkaNastroyek)
+	}
+}
+
 func (t *Trey) Pokazat() {
 	t.okno.Show()
 	// Wails v3.0.0-beta.16: Show() on a window created Hidden and never run

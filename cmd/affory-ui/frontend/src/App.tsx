@@ -14,13 +14,13 @@ import {
   tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, type Zapushchennyy,
 } from "./most";
 import { Servery, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
-import type { Vkladka } from "./ekrany/vkladki";
+import { VKLADKI, type Vkladka } from "./ekrany/vkladki";
 import {
-  KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
+  KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, naVkladku, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
   udalitProgrammu, ustanovitSluzhbu, zvat, type Kadr,
 } from "./most";
 import { naladitVstavku } from "./vstavka";
-import { VERSIYA_PROTOKOLA, type OtkazStroki, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
+import { VERSIYA_PROTOKOLA, type HodObnovleniya, type OtkazStroki, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
 
 // The only place that talks to most.ts. Screens get whole StatusOtvet values
 // as props and never touch the bridge, so a shell swap is most.ts plus here.
@@ -210,6 +210,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // Running processes for the rules form; null until the shell answers.
   const [zapushchennye, zadatZapushchennye] = useState<Zapushchennyy[] | null>(null);
   const [vkladka, zadatVkladku] = useState<Vkladka>("podklyuchenie");
+  // Шаг идущего обновления и зов трея к нему. Оба живут здесь, а не на экране
+  // настроек: события приходят в оболочку, а экран может быть не показан вовсе.
+  const [hodObnovleniya, zadatHod] = useState<HodObnovleniya | null>(null);
+  const [vestiKObnovleniyu, zadatVesti] = useState(0);
   // Last profile outcome in the person's words. A press with no visible
   // result reads as "the button does nothing" (owner, 03.09.2026).
   const [itogProfilya, zadatItogProfilya] = useState<string | null>(null);
@@ -552,6 +556,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         // Numbers come only while subscribed; the service omits zaderzhka_ms
         // when the core has not measured yet, and the screen draws a dash.
         zadatStat(kadr.telo as Statistika);
+      } else if (kadr.imya === "obnovlenie-hod") {
+        const h = kadr.telo as HodObnovleniya;
+        // Отказ гасит полосу: причина приезжает отдельным отказом команды, как
+        // у любой другой кнопки, и держать после неё полосу значит врать.
+        zadatHod(h.shag === "otkaz" ? null : h);
       } else if (kadr.imya === "kanal-zakryt") {
         zadatSvyaz("net");
         zadatStatus(MOLCHIT);
@@ -580,6 +589,19 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     // это не то, за чем он её разворачивал.
     if (oknoVidno) void oprositTiho();
   }, [oknoVidno, oprositTiho]);
+
+  // Трей просит открыть вкладку. Пункт «Обновить до X» открывает окно и зовёт
+  // сюда: до 13.09.2026 он просто показывал окно на брошенной вкладке, и это
+  // читалось как «ничего не происходит».
+  useEffect(() => {
+    return naVkladku((imya) => {
+      if (!(VKLADKI as readonly string[]).includes(imya)) return;
+      zadatVkladku(imya as Vkladka);
+      // Счётчиком, а не флагом: второе нажатие в трее обязано подсветить
+      // карточку снова, даже если вкладка уже открыта.
+      if (imya === "nastroyki") zadatVesti((n) => n + 1);
+    });
+  }, []);
 
   // The tray recovers from a service restart on its own and the window did
   // not: status was asked once, at mount. Five seconds is the tray's period.
@@ -826,6 +848,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           />
         ) : vkladka === "nastroyki" ? (
           <Nastroyki
+            hodObnovleniya={hodObnovleniya}
+            vestiKObnovleniyu={vestiKObnovleniyu}
             adresVyhoda={adresVyhoda}
             zamerPolosy={zamerPolosy}
             status={naEkrane}

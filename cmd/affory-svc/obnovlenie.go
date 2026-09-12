@@ -52,27 +52,54 @@ func (s *Sluzhba) installUpdate(k protokol.Kadr) protokol.Kadr {
 	return s.ustanovitArhiv(k, telo.Put)
 }
 
+// sobytieHodaObnovleniya это имя события с шагами. Одно на весь путь: окно
+// различает шаги по полю, а не по имени события, иначе подписок было бы пять.
+const sobytieHodaObnovleniya = "obnovlenie-hod"
+
+func (s *Sluzhba) hodObnovleniya(h protokol.HodObnovleniya) {
+	s.izvestit(sobytieHodaObnovleniya, h)
+}
+
+// otkazObnovleniya гасит полосу в окне и отвечает отказом. Разделять эти два
+// действия нельзя: отказ без события оставляет окно с полосой навсегда.
+func (s *Sluzhba) otkazObnovleniya(k protokol.Kadr, kod, tekst string) protokol.Kadr {
+	s.hodObnovleniya(protokol.HodObnovleniya{Shag: protokol.ShagOtkaz, Tekst: tekst})
+	return otkaz(k.Id, k.Imya, kod, tekst)
+}
+
 // ustanovitArhiv это общая часть installUpdate и downloadUpdate: сверка,
 // распаковка, опускание туннеля, подменщик.
 func (s *Sluzhba) ustanovitArhiv(k protokol.Kadr, put string) protokol.Kadr {
+	return s.ustanovitArhivSVersiey(k, put, "")
+}
+
+// ustanovitArhivSVersiey знает номер выпуска, когда архив приехал из сети.
+// Архив с диска номера не несёт, и окно тогда подписывает полосу без него.
+func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) protokol.Kadr {
 	if err := obnovlenie.Sverit(put); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodArhivNegoden, err.Error())
+		return s.otkazObnovleniya(k, protokol.KodArhivNegoden, err.Error())
 	}
+	s.hodObnovleniya(protokol.HodObnovleniya{Shag: protokol.ShagRaspakovka, Versiya: versiya})
 	novaya := filepath.Join(s.dirProgrammy, obnovlenie.KatalogNovoy)
 	if err := obnovlenie.Raspakovat(put, novaya); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodArhivNegoden, err.Error())
+		return s.otkazObnovleniya(k, protokol.KodArhivNegoden, err.Error())
 	}
 	if _, err := os.Stat(filepath.Join(novaya, "affory-svc.exe")); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodArhivNegoden, "в архиве нет affory-svc.exe")
+		return s.otkazObnovleniya(k, protokol.KodArhivNegoden, "в архиве нет affory-svc.exe")
 	}
 	// Туннель опускается ДО подмены: правила и политика снимаются штатно, а
 	// не остаются сиротами от службы, которую сейчас убьют.
 	s.Otklyuchit()
 	if st := s.Status(); st.Oshib != nil {
-		return otkaz(k.Id, k.Imya, st.Oshib.Kod, st.Oshib.Tekst)
+		return s.otkazObnovleniya(k, st.Oshib.Kod, st.Oshib.Tekst)
 	}
+	// Событие уходит ДО запуска подменщика: тот останавливает службу первым
+	// делом, и после него до окна уже ничего не долетит.
+	s.hodObnovleniya(protokol.HodObnovleniya{
+		Shag: protokol.ShagPodmena, Versiya: versiya, SrokS: int(obnovlenie.SrokPodyoma.Seconds()),
+	})
 	if err := s.zapustitPodmenshchika(s.dirProgrammy, novaya); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodUpdateRollback, "подменщик не запущен: "+err.Error())
+		return s.otkazObnovleniya(k, protokol.KodUpdateRollback, "подменщик не запущен: "+err.Error())
 	}
 	return otvet(k.Id, k.Imya, map[string]any{"zapushchena": true, "srok_s": int(obnovlenie.SrokPodyoma.Seconds())})
 }

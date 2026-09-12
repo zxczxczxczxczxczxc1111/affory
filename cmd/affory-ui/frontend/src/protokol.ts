@@ -122,6 +122,23 @@ export interface Obnovlenie {
   provereno: string;
 }
 
+/** Шаги события obnovlenie-hod. Ответ на downloadUpdate приходит ОДИН и в самом
+ *  конце, а между нажатием и им лежат два десятка мегабайт и подмена файлов.
+ *  Без этих шагов окно всю минуту показывало ровно ничего. */
+export type ShagObnovleniya = "skachivanie" | "sverka" | "raspakovka" | "podmena" | "otkaz";
+
+export interface HodObnovleniya {
+  shag: ShagObnovleniya;
+  /** Номер выпуска, ради которого всё затеяно. Своя версия в это время уже
+   *  ничего не значит, и подписывать полосу надо этим. */
+  versiya?: string;
+  skachano?: number;
+  vsego?: number;
+  /** Сколько секунд служба даёт новой версии на ответ, прежде чем откатиться. */
+  srok_s?: number;
+  tekst?: string;
+}
+
 /** getServerHealth (wave 6.4): the VPS snapshot found next to the subscription. */
 export interface Zdorovie {
   vremya: number;

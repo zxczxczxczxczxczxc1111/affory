@@ -427,6 +427,11 @@ const sobytieKanala = "kanal"
 // отличается ни от чего.
 const sobytieOkna = "okno"
 
+// sobytieVkladki просит окно открыть названную вкладку. Нужно трею: его пункт
+// «Обновить до X» обязан привести человека туда, где обновляются, а не просто
+// показать окно на брошенной вкладке.
+const sobytieVkladki = "vkladka"
+
 // kanalZakrytKadr is the synthetic frame the shell emits when the pipe dies.
 // It is shaped like a real event so the frontend needs no second code path.
 func kanalZakrytKadr() string {

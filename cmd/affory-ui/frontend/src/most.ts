@@ -39,6 +39,7 @@ export class KanalNedostupen extends Error {
 const IMYA_ZVAT = "main.most.Zvat";
 const SOBYTIE_KANALA = "kanal";
 const SOBYTIE_OKNA = "okno";
+const SOBYTIE_VKLADKI = "vkladka";
 
 /** Sends one command and returns the answer frame. The body travels as JSON
  *  text both ways; typing it is the caller's business. */
@@ -138,6 +139,18 @@ export function naSobytie(obrabotchik: (kadr: Kadr) => void): () => void {
 export function naVidimostOkna(obrabotchik: (vidno: boolean) => void): () => void {
   return Events.On(SOBYTIE_OKNA, (sobytie: { data: unknown }) => {
     if (typeof sobytie.data !== "boolean") return;
+    obrabotchik(sobytie.data);
+  });
+}
+
+/** Трей просит открыть названную вкладку: его пункт «Обновить до X» обязан
+ *  привести человека туда, где обновляются, а не просто показать окно на
+ *  брошенной вкладке.
+ *
+ *  Возвращает функцию отписки. */
+export function naVkladku(obrabotchik: (vkladka: string) => void): () => void {
+  return Events.On(SOBYTIE_VKLADKI, (sobytie: { data: unknown }) => {
+    if (typeof sobytie.data !== "string") return;
     obrabotchik(sobytie.data);
   });
 }

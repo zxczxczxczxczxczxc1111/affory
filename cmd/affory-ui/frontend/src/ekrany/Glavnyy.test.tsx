@@ -191,3 +191,18 @@ describe("подпись под переключателем режима", () =
     expect(screen.getByText("Нажмите на сервер, чтобы сразу подключиться к нему.")).toBeInTheDocument();
   });
 });
+
+// Слово «dev» в подвале было единственным, что окно говорило человеку во время
+// обновления: служба на этой минуте остановлена намеренно, статус пуст, и
+// подпись читалась как «программу подменили сборкой разработчика» (13.09.2026).
+describe("главный экран: версия в подвале", () => {
+  it("без ответа службы не выдумывает версию dev", () => {
+    render(<Glavnyy status={{ sostoyanie: "sluzhba-molchit" }} />);
+    expect(document.body).not.toHaveTextContent(/\bdev\b/);
+  });
+
+  it("с ответом службы показывает её номер", () => {
+    render(<Glavnyy status={{ sostoyanie: "podnyat", versiya_programmy: "1.1.0" }} />);
+    expect(document.body).toHaveTextContent(/Affory 1\.1\.0/);
+  });
+});

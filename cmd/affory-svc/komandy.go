@@ -254,7 +254,7 @@ type Sluzhba struct {
 	// Проверка обновлений (план «шесть удобств» §5): адрес каталога с
 	// versiya.json и архивами, загрузчик (подставляется тестами), находка.
 	adresObnovleniy     string
-	skachatFayl         func(ctx context.Context, adres string, predel int64) ([]byte, error)
+	skachatFayl         func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error)
 	obnovlenie          *protokol.ObnovlenieOtvet
 	obnovlenieProvereno *time.Time
 	// Правило IPv6 живёт ровно столько же, сколько туннель, и НЕ зависит от

@@ -103,3 +103,34 @@ type ObnovlenieOtvet struct {
 	Razmer    int64     `json:"razmer"`
 	Provereno time.Time `json:"provereno"`
 }
+
+// Шаги обновления. Ответ на downloadUpdate приходит ОДИН и в самом конце, а
+// между нажатием и им лежат два десятка мегабайт и подмена файлов. Без событий
+// окно всё это время показывает человеку ровно ничего.
+const (
+	ShagSkachivanie = "skachivanie"
+	ShagSverka      = "sverka"
+	ShagRaspakovka  = "raspakovka"
+	// ShagPodmena последний, который успевает уйти: сразу за ним служба
+	// останавливается сама, и следующую новость окно узнаёт, когда новая версия
+	// поднимется и ответит. Ожидание этих секунд ведёт окно, а не служба.
+	ShagPodmena = "podmena"
+	ShagOtkaz   = "otkaz"
+)
+
+// HodObnovleniya это тело события obnovlenie-hod.
+type HodObnovleniya struct {
+	Shag string `json:"shag"`
+	// Versiya выпуска, ради которого всё затеяно: окно подписывает им полосу,
+	// потому что своя версия в это время уже ничего не значит.
+	Versiya string `json:"versiya,omitempty"`
+	// Доля загрузки. Vsego берётся из описания выпуска, поэтому известна до
+	// первого байта; ноль значит, что сервер размера не назвал.
+	Skachano int64 `json:"skachano,omitempty"`
+	Vsego    int64 `json:"vsego,omitempty"`
+	// SrokS у шага подмены: сколько секунд служба даёт новой версии на ответ,
+	// прежде чем вернуть прежнюю.
+	SrokS int `json:"srok_s,omitempty"`
+	// Tekst у отказа: та же причина, что ушла бы в ответ.
+	Tekst string `json:"tekst,omitempty"`
+}

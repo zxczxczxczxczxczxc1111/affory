@@ -376,7 +376,11 @@ export function Glavnyy({
             {vSeti(podnyat ? status.podnyat_s : undefined, seychas)}
           </b>
         </span>
-        <span>Affory {status.versiya_programmy ?? "dev"}</span>
+        {/* Без номера, а не со словом «dev»: версия приходит от службы, и её
+            отсутствие значит «служба молчит», что и так написано выше. Во
+            время обновления служба молчит намеренно, и подпись «Affory dev»
+            прочли 13.09.2026 как подмену сборкой разработчика. */}
+        <span>{status.versiya_programmy ? `Affory ${status.versiya_programmy}` : "Affory"}</span>
       </footer>
     </section>
   );

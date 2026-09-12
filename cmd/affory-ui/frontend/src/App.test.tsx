@@ -29,6 +29,8 @@ const stend = vi.hoisted(() => {
     podpischiki: [] as ((kadr: unknown) => void)[],
     /** Наблюдатели видимости окна: Go сообщает сюда «свернулось / развернулось». */
     nablyudateliOkna: [] as ((vidno: boolean) => void)[],
+    /** Наблюдатели вкладки: трей просит окно открыть названную. */
+    nablyudateliVkladki: [] as ((vkladka: string) => void)[],
     sluzhbaEst: true,
     /** Non-null makes tekstBufera throw instead of answering "". */
     bufer: null as string | null,
@@ -104,6 +106,12 @@ vi.mock("./most", () => ({
     stend.s.nablyudateliOkna.push(obrabotchik);
     return () => {
       stend.s.nablyudateliOkna = stend.s.nablyudateliOkna.filter((n) => n !== obrabotchik);
+    };
+  },
+  naVkladku: (obrabotchik: (vkladka: string) => void) => {
+    stend.s.nablyudateliVkladki.push(obrabotchik);
+    return () => {
+      stend.s.nablyudateliVkladki = stend.s.nablyudateliVkladki.filter((n) => n !== obrabotchik);
     };
   },
   oknoSvernut: () => undefined,
@@ -219,6 +227,14 @@ function mostProby() {
     okno(vidno: boolean) {
       for (const n of [...s.nablyudateliOkna]) n(vidno);
     },
+    /** Событие службы, как оно приходит по каналу. */
+    sobytie(kadr: unknown) {
+      for (const p of [...s.podpischiki]) p(kadr);
+    },
+    /** Трей просит открыть вкладку: ровно то, что делает пункт «Обновить до X». */
+    vkladka(imya: string) {
+      for (const n of [...s.nablyudateliVkladki]) n(imya);
+    },
   };
 }
 
@@ -234,6 +250,7 @@ beforeEach(() => {
   s.otkazy = new Map();
   s.podpischiki = [];
   s.nablyudateliOkna = [];
+  s.nablyudateliVkladki = [];
   s.sluzhbaEst = true;
   s.bufer = null;
   s.buferLomaetsya = false;
@@ -783,4 +800,52 @@ describe("замер полосы", () => {
     await waitFor(() => expect(most.skolkoRaz("status")).toBeGreaterThan(bylo));
   });
 
+});
+
+// 13.09.2026, три живые жалобы об одной минуте: «перебросило на dev версию»,
+// «ничего не происходит из трея», «ошибка в окне после ручной установки».
+describe("оболочка: обновление", () => {
+  it("ведёт ход обновления от события службы до карточки настроек", async () => {
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "podnyat", versiya_programmy: "1.0.3" });
+    render(<App />);
+    await screen.findByRole("tab", { name: "Настройки" });
+    fireEvent.click(screen.getByRole("tab", { name: "Настройки" }));
+
+    most.sobytie({
+      tip: "sobytie", imya: "obnovlenie-hod",
+      telo: { shag: "skachivanie", versiya: "1.1.0", skachano: 6895077, vsego: 27580311 },
+    });
+
+    const ryad = await screen.findByTestId("obnovlenie");
+    expect(ryad).toHaveTextContent(/обновление до 1\.1\.0/);
+    expect(await screen.findByRole("progressbar", { name: /обновлени/i })).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("гасит полосу, когда обновление отказало", async () => {
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "podnyat", versiya_programmy: "1.0.3" });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Настройки" }));
+    most.sobytie({ tip: "sobytie", imya: "obnovlenie-hod", telo: { shag: "raspakovka", versiya: "1.1.0" } });
+    await screen.findByRole("progressbar", { name: /обновлени/i });
+
+    most.sobytie({ tip: "sobytie", imya: "obnovlenie-hod", telo: { shag: "otkaz", tekst: "архив не скачан" } });
+
+    await waitFor(() => expect(screen.queryByRole("progressbar", { name: /обновлени/i })).toBeNull());
+  });
+
+  it("открывает настройки, когда трей зовёт к обновлению", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "podnyat", versiya_programmy: "1.0.3" });
+    render(<App />);
+    await screen.findByRole("tab", { name: "Настройки" });
+    expect(screen.getByRole("tab", { name: "Подключение" })).toHaveAttribute("aria-selected", "true");
+
+    most.vkladka("nastroyki");
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Настройки" })).toHaveAttribute("aria-selected", "true"));
+    expect(await screen.findByTestId("obnovlenie")).toBeTruthy();
+  });
 });

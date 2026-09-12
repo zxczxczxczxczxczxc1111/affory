@@ -35,8 +35,8 @@ func opisanieVypuska(versiya string) []byte {
 }
 
 // vypuskVSeti отвечает за три адреса выпуска; всё прочее это чужой адрес.
-func vypuskVSeti(versiya, hesh string, arhiv []byte, sprosili *[]string) func(context.Context, string, int64) ([]byte, error) {
-	return func(ctx context.Context, adres string, predel int64) ([]byte, error) {
+func vypuskVSeti(versiya, hesh string, arhiv []byte, sprosili *[]string) func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
+	return func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
 		if sprosili != nil {
 			*sprosili = append(*sprosili, adres)
 		}
@@ -46,6 +46,12 @@ func vypuskVSeti(versiya, hesh string, arhiv []byte, sprosili *[]string) func(co
 		case "https://obn.example/d/affory-" + versiya + ".zip.sha256":
 			return []byte(hesh + "  affory-" + versiya + ".zip\n"), nil
 		case "https://obn.example/d/affory-" + versiya + ".zip":
+			// Настоящая загрузка докладывает долю по ходу чтения тела; без этого
+			// подставная сеть тихо отменяла бы полосу в окне.
+			if hod != nil {
+				hod(int64(len(arhiv))/2, int64(len(arhiv)))
+				hod(int64(len(arhiv)), int64(len(arhiv)))
+			}
 			return arhiv, nil
 		}
 		return nil, errors.New("чужой адрес " + adres)
@@ -128,7 +134,7 @@ func TestProverkaBezNovoyVersiiStavitOtmetku(t *testing.T) {
 
 func TestProverkaSetOtkazNeTrogaetNahodku(t *testing.T) {
 	s := sVersiey(t, "0.6.2")
-	s.skachatFayl = func(ctx context.Context, adres string, predel int64) ([]byte, error) {
+	s.skachatFayl = func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
 		return nil, errors.New("сети нет")
 	}
 	if _, err := s.proveritObnovlenie(context.Background()); err == nil {
@@ -142,7 +148,7 @@ func TestProverkaSetOtkazNeTrogaetNahodku(t *testing.T) {
 
 func TestDevNeProveryaet(t *testing.T) {
 	s := sVersiey(t, "dev")
-	s.skachatFayl = func(ctx context.Context, adres string, predel int64) ([]byte, error) {
+	s.skachatFayl = func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
 		t.Fatal("сборка dev полезла в сеть")
 		return nil, nil
 	}
@@ -205,7 +211,7 @@ func TestDownloadUpdateOtvergaetChuzhoyHesh(t *testing.T) {
 // чужой узел.
 func TestVypuskBezArhivaPoHttpsOtvergaetsya(t *testing.T) {
 	s := sVersiey(t, "0.6.2")
-	s.skachatFayl = func(ctx context.Context, adres string, predel int64) ([]byte, error) {
+	s.skachatFayl = func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
 		return []byte(`{"tag_name":"v0.6.3","assets":[{"name":"affory-0.6.3.zip","size":1,"browser_download_url":"http://obn.example/d/affory-0.6.3.zip"},{"name":"affory-0.6.3.zip.sha256","size":1,"browser_download_url":"https://obn.example/d/affory-0.6.3.zip.sha256"}]}`), nil
 	}
 	if _, err := s.proveritObnovlenie(context.Background()); err == nil || !strings.Contains(err.Error(), "https") {
@@ -233,7 +239,7 @@ func TestZakrytyyRepozitoriyObyasnyaetsya(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
-	_, err := skachatPoSeti(context.Background(), srv.URL, 1<<20)
+	_, err := skachatPoSeti(context.Background(), srv.URL, 1<<20, nil)
 	if err == nil {
 		t.Fatal("404 прошёл как успех")
 	}

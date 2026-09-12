@@ -104,7 +104,9 @@ func razobratVersiyu(v string) ([3]int, bool) {
 
 // skachatPoSeti это настоящая загрузка с потолком: адреса файлов приходят из
 // описания выпуска, и страница-заглушка на их месте не должна занять диск.
-func skachatPoSeti(ctx context.Context, adres string, predel int64) ([]byte, error) {
+// hod зовётся по ходу чтения тела и может быть nil: описание выпуска и файл
+// суммы весят килобайты, полосу по ним не рисуют.
+func skachatPoSeti(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
 	z, err := http.NewRequestWithContext(ctx, http.MethodGet, adres, nil)
 	if err != nil {
 		return nil, err
@@ -125,7 +127,11 @@ func skachatPoSeti(ctx context.Context, adres string, predel int64) ([]byte, err
 	if o.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("код ответа %d", o.StatusCode)
 	}
-	b, err := io.ReadAll(io.LimitReader(o.Body, predel+1))
+	var telo io.Reader = io.LimitReader(o.Body, predel+1)
+	if hod != nil {
+		telo = &schetchikChteniya{iz: telo, vsego: o.ContentLength, hod: hod}
+	}
+	b, err := io.ReadAll(telo)
 	if err != nil {
 		return nil, err
 	}
@@ -135,10 +141,35 @@ func skachatPoSeti(ctx context.Context, adres string, predel int64) ([]byte, err
 	return b, nil
 }
 
+// otstupHoda между докладами о доле. Каждый прочитанный кусок это событие всем
+// подписчикам и перерисовка окна; двадцать мегабайт дали бы их тысячи.
+const otstupHoda = 250 * time.Millisecond
+
+// schetchikChteniya считает прочитанное и докладывает не чаще отступа. Последний
+// доклад приходит с концом тела, поэтому полоса доходит до края, а не замирает
+// на девяноста восьми процентах.
+type schetchikChteniya struct {
+	iz       io.Reader
+	vsego    int64
+	bylo     int64
+	posledny time.Time
+	hod      func(bylo, vsego int64)
+}
+
+func (s *schetchikChteniya) Read(p []byte) (int, error) {
+	n, err := s.iz.Read(p)
+	s.bylo += int64(n)
+	if err == io.EOF || time.Since(s.posledny) >= otstupHoda {
+		s.posledny = time.Now()
+		s.hod(s.bylo, s.vsego)
+	}
+	return n, err
+}
+
 // posledniyVypusk читает описание последнего выпуска и файл .sha256 рядом с
 // архивом. Ошибка любого шага это ошибка проверки, не «обновлений нет».
 func (s *Sluzhba) posledniyVypusk(ctx context.Context) (*svedeniyaVypuska, error) {
-	b, err := s.skachatFayl(ctx, s.adresObnovleniy, predelOpisaniya)
+	b, err := s.skachatFayl(ctx, s.adresObnovleniy, predelOpisaniya, nil)
 	if err != nil {
 		return nil, fmt.Errorf("описание выпуска не получено: %w", err)
 	}
@@ -166,7 +197,7 @@ func (s *Sluzhba) posledniyVypusk(ctx context.Context) (*svedeniyaVypuska, error
 	if !strings.HasPrefix(sv.AdresArhiva, "https://") || !strings.HasPrefix(adresHesha, "https://") {
 		return nil, fmt.Errorf("в выпуске %s нет %s с .sha256 по https", versiya, arhiv)
 	}
-	h, err := s.skachatFayl(ctx, adresHesha, predelHesha)
+	h, err := s.skachatFayl(ctx, adresHesha, predelHesha, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%s.sha256 не получен: %w", arhiv, err)
 	}
@@ -250,23 +281,32 @@ func (s *Sluzhba) downloadUpdate(ctx context.Context, k protokol.Kadr) protokol.
 	if !novee(v.Versiya, versiyaProgrammy) {
 		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeSkachano, fmt.Sprintf("последний выпуск %s, это не новее %s", v.Versiya, versiyaProgrammy))
 	}
-	arhiv, err := s.skachatFayl(do, v.AdresArhiva, predelArhivaSeti)
+	s.hodObnovleniya(protokol.HodObnovleniya{Shag: protokol.ShagSkachivanie, Versiya: v.Versiya, Vsego: v.Razmer})
+	arhiv, err := s.skachatFayl(do, v.AdresArhiva, predelArhivaSeti, func(bylo, vsego int64) {
+		if vsego <= 0 {
+			vsego = v.Razmer
+		}
+		s.hodObnovleniya(protokol.HodObnovleniya{
+			Shag: protokol.ShagSkachivanie, Versiya: v.Versiya, Skachano: bylo, Vsego: vsego,
+		})
+	})
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeSkachano, "архив не скачан: "+err.Error())
+		return s.otkazObnovleniya(k, protokol.KodObnovlenieNeSkachano, "архив не скачан: "+err.Error())
 	}
+	s.hodObnovleniya(protokol.HodObnovleniya{Shag: protokol.ShagSverka, Versiya: v.Versiya})
 	if fakt := sha256.Sum256(arhiv); hex.EncodeToString(fakt[:]) != v.Sha256 {
-		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeSkachano, "sha256 скачанного архива не совпал с .sha256 выпуска")
+		return s.otkazObnovleniya(k, protokol.KodObnovlenieNeSkachano, "sha256 скачанного архива не совпал с .sha256 выпуска")
 	}
 	kat := filepath.Join(s.dirDannyh, katalogObnovleniy)
 	if err := os.MkdirAll(kat, 0o755); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeSkachano, "каталог обновлений не создан: "+err.Error())
+		return s.otkazObnovleniya(k, protokol.KodObnovlenieNeSkachano, "каталог обновлений не создан: "+err.Error())
 	}
 	put := filepath.Join(kat, v.Arhiv)
 	if err := os.WriteFile(put, arhiv, 0o644); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeSkachano, "архив не записан: "+err.Error())
+		return s.otkazObnovleniya(k, protokol.KodObnovlenieNeSkachano, "архив не записан: "+err.Error())
 	}
 	if err := os.WriteFile(put+".sha256", []byte(v.Sha256+"  "+v.Arhiv+"\n"), 0o644); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeSkachano, "хеш не записан: "+err.Error())
+		return s.otkazObnovleniya(k, protokol.KodObnovlenieNeSkachano, "хеш не записан: "+err.Error())
 	}
-	return s.ustanovitArhiv(k, put)
+	return s.ustanovitArhivSVersiey(k, put, v.Versiya)
 }
