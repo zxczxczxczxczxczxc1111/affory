@@ -253,9 +253,9 @@ describe("настройки: защита", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("объясняет, что отключение сферы освобождает сеть", () => {
+  it("объясняет, что отключение освобождает сеть", () => {
     polnyy({ sostoyanie: "podnyat" });
-    expect(screen.getByTestId("ves-trafik-ryad")).toHaveTextContent("После отключения сферы сеть освобождается");
+    expect(screen.getByTestId("ves-trafik-ryad")).toHaveTextContent("после отключения сеть освобождается");
   });
   it("порт локального прокси показан, а без порта сказано, что прокси не поднят", () => {
     polnyy({ port_proksi: 10809 });
