@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
@@ -88,7 +87,7 @@ func (s *Sluzhba) oprashivatStat(ctx context.Context) {
 		case <-t.C:
 		}
 		s.mu.Lock()
-		teg := genkonfig.TegKandidata(s.nesushchiyId)
+		teg := tegSnimka(s.nesushchiyId)
 		adresVyhoda := s.adresVyhoda
 		s.mu.Unlock()
 		// Критерий «ядро живо» это ПУСТОЙ адрес clash_api, а не состояние. Два

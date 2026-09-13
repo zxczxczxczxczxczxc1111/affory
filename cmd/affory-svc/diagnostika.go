@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
@@ -137,7 +136,7 @@ func (s *Sluzhba) nastoyashchieIstochniki() diagnostika.Istochniki {
 			ctx, otmena := context.WithTimeout(context.Background(), 3*time.Second)
 			defer otmena()
 			s.mu.Lock()
-			teg := genkonfig.TegKandidata(s.nesushchiyId)
+			teg := tegSnimka(s.nesushchiyId)
 			s.mu.Unlock()
 			nachalo := time.Now()
 			sn, err := s.snimokStat(ctx, adres, sekret, teg)

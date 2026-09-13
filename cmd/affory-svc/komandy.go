@@ -619,6 +619,24 @@ func (s *Sluzhba) StatusS(oshib *protokol.Oshibka) protokol.StatusOtvet {
 // Функция, а не константа на месте вызова: так подмена аргумента видна мутацией.
 func tegDlyaZamera() string { return genkonfig.TegSelector }
 
+// tegSnimka выбирает, кого спрашивать о цифрах экрана и подробного журнала.
+//
+// Пока группа не назвала выбор, спрашивается ГРУППА, а не кандидат. Тег
+// кандидата из пустого идентификатора это строка "srv-", исходящего с таким
+// именем у ядра нет, и снимок не снимается вовсе. Приёмка 13.09.2026 поймала
+// это как молчание статистики первые четыре секунды после подключения: группа
+// avto называет выбор около 5.6 с, и всё это время экран стоял без цифр.
+//
+// Счётчики трафика от тега не зависят, они из /connections. Зависит только
+// задержка, а её отсутствие договор экрана допускает: он не рисует ноль за
+// неизмеренное.
+func tegSnimka(nesushchiyId string) string {
+	if nesushchiyId == "" {
+		return genkonfig.TegSelector
+	}
+	return genkonfig.TegKandidata(nesushchiyId)
+}
+
 func (s *Sluzhba) Connect(ctx context.Context) error {
 	return s.connect(ctx, nil)
 }
