@@ -348,6 +348,21 @@ func (s *Sluzhba) setRouteMode(ctx context.Context, r protokol.Rezhim) (trebuetP
 	// которого в ядре нет: экран говорит «авто», а трафик идёт по ручному
 	// выбору, и заметить это человеку нечем.
 	if err := s.postavitVybor(ctx, adres, sekret, genkonfig.TegSelector, teg); err != nil {
+		// Ядра НЕТ на связи это не отказ ядра, и разница здесь решающая.
+		//
+		// Порядок «PUT перед записью» защищает от расхождения между экраном и
+		// живым трафиком. Расходиться не с чем, когда ядра нет вовсе: трафика
+		// через него не идёт никакого, а следующий подъём соберёт конфиг
+		// заново и возьмёт режим из набора. Ведём себя ровно как при пустом
+		// адресе выше.
+		//
+		// Без этой ветки человек, у которого сервер лёг, заперт: авария уже
+		// опустила ядро, нажатие «Автоматически» отвечает отказом, набор
+		// остаётся ручным, и восстановление продолжает поднимать ровно тот
+		// сервер, который лёг. Замерено в госте 13.09.2026, пять минут подряд.
+		if yadra.YadroNeSlushaet(err) {
+			return false, zapisat()
+		}
 		return false, fmt.Errorf("%w: %w", ErrRezhimNeDoehalVYadro, err)
 	}
 	if err := zapisat(); err != nil {
@@ -437,6 +452,13 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 	// оставить человека на мёртвом кандидате со словами «выбери другой».
 	prezhniy, err := s.vyborGruppy(ctx, adres, sekret, genkonfig.TegSelector)
 	if err != nil {
+		// Ядра нет на связи: та же ветка, что и при пустом адресе выше, и по
+		// той же причине. «Сервер лёг, выберу другой» это первое, что делает
+		// человек, и попадает он ровно в это окно: авария опустила ядро
+		// секундой раньше. Отказать здесь значит отказать там, где нужнее.
+		if yadra.YadroNeSlushaet(err) {
+			return s.zapomnitVybor(id)
+		}
 		return fmt.Errorf("текущий выбор ядра не прочитан, переключаться вслепую нельзя: %w", err)
 	}
 
@@ -449,6 +471,11 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 
 	teg := genkonfig.TegKandidata(id)
 	if err := s.postavitVybor(ctx, adres, sekret, genkonfig.TegSelector, teg); err != nil {
+		// Ядро могло исчезнуть и между чтением выбора и этим PUT: окно узкое,
+		// но оно то же самое.
+		if yadra.YadroNeSlushaet(err) {
+			return s.zapomnitVybor(id)
+		}
 		return err
 	}
 	// 204 говорит «команда принята», а не «трафик пошёл туда». Судит проба.
