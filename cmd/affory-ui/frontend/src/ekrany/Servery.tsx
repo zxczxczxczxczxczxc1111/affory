@@ -261,7 +261,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   };
   const zakrytFormu = () => { zadatDobavlyayu(false); zadatSsylku(""); zadatAdres(""); };
 
-  const otmena = !pervyyZapusk && <Knopka rang="tekst" onClick={zakrytFormu}>отмена</Knopka>;
+  const otmena = !pervyyZapusk && <Knopka rang="tekst" onClick={zakrytFormu}>Отмена</Knopka>;
   const forma = (
     <Karta testId="forma">
       <div className="flex flex-col gap-3 px-4 py-3">
@@ -507,7 +507,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
               aktiven={aktiven}
               onClick={() => naKomandu("measureDelays", {})}
             >
-              проверить
+              Проверить
             </Knopka>
           </div>
           <div

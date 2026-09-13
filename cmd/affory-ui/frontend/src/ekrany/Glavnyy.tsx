@@ -7,6 +7,7 @@ import type {
   StatusOtvet,
 } from "../protokol";
 import { glavnoeDeystvie } from "./podpisi";
+import { slovoPosleChisla } from "../chisla";
 import { Zaderzhka, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
@@ -268,7 +269,7 @@ export function Glavnyy({
               <h2>Серверы</h2>
               <p>
                 {spisok
-                  ? `${izvestnye.length} доступно в списке`
+                  ? `${izvestnye.length} ${slovoPosleChisla(izvestnye.length, "сервер", "сервера", "серверов")} в списке`
                   : spisokOtkaz ? "Не удалось загрузить список" : "Список загружается…"}
               </p>
             </div>
@@ -313,7 +314,7 @@ export function Glavnyy({
             {proverkaIdet ? "Проверка…" : "Проверить серверы"}
           </button>
           </div>
-          <p className="af-delay-note">Последняя проверка: задержка VPN мерится только при подключении, узел в любом состоянии</p>
+          <p className="af-delay-note">Задержка VPN мерится только при подключении</p>
           <div className="af-server-list" aria-label="Список серверов">
             {shown.map((server) => {
               const active = podnyat && status.nesushchiy_id === server.id;

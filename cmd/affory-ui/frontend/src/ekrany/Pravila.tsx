@@ -180,7 +180,7 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
                 <Knopka rang="glavnaya" testId="dobavit-zapis" aktiven={vvedeno} onClick={dobavit}>
                   Добавить
                 </Knopka>
-                <Knopka rang="tekst" onClick={zakrytFormu}>отмена</Knopka>
+                <Knopka rang="tekst" onClick={zakrytFormu}>Отмена</Knopka>
               </div>
             </div>
           </Karta>

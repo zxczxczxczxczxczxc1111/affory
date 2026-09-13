@@ -226,7 +226,7 @@ export function Nastroyki({
           <Karta>
             <Ryad
               testId="ves-trafik-ryad"
-              nazvanie="Блокировать сеть при обрыве VPN"
+              nazvanie="блокировать сеть при обрыве VPN"
               poyasnenie={
                 mozhnoRezhim || !aktiven
                   ? "Действует во время подключения. После отключения сферы сеть освобождается"

@@ -15,11 +15,15 @@ export interface PervyyZapuskProps {
 export function PervyyZapusk({ sostoyanie, prichina, naUstanovku }: PervyyZapuskProps) {
   const idyot = sostoyanie === "ustanavlivaetsya";
   return (
-    <section className="flex flex-col gap-4 p-8" aria-label="Первый запуск">
-      <h2 className="text-foreground text-2xl font-semibold">служба не установлена</h2>
+    // Единственное содержимое окна на этом шаге: прижатый в угол блок
+    // оставлял три четверти чёрного поля и читался как недогрузившийся
+    // экран. Заголовок с прописной, как у всех остальных экранов.
+    <section className="flex h-full flex-col items-center justify-center gap-4 p-8" aria-label="Первый запуск">
+      <div className="flex w-full max-w-prose flex-col gap-4">
+      <h2 className="text-foreground text-2xl font-semibold">Служба не установлена</h2>
       <p className="text-fg-secondary max-w-prose text-sm">
-        VPN поднимает служба Windows, ей нужны права администратора один раз, при установке.
-        дальше программа работает без запросов
+        VPN поднимает служба Windows, и ей нужны права администратора один раз,
+        при установке; дальше программа работает без запросов
       </p>
       {sostoyanie === "otkaz" && prichina && (
         <p className="text-danger text-sm" data-testid="prichina">{prichina}</p>
@@ -44,6 +48,7 @@ export function PervyyZapusk({ sostoyanie, prichina, naUstanovku }: PervyyZapusk
           Установить службу
         </button>
       )}
+      </div>
     </section>
   );
 }

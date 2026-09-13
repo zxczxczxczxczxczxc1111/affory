@@ -239,6 +239,18 @@ export function Marshruty({
                 <p>Домены и поддомены одним переключателем</p>
               </div>
             </div>
+            {(pravila?.katalog?.servisy ?? []).length === 0 && (
+              // Пустой каталог рисовал пустоту: заголовок, подпись и полэкрана
+              // ничего. Служба старее окна не шлёт каталог вовсе, и человек
+              // видел сломанную вкладку вместо объяснения.
+              <div className="af-empty" data-testid="net-katalog">
+                <b>Каталог сервисов не пришёл</b>
+                <p>
+                  Список готовых наборов доменов обновляется вместе с программой.
+                  Правила приложений и сайтов работают и без него.
+                </p>
+              </div>
+            )}
             <div className="af-services">
               {(pravila?.katalog?.servisy ?? []).map((service) => {
                 const explicit = services.find((r) => r.id === service.id);

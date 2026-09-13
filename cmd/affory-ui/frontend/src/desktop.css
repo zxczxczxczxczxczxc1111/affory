@@ -951,7 +951,10 @@
 }
 
 /* The viewport owns the frame; 100% plus a banner was an accounting scandal. */
-.af-viewport { display: flex; flex-direction: column; padding: 12px; }
+/* Полоса прокрутки окна ездила на умолчании движка: широкая светлая рейка на
+   чёрном, единственное место интерфейса, которое никто не рисовал. Списки
+   внутри окна темнили свою полосу давно, а сам вьюпорт нет. */
+.af-viewport { display: flex; flex-direction: column; padding: 12px; scrollbar-width: thin; scrollbar-color: #39343f transparent; }
 .af-viewport > :not(.af-home) { flex-shrink: 0; }
 .af-home { max-width: none; height: auto; min-height: 580px; flex: 1 0 auto; border: 1px solid var(--af-line); border-radius: 14px; overflow: hidden; }
 .af-home-grid { flex: 1 0 auto; }
