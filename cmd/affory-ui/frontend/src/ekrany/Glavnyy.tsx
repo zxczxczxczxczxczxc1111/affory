@@ -155,7 +155,7 @@ export function Glavnyy({
       : podnyat
         ? effectiveRoute === "direct"
           ? "VPN для выбранных приложений и сайтов"
-          : "Соединение через VPN установлено"
+          : "Подключено через VPN"
         : status.sostoyanie === "podnimaetsya"
           ? "Подключение…"
           : status.sostoyanie === "vosstanavlivaetsya"
@@ -241,7 +241,7 @@ export function Glavnyy({
             />
             <p className="af-note">
               {route === "vpn"
-                ? "Через туннель, кроме прямых маршрутов"
+                ? "Через VPN, кроме прямых маршрутов"
                 : "Напрямую, кроме выбранных приложений и сайтов"}
             </p>
           </div>
@@ -313,7 +313,7 @@ export function Glavnyy({
             {proverkaIdet ? "Проверка…" : "Проверить серверы"}
           </button>
           </div>
-          <p className="af-delay-note">Последняя проверка: VPN через туннель, узел при выключенном VPN</p>
+          <p className="af-delay-note">Последняя проверка: задержка VPN мерится только при подключении, узел в любом состоянии</p>
           <div className="af-server-list" aria-label="Список серверов">
             {shown.map((server) => {
               const active = podnyat && status.nesushchiy_id === server.id;

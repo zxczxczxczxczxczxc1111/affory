@@ -18,7 +18,7 @@ export function PervyyZapusk({ sostoyanie, prichina, naUstanovku }: PervyyZapusk
     <section className="flex flex-col gap-4 p-8" aria-label="Первый запуск">
       <h2 className="text-foreground text-2xl font-semibold">служба не установлена</h2>
       <p className="text-fg-secondary max-w-prose text-sm">
-        туннель поднимает служба Windows, ей нужны права администратора один раз, при установке.
+        VPN поднимает служба Windows, ей нужны права администратора один раз, при установке.
         дальше программа работает без запросов
       </p>
       {sostoyanie === "otkaz" && prichina && (

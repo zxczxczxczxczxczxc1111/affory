@@ -20,7 +20,7 @@ const vseSostoyaniya = [
 describe("главный экран", () => {
   it.each(vseSostoyaniya)("рисует %s своей подписью", (s) => {
     render(<Glavnyy status={{ sostoyanie: s }} />);
-        const messages = { "sluzhba-molchit": "Нет связи со службой", vyklyuchen: "Интернет работает напрямую", podnimaetsya: "Подключение", podnyat: "Соединение через VPN установлено", "ne-neset": "Соединение не передаёт трафик", vosstanavlivaetsya: "Переподключение", otkaz: "Не удалось подключиться" };
+        const messages = { "sluzhba-molchit": "Нет связи со службой", vyklyuchen: "Интернет работает напрямую", podnimaetsya: "Подключение", podnyat: "Подключено через VPN", "ne-neset": "Соединение не передаёт трафик", vosstanavlivaetsya: "Переподключение", otkaz: "Не удалось подключиться" };
     expect(screen.getByTestId("sostoyanie")).toHaveTextContent(messages[s]);
   });
 

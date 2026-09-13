@@ -684,7 +684,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 	if s.sost != protokol.SostVyklyuchen {
 		zanyato := s.sost
 		s.mu.Unlock()
-		return fmt.Errorf("туннель уже в состоянии %s", zanyato)
+		return fmt.Errorf("VPN уже в состоянии %s", zanyato)
 	}
 	s.sost = protokol.SostPodnimaetsya
 	s.cancelSpeedLocked("началось подключение к VPN, запусти замер после него")
@@ -784,7 +784,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 			// целиком. Разница ровно в одном: состояние не трогаем, его уже
 			// поставил тот, кто отменял.
 			if s.podyomOtmenyon(moyo) {
-				log.Printf("подключение отменено, пока поднимался туннель: %v", err)
+				log.Printf("подключение отменено, пока поднимался VPN: %v", err)
 				s.Disconnect()
 				return errPodyomOtmenyon
 			}
@@ -1035,9 +1035,9 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 	// следующей команды, и разойтись им нельзя.
 	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
 		Kod:   kodNepodnyavshegosya(poslednyaya),
-		Tekst: fmt.Sprintf("туннель поднялся, но не понёс трафик (%d попытки по %s): %v", popytokPodyoma, zhdatPodyoma, poslednyaya),
+		Tekst: fmt.Sprintf("VPN поднялся, но не понёс трафик (%d попытки по %s): %v", popytokPodyoma, zhdatPodyoma, poslednyaya),
 	})
-	return fmt.Errorf("туннель не понёс трафик за %d попытки по %s: %w", popytokPodyoma, zhdatPodyoma, poslednyaya)
+	return fmt.Errorf("VPN не понёс трафик за %d попытки по %s: %w", popytokPodyoma, zhdatPodyoma, poslednyaya)
 }
 
 // kodPodyomaTunnelya различает пропавший драйвер и не созданный адаптер.
@@ -1184,7 +1184,7 @@ func (s *Sluzhba) otmenit() {
 // ровно то, чего эта пара и должна не допускать.
 func (s *Sluzhba) otmenitPodyom() {
 	s.mu.Lock()
-	s.cancelSpeedLocked("VPN отключается. Замер остановлен.")
+	s.cancelSpeedLocked("VPN отключается, замер остановлен")
 	s.pokolenieP++
 	otmena := s.otmena
 	s.otmena = nil
@@ -1482,7 +1482,7 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 			s.otmenit()
 			s.opustit()
 			s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
-				Kod: protokol.KodTunnelNeNeset, Tekst: "туннель перестал нести трафик"})
+				Kod: protokol.KodTunnelNeNeset, Tekst: "VPN перестал нести трафик"})
 			// Возвращаемся САМИ, и только после аварии. Осознанное отключение
 			// человеком не переподключает никогда, иначе кнопка «отключить»
 			// перестаёт работать: это и есть граница между обычным режимом и

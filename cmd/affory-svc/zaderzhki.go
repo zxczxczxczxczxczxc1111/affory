@@ -93,7 +93,7 @@ func (s *Sluzhba) zamerOdnogo(ctx context.Context, srv protokol.Server, adresKla
 	// Отсутствие туннеля это НЕ отказ сервера, и текст обязан это говорить.
 	// Иначе человек прочитает «сервер не отвечает» там, где не подключён он сам.
 	if adresKlash == "" {
-		z.RealpingOtkaz = "туннель опущен: через него мерить нечего"
+		z.RealpingOtkaz = "VPN отключён: через него мерить нечего"
 		return z
 	}
 	if d, err := s.zamerit(ctx, adresKlash, sekret, genkonfig.TegKandidata(srv.Id)); err != nil {

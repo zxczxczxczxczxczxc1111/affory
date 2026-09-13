@@ -21,7 +21,7 @@ export function Udalenie({ naUdalenie, naOtmenu }: UdalenieProps) {
     >
       <h3 className="text-foreground text-lg font-semibold">удалить программу</h3>
       <p className="text-fg-secondary text-sm">
-        снимутся правила брандмауэра, туннель, служба и автозапуск, потом каталог программы.
+        снимутся правила брандмауэра, VPN, служба и автозапуск, потом каталог программы.
         ключи серверов лежат отдельно и переживают снятие службы, поэтому вопрос
       </p>
 

@@ -146,7 +146,7 @@ func (s *Sluzhba) perepodnyatPodRezhim() error {
 
 	if err := s.perepodklyuchit(context.Background()); err != nil {
 		s.zabytRezhim()
-		return fmt.Errorf("туннель не переподнялся под режим, машина осталась открытой: %w", err)
+		return fmt.Errorf("VPN не переподключился под режим, машина осталась открытой: %w", err)
 	}
 	return nil
 }

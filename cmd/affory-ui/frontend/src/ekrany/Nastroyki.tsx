@@ -81,12 +81,12 @@ export interface AdresVyhoda {
 }
 
 function tekstAdresa(a: AdresVyhoda, podnyat: boolean): string {
-  if (a.cherez !== "tunnel") return `напрямую, туннель не поднят: ${a.adres}, ${a.vremya}`;
+  if (a.cherez !== "tunnel") return `напрямую, VPN не подключён: ${a.adres}, ${a.vremya}`;
   // The measurement was true when it was taken. After a disconnect the line
   // "через туннель" is a claim about NOW, and it is a false one (03.09.2026).
   return podnyat
-    ? `через туннель: ${a.adres}, ${a.vremya}`
-    : `измерено в ${a.vremya}, туннель с тех пор опущен: ${a.adres}`;
+    ? `через VPN: ${a.adres}, ${a.vremya}`
+    : `измерено в ${a.vremya}, VPN с тех пор отключён: ${a.adres}`;
 }
 
 /** "12:03" for the moment an answer landed. The service does not stamp
@@ -193,7 +193,7 @@ export function Nastroyki({
               naSmenu={(vkl) => naKomandu("setAutostart", { vkl })}
             />
           </Ryad>
-          <Ryad nazvanie="подключаться при старте" poyasnenie="туннель поднимает служба, до входа в систему" aktiven={aktiven}>
+          <Ryad nazvanie="подключаться при старте" poyasnenie="VPN поднимает служба, до входа в систему" aktiven={aktiven}>
             <Tumbler
               testId="pri-starte"
               podpis="подключаться при старте"
@@ -212,7 +212,7 @@ export function Nastroyki({
               {vopros ? "включить режим «весь трафик»" : "выключить режим «весь трафик»"}
             </h3>
             <p className="text-fg-secondary text-sm">
-              туннель переподнимается под новый режим, все соединения разорвутся и поднимутся заново.
+              VPN переподключается под новый режим, все соединения разорвутся и поднимутся заново.
               загрузки и звонки оборвутся
             </p>
             <div className="flex gap-2">
@@ -236,7 +236,7 @@ export function Nastroyki({
             >
               <Tumbler
                 testId="ves-trafik"
-                podpis="весь трафик только через туннель"
+                podpis="весь трафик только через VPN"
                 vkl={killSwitch}
                 aktiven={mozhnoRezhim}
                 naSmenu={(vkl) => { if (podnyat) zadatVopros(vkl); else naKomandu("setKillSwitch", { vkl }); }}
@@ -249,8 +249,8 @@ export function Nastroyki({
                 status.port_proksi
                   ? `127.0.0.1:${status.port_proksi} · http и socks, для программ, которые ходят через прокси`
                   : podnyat
-                    ? "не поднят: порт занят другой программой, туннель это не задевает"
-                    : "поднимается вместе с туннелем"
+                    ? "не поднят: порт занят другой программой, VPN это не задевает"
+                    : "поднимается вместе с VPN"
               }
               aktiven={aktiven}
             />
@@ -385,7 +385,7 @@ export function Nastroyki({
               <p className="text-sm">
                 приём {mbit(zamerPolosy.mbitVniz)} · отдача {mbit(zamerPolosy.mbitVverh)}
                 {" · "}
-                {zamerPolosy.cherezTunnel ? "через туннель" : "напрямую, туннель не поднят"}
+                {zamerPolosy.cherezTunnel ? "через VPN" : "напрямую, VPN не подключён"}
                 {" · "}
                 {zamerPolosy.vremya}
               </p>
@@ -448,7 +448,7 @@ export function Nastroyki({
             <Ryad
               testId="proverka-ustarela"
               nazvanie="прошлый результат больше не отвечает за сейчас"
-              poyasnenie="состояние туннеля сменилось после проверки, проверь заново"
+              poyasnenie="состояние VPN сменилось после проверки, проверь заново"
               aktiven={false}
             />
           )}

@@ -42,7 +42,7 @@ export function readSpeed(value: unknown): SpeedSnapshot | null {
   // Partial numbers never graduate into a successful pair by wishful thinking.
   if (snapshot.phase === "complete" && (!snapshot.result?.download_mbps || !snapshot.result.upload_mbps)) {
     snapshot.phase = "error";
-    snapshot.reason = "мишень не подтвердила оба направления, повтори замер";
+    snapshot.reason = "сервис не подтвердил оба направления, повтори замер";
     snapshot.result = undefined;
   }
   return snapshot;

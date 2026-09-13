@@ -62,7 +62,7 @@ func (s *Sluzhba) checkExitIp(ctx context.Context, k protokol.Kadr) protokol.Kad
 		return otvet(k.Id, k.Imya, map[string]string{"adres": adres, "cherez": "napryamuyu"})
 	}
 	if v.PortProksi == 0 {
-		return otkaz(k.Id, k.Imya, protokol.KodVyhodNeIzmeren, "локальный прокси не поднят, через туннель спросить нечем")
+		return otkaz(k.Id, k.Imya, protokol.KodVyhodNeIzmeren, "локальный прокси не поднят, через VPN спросить нечем")
 	}
 	adres, err := v.SprositVyhod(ctx, v.Endpoint, v.PortProksi)
 	if err != nil {

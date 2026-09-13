@@ -385,14 +385,14 @@ describe("серверы: замер задержки", () => {
     render(
       <Servery
         {...svoystva({
-          zaderzhki: [{ id: "s1", tcping_ms: 31, realping_otkaz: "туннель опущен" }],
+          zaderzhki: [{ id: "s1", tcping_ms: 31, realping_otkaz: "VPN отключён: через него мерить нечего" }],
         })}
       />,
     );
     const r = screen.getByTestId("zaderzhka-s1");
     expect(r).toHaveTextContent("31");
     expect(r).not.toHaveTextContent(/\b0\b/);
-    expect(r).toHaveTextContent(/туннель опущен|не измерен/);
+    expect(r).toHaveTextContent(/VPN отключён|не измерен/);
   });
 
   it("молчащий узел показан отказом, а не пустым местом", () => {

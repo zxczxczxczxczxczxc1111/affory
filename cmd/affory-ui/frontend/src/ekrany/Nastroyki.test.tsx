@@ -297,7 +297,7 @@ describe("настройки: отложенные команды", () => {
         adresVyhoda={{ adres: "203.0.113.5", cherez: "tunnel", vremya: "12:03" }} />,
     );
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/203\.0\.113\.5/);
-    expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/через туннель/);
+    expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/через VPN/);
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/12:03/);
     rerender(
       <Nastroyki status={{ sostoyanie: "vyklyuchen" }} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
@@ -484,13 +484,13 @@ describe("настройки: свежесть результата", () => {
     expect(screen.getByTestId("proverka-ustarela")).toHaveTextContent(/проверь заново/);
   });
 
-  it("«через туннель» не висит после отключения", () => {
+  it("«через VPN» не висит после отключения", () => {
     render(
       <Nastroyki status={status({ sostoyanie: "vyklyuchen" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         adresVyhoda={{ adres: "203.0.113.5", cherez: "tunnel", vremya: "12:03" }} />,
     );
-    expect(screen.getByTestId("adres-vyhoda")).not.toHaveTextContent(/через туннель/);
-    expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/туннель с тех пор опущен/);
+    expect(screen.getByTestId("adres-vyhoda")).not.toHaveTextContent(/через VPN/);
+    expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/VPN с тех пор отключён/);
   });
 });
 

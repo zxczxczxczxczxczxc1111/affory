@@ -469,7 +469,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 			log.Printf("откат выбора на %s не прошёл: %v", prezhniy, e)
 			s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
 				Kod:   protokol.KodTunnelNeNeset,
-				Tekst: "переключение не прошло, и возврат на прежний сервер тоже: туннель не несёт трафик",
+				Tekst: "переключение не прошло, и возврат на прежний сервер тоже: VPN не несёт трафик",
 			})
 			return fmt.Errorf("%w: проба %v, возврат %v", ErrOtkatNeUdalsya, err, e)
 		}
@@ -775,7 +775,7 @@ var ErrNovyyVyborNeNesyot = errors.New("новый сервер не несёт 
 // ErrOtkatNeUdalsya: проба через новый выбор не прошла И возврат на прежний
 // тоже. Ядро осталось на кандидате, который не несёт, целого подключения нет,
 // и служба переведена в ne-neset, откуда её поднимает восстановление.
-var ErrOtkatNeUdalsya = errors.New("возврат на прежний сервер не прошёл, туннель не несёт трафик")
+var ErrOtkatNeUdalsya = errors.New("возврат на прежний сервер не прошёл, VPN не несёт трафик")
 
 func kodSohraneniya(err error) string {
 	// Раньше errPravilaOtstali, а не после: выключенный профиль это ПРИЧИНА,

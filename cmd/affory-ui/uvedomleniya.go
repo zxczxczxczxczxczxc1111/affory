@@ -34,14 +34,14 @@ func chtoSoobshchit(pred, nov protokol.StatusOtvet) (Uvedomlenie, bool) {
 	switch nov.Sostoyanie {
 	case protokol.SostPodnyat:
 		if bylaAvariya {
-			return Uvedomlenie{"туннель восстановлен", "несёт " + nov.NesushchiyImya}, true
+			return Uvedomlenie{"VPN восстановлен", "несёт " + nov.NesushchiyImya}, true
 		}
 		if bylPodnyat && pred.NesushchiyId != "" && nov.NesushchiyId != "" && pred.NesushchiyId != nov.NesushchiyId {
 			return Uvedomlenie{"несёт " + nov.NesushchiyImya, "ядро переключило сервер"}, true
 		}
 	case protokol.SostNeNeset:
 		if pred.Sostoyanie != protokol.SostNeNeset {
-			return Uvedomlenie{"туннель не несёт", prichina}, true
+			return Uvedomlenie{"VPN не несёт трафик", prichina}, true
 		}
 	case protokol.SostOtkaz:
 		if pred.Sostoyanie != protokol.SostOtkaz {

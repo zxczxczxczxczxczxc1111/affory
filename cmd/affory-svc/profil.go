@@ -124,7 +124,7 @@ func (s *Sluzhba) importProfilya(ctx context.Context, k protokol.Kadr) protokol.
 		// Отказ пересборки НЕ отменяет импорт: секреты уже записаны и верны, а
 		// правила лишь отстали. Сообщить об этом надо, соврать про успех нельзя.
 		return otkaz(k.Id, k.Imya, protokol.KodFirewallFailed,
-			"профиль принят, туннель опущен, но правила брандмауэра отстали: "+oshibPeresborki.Error())
+			"профиль принят, VPN отключён, но правила брандмауэра отстали: "+oshibPeresborki.Error())
 	}
 	return otvet(k.Id, k.Imya, map[string]bool{"prinyato": true})
 }

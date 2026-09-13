@@ -45,7 +45,7 @@ func (s *Sluzhba) slediZaProksi(ctx context.Context) {
 			log.Printf("чужой системный прокси %s (%s)", p.Adres, protokol.KodForeignRegistryHijack)
 			s.izvestit("proxyHijack", protokol.Oshibka{
 				Kod:   protokol.KodForeignRegistryHijack,
-				Tekst: "системный прокси " + p.Adres + " перехватывает трафик мимо туннеля",
+				Tekst: "системный прокси " + p.Adres + " перехватывает трафик мимо VPN",
 			})
 		case !p.Chuzhoy(nash):
 			soobshchali = ""

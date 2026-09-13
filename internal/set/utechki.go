@@ -60,18 +60,18 @@ func (r *RezultatProverki) punktVyhoda(ctx context.Context, v VhodProverki) Punk
 	p := PunktProverki{Imya: "адрес выхода"}
 	switch {
 	case !v.Podnyat:
-		p.Itog, p.Tekst = ItogNeIzmereno, "туннель не поднят, сравнивать не с чем"
+		p.Itog, p.Tekst = ItogNeIzmereno, "VPN не подключён, сравнивать не с чем"
 		return p
 	case v.PortProksi == 0:
 		// Напрямую из службы мерить нельзя: свои процессы идут мимо туннеля по
 		// правилу петли, и домашний адрес тут был бы не утечкой, а замером
 		// не того.
-		p.Itog, p.Tekst = ItogNeIzmereno, "локальный прокси не поднят, через туннель спросить нечем"
+		p.Itog, p.Tekst = ItogNeIzmereno, "локальный прокси не поднят, через VPN спросить нечем"
 		return p
 	}
 	cherez, err := v.SprositVyhod(ctx, v.Endpoint, v.PortProksi)
 	if err != nil {
-		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("эндпоинт не ответил через туннель: %v", err)
+		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("эндпоинт не ответил через VPN: %v", err)
 		return p
 	}
 	r.AdresVyhoda = cherez
@@ -82,12 +82,12 @@ func (r *RezultatProverki) punktVyhoda(ctx context.Context, v VhodProverki) Punk
 		if cherez == v.AdresServera {
 			p.Itog, p.Tekst = ItogOk, fmt.Sprintf("интернет видит %s, это адрес сервера", cherez)
 		} else {
-			p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("через туннель %s, напрямую эндпоинт не ответил: %v", cherez, err)
+			p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("через VPN %s, напрямую эндпоинт не ответил: %v", cherez, err)
 		}
 		return p
 	}
 	if cherez == napryamuyu {
-		p.Itog, p.Tekst = ItogUtechka, fmt.Sprintf("через туннель и напрямую один адрес %s: трафик идёт мимо сервера", cherez)
+		p.Itog, p.Tekst = ItogUtechka, fmt.Sprintf("через VPN и напрямую один адрес %s: трафик идёт мимо сервера", cherez)
 		return p
 	}
 	p.Itog = ItogOk
@@ -102,7 +102,7 @@ func (r *RezultatProverki) punktVyhoda(ctx context.Context, v VhodProverki) Punk
 func punktIPv6(v VhodProverki) PunktProverki {
 	p := PunktProverki{Imya: "IPv6"}
 	if !v.Podnyat {
-		p.Itog, p.Tekst = ItogNeIzmereno, "правило ставится при подъёме туннеля"
+		p.Itog, p.Tekst = ItogNeIzmereno, "правило ставится при подключении VPN"
 		return p
 	}
 	est, err := v.IPv6Zaglushen()
@@ -110,9 +110,9 @@ func punktIPv6(v VhodProverki) PunktProverki {
 	case err != nil:
 		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("брандмауэр не ответил: %v", err)
 	case est:
-		p.Itog, p.Tekst = ItogOk, "исходящий IPv6 закрыт правилом брандмауэра, мимо туннеля по нему не уйти"
+		p.Itog, p.Tekst = ItogOk, "исходящий IPv6 закрыт правилом брандмауэра, мимо VPN по нему не уйти"
 	default:
-		p.Itog, p.Tekst = ItogUtechka, "правила "+ImyaPravilaIPv6+" нет: IPv6 может уйти мимо туннеля"
+		p.Itog, p.Tekst = ItogUtechka, "правила "+ImyaPravilaIPv6+" нет: IPv6 может уйти мимо VPN"
 	}
 	return p
 }

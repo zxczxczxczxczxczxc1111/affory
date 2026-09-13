@@ -50,6 +50,18 @@ describe("один голос на всё окно", () => {
     expect(nayden.map(({ s, i }) => `${i}: ${s}`)).toEqual([]);
   });
 
+  // Словарь. «Туннель» и «VPN» жили в окне вперемешку, и одна строка главного
+  // экрана ухитрялась совместить оба: «VPN через туннель, узел при выключенном
+  // VPN». Человеку показывается VPN, «туннель» остаётся словом кода и
+  // комментариев.
+  it.each(fayly)("%s зовёт соединение VPN, а не туннелем", (put) => {
+    const stroki = bezKommentariev(readFileSync(put, "utf8")).split("\n");
+    const nayden = stroki
+      .map((s, i) => ({ s: s.trim(), i: i + 1 }))
+      .filter(({ s }) => /туннел/i.test(s));
+    expect(nayden.map(({ s, i }) => `${i}: ${s}`)).toEqual([]);
+  });
+
   it.each(fayly)("%s не говорит от «мы»", (put) => {
     const stroki = bezKommentariev(readFileSync(put, "utf8")).split("\n");
     const nayden = stroki

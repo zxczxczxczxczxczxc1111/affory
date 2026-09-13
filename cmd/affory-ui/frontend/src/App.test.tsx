@@ -334,7 +334,7 @@ describe("окно переживает перезапуск службы", () =
     most.ozhit({ sostoyanie: "podnyat" });
     // The service sends `state` only on a change, so nothing arrives on its
     // own: the window has to ask again or stay a brick.
-    await screen.findByText(/Соединение через VPN установлено/i, {}, { timeout: 3000 });
+    await screen.findByText(/Подключено через VPN/i, {}, { timeout: 3000 });
   });
 
   it("после восстановления канала заново спрашивает списки и подписку", async () => {

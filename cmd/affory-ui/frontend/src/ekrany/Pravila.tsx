@@ -116,7 +116,7 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
 
   return (
     <Kolonka aria-label="Правила">
-      <Shapka zagolovok="Правила" svodka="что идёт мимо туннеля: процессы и домены">
+      <Shapka zagolovok="Правила" svodka="что идёт мимо VPN: процессы и домены">
         <Knopka rang="glavnaya" testId="dobavit-pravilo" aktiven={mozhnoPravit && !dobavlyayu} onClick={() => zadatDobavlyayu(true)}>
           <Plyus />Добавить
         </Knopka>
@@ -191,7 +191,7 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
             <Ryad
               testId="zhdut-podyoma"
               nazvanie="изменения применятся со следующего подключения"
-              poyasnenie="ядро читает правила при подъёме туннеля"
+              poyasnenie="ядро читает правила при подключении VPN"
             />
           )}
           {status.kill_switch && (
@@ -209,7 +209,7 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
             <Ryad
               testId="doh-preduprezhdenie"
               nazvanie="браузер с DoH: правило держится только на рукопожатии TLS"
-              poyasnenie="Chrome и Firefox по умолчанию резолвят через DoH на 443, и этот DNS туннель не видит; выключи DoH в браузере, чтобы домен исключался и по DNS"
+              poyasnenie="Chrome и Firefox шлют DNS через DoH на 443, и VPN его не видит; выключи DoH в браузере, чтобы правило работало и по DNS"
               aktiven={false}
             />
           )}
@@ -220,7 +220,7 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
           ) : spisokOtlozhen || zhdyomHello ? (
             <Ryad nazvanie="список правил недоступен" poyasnenie={spisokOtlozhen ?? "ожидание ответа службы"} aktiven={false} />
           ) : stroki.length === 0 ? (
-            <Ryad nazvanie={vid === "protsessy" ? "процессов в исключениях нет" : "доменов в исключениях нет"} poyasnenie="весь трафик идёт через туннель" aktiven={false} />
+            <Ryad nazvanie={vid === "protsessy" ? "процессов в исключениях нет" : "доменов в исключениях нет"} poyasnenie="весь трафик идёт через VPN" aktiven={false} />
           ) : (
             <div
               data-testid="spisok-pravil"
@@ -257,7 +257,7 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
         <Karta>
           <Ryad
             testId="ru-spisok-ryad"
-            nazvanie="российские сайты мимо туннеля"
+            nazvanie="российские сайты мимо VPN"
             poyasnenie={[
               "готовый список доменов, обновляется сам",
               status.kill_switch ? "в режиме «весь трафик» не действует" : undefined,
@@ -267,7 +267,7 @@ function PrezhniePravila({ status, otlozheno, pravila, pravilaOtkaz = null, obno
           >
             <Tumbler
               testId="ru-spisok"
-              podpis="российские сайты мимо туннеля"
+              podpis="российские сайты мимо VPN"
               // Тумблер положительный, поле в наборе отрицательное. Так
               // намеренно: в окне человек включает список, а в наборе
               // отсутствие поля означает список на месте.

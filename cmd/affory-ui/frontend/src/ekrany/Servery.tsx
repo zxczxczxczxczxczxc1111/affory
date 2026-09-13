@@ -594,11 +594,11 @@ export function Zaderzhka({ zamer, compact = false }: { zamer?: ZamerZaderzhki; 
     typeof zamer.tcping_ms === "number" ? `узел ${zamer.tcping_ms} мс` : zamer.tcping_otkaz || "узел не измерен";
   const tunnel =
     typeof zamer.realping_ms === "number"
-      ? `туннель ${zamer.realping_ms} мс`
-      : zamer.realping_otkaz || "туннель не измерен";
+      ? `VPN ${zamer.realping_ms} мс`
+      : zamer.realping_otkaz || "VPN не измерен";
   return (
     <span data-testid={`zaderzhka-${zamer.id}`} className={compact ? "af-delay-pair" : "text-fg-muted shrink-0 text-xs"} title={`${uzel} · ${tunnel}`}>
-      {compact ? <><span>{typeof zamer.realping_ms === "number" ? `VPN ${zamer.realping_ms} мс` : zamer.realping_otkaz && !zamer.realping_otkaz.includes("туннель опущен") ? "VPN недоступен" : "VPN не измерен"}</span><small>{typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}</small></> : <>{uzel} · {tunnel}</>}
+      {compact ? <><span>{typeof zamer.realping_ms === "number" ? `VPN ${zamer.realping_ms} мс` : zamer.realping_otkaz && !zamer.realping_otkaz.includes("VPN отключён") ? "VPN недоступен" : "VPN не измерен"}</span><small>{typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}</small></> : <>{uzel} · {tunnel}</>}
     </span>
   );
 }
