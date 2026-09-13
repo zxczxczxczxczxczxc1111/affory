@@ -455,7 +455,7 @@ func (s *Sluzhba) izvestit(imya string, telo any) {
 func (s *Sluzhba) postavit(n protokol.Sostoyanie, oshib *protokol.Oshibka) {
 	s.mu.Lock()
 	if s.sost != n {
-		s.cancelSpeedLocked("Подключение изменилось. Запустите замер заново.")
+		s.cancelSpeedLocked("подключение изменилось, запусти замер заново")
 	}
 	s.sost = n
 	s.oshib = oshib
@@ -687,7 +687,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 		return fmt.Errorf("туннель уже в состоянии %s", zanyato)
 	}
 	s.sost = protokol.SostPodnimaetsya
-	s.cancelSpeedLocked("Началось подключение к VPN. Запустите замер после подключения.")
+	s.cancelSpeedLocked("началось подключение к VPN, запусти замер после него")
 	// Поколение берётся ЗДЕСЬ, под тем же замком, что и переход в podnimaetsya.
 	// Это точка, с которой отключение нас уже видит: раньше её отключать было
 	// нечего, позже осталось бы окно, в котором disconnect уже прошёл, а мы про
@@ -1350,7 +1350,7 @@ func (s *Sluzhba) zapomnitNesushchego(id string) {
 	s.mu.Lock()
 	smenilsya := s.nesushchiyId != id
 	if smenilsya {
-		s.cancelSpeedLocked("Сервер изменился. Запустите замер заново.")
+		s.cancelSpeedLocked("сервер изменился, запусти замер заново")
 	}
 	s.nesushchiyId, s.nesushchiyImya = id, imya
 	s.mu.Unlock()

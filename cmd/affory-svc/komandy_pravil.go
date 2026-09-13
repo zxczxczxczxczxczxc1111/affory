@@ -97,7 +97,7 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 		strict := s.killSwitch
 		s.mu.Unlock()
 		if p.Trafik != nil && strict && estPryamoyTrafik(*p.Trafik) {
-			return fmt.Errorf("%w: сначала отключите блокировку сети вне VPN в настройках защиты", errPraviloNegodno)
+			return fmt.Errorf("%w: сначала выключи блокировку сети вне VPN в настройках защиты", errPraviloNegodno)
 		}
 		n.Pravila, pravila = p, p
 		return nil

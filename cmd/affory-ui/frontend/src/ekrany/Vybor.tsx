@@ -96,7 +96,7 @@ export function Vybor<T extends string>({ value, label, options, disabled = fals
       aria-activedescendant={open ? `${id}-${current}` : undefined} disabled={disabled || !options.length}
       onClick={() => open ? setExpanded(false) : show()} onKeyDown={keyDown}
       onBlur={() => setExpanded(false)}>
-      <span>{options.find(option => option.value === value)?.label ?? "Выберите…"}</span>
+      <span>{options.find(option => option.value === value)?.label ?? "Выбери…"}</span>
       <svg className="af-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4" /></svg>
     </button>
     {open && createPortal(<div className="affory-desktop af-picker-layer">

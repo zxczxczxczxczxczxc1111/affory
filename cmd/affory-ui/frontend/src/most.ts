@@ -116,7 +116,7 @@ export async function spisokProtsessov(): Promise<Zapushchennyy[]> {
 export async function vybratPrilozhenie(): Promise<string> {
   const path: unknown = await Call.ByName("main.most.VybratPrilozhenie");
   if (path == null) return "";
-  if (typeof path !== "string") throw new Error("Окно выбора вернуло некорректный путь.");
+  if (typeof path !== "string") throw new Error("окно выбора вернуло не путь");
   return path;
 }
 

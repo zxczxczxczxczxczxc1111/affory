@@ -694,7 +694,7 @@ func (s *Sluzhba) zamenitNaborBlobom(telo []byte) error {
 		strict := s.killSwitch
 		s.mu.Unlock()
 		if strict && estPryamoyTrafik(*imported.Pravila.Trafik) {
-			return fmt.Errorf("перед импортом прямых маршрутов отключите блокировку сети вне VPN")
+			return fmt.Errorf("перед импортом прямых маршрутов выключи блокировку сети вне VPN")
 		}
 	}
 

@@ -42,7 +42,7 @@ export function readSpeed(value: unknown): SpeedSnapshot | null {
   // Partial numbers never graduate into a successful pair by wishful thinking.
   if (snapshot.phase === "complete" && (!snapshot.result?.download_mbps || !snapshot.result.upload_mbps)) {
     snapshot.phase = "error";
-    snapshot.reason = "Сервис не подтвердил оба направления. Повторите замер.";
+    snapshot.reason = "мишень не подтвердила оба направления, повтори замер";
     snapshot.result = undefined;
   }
   return snapshot;
@@ -116,7 +116,7 @@ export function useSkorost(request: Request, available: boolean) {
       if (!alive.current) return;
       if (reply.oshibka) throw new Error(reply.oshibka.tekst || "Не удалось выполнить замер");
       const next = readSpeed(reply.telo);
-      if (!next) throw new Error("Служба не поддерживает этот замер. Обновите приложение.");
+      if (!next) throw new Error("служба не поддерживает этот замер, обнови программу");
       setSnapshot(next);
     } catch (e: unknown) {
       if (alive.current) setError(e instanceof Error ? e.message : "Не удалось выполнить замер");

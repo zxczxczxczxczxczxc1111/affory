@@ -18,7 +18,7 @@ func proveritMarshruty(v Vhod) error {
 			return fmt.Errorf("неизвестный маршрут: %q", r)
 		}
 		if v.VesTrafik && r == protokol.TrafikPryamo {
-			return fmt.Errorf("для прямого трафика сначала отключите блокировку сети вне VPN")
+			return fmt.Errorf("для прямого трафика сначала выключи блокировку сети вне VPN")
 		}
 		return nil
 	}

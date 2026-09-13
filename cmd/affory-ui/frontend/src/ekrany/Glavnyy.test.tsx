@@ -20,7 +20,7 @@ const vseSostoyaniya = [
 describe("главный экран", () => {
   it.each(vseSostoyaniya)("рисует %s своей подписью", (s) => {
     render(<Glavnyy status={{ sostoyanie: s }} />);
-        const messages = { "sluzhba-molchit": "Нет связи со службой", vyklyuchen: "Интернет работает напрямую", podnimaetsya: "Устанавливаем соединение", podnyat: "Соединение через VPN установлено", "ne-neset": "Соединение не передаёт трафик", vosstanavlivaetsya: "Восстанавливаем соединение", otkaz: "Не удалось подключиться" };
+        const messages = { "sluzhba-molchit": "Нет связи со службой", vyklyuchen: "Интернет работает напрямую", podnimaetsya: "Подключение", podnyat: "Соединение через VPN установлено", "ne-neset": "Соединение не передаёт трафик", vosstanavlivaetsya: "Переподключение", otkaz: "Не удалось подключиться" };
     expect(screen.getByTestId("sostoyanie")).toHaveTextContent(messages[s]);
   });
 
@@ -188,7 +188,7 @@ describe("подпись под переключателем режима", () =
   it("на опущенном туннеле честно говорит про следующее подключение", () => {
     // Зеркало: без него проверка выше зелена на подписи, которая молчит всегда.
     render(<Glavnyy status={{ sostoyanie: "vyklyuchen", rezhim_marshruta: "ruchnoy" }} />);
-    expect(screen.getByText("Нажмите на сервер, чтобы сразу подключиться к нему.")).toBeInTheDocument();
+    expect(screen.getByText("Нажми на сервер, чтобы подключиться к нему")).toBeInTheDocument();
   });
 });
 

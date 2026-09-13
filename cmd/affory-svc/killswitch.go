@@ -35,7 +35,7 @@ func (s *Sluzhba) SetKillSwitch(vkl bool) error {
 		return err
 	}
 	if n.Pravila.Trafik != nil && estPryamoyTrafik(*n.Pravila.Trafik) {
-		return fmt.Errorf("для блокировки сети вне VPN уберите прямые маршруты приложений и сайтов")
+		return fmt.Errorf("для блокировки сети вне VPN убери прямые маршруты приложений и сайтов")
 	}
 
 	// Критерий «ядро живо» это ПУСТОЙ адрес clash_api, а не состояние. Тот же

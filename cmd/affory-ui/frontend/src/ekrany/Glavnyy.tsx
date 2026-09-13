@@ -157,9 +157,9 @@ export function Glavnyy({
           ? "VPN для выбранных приложений и сайтов"
           : "Соединение через VPN установлено"
         : status.sostoyanie === "podnimaetsya"
-          ? "Устанавливаем соединение…"
+          ? "Подключение…"
           : status.sostoyanie === "vosstanavlivaetsya"
-            ? "Восстанавливаем соединение…"
+            ? "Переподключение…"
             : status.sostoyanie === "ne-neset"
               ? "Соединение не передаёт трафик"
               : molchit
@@ -199,10 +199,10 @@ export function Glavnyy({
           </button>
           <p className="af-power-hint">
             {busy
-              ? "Нажмите на сферу, чтобы отменить"
+              ? "Нажми на сферу, чтобы отменить"
               : molchit
-                ? "Нажмите на сферу, чтобы повторить"
-                : "Нажмите на сферу, чтобы " +
+                ? "Нажми на сферу, чтобы повторить"
+                : "Нажми на сферу, чтобы " +
                   (podnyat || status.sostoyanie === "ne-neset"
                     ? "отключиться"
                     : "подключиться")}
@@ -219,7 +219,7 @@ export function Glavnyy({
                 : rezhim === "avto"
                   ? "Лучший доступный сервер"
                   : (imyaServera(selected, izvestnye) ??
-                    "Выберите сервер справа")}
+                    "Выбери сервер справа")}
             </span>
             {podnyat && (
               <small>{transportServera(status.nesushchiy_id, izvestnye)}</small>
@@ -241,8 +241,8 @@ export function Glavnyy({
             />
             <p className="af-note">
               {route === "vpn"
-                ? "Через туннель, кроме ваших прямых маршрутов."
-                : "Напрямую, кроме выбранных приложений и сайтов."}
+                ? "Через туннель, кроме прямых маршрутов"
+                : "Напрямую, кроме выбранных приложений и сайтов"}
             </p>
           </div>
           <dl className="af-stats" data-testid="statistika">
@@ -268,8 +268,8 @@ export function Glavnyy({
               <h2>Серверы</h2>
               <p>
                 {spisok
-                  ? `${izvestnye.length} доступно в вашем списке`
-                  : spisokOtkaz ? "Не удалось загрузить список" : "Загружаем список…"}
+                  ? `${izvestnye.length} доступно в списке`
+                  : spisokOtkaz ? "Не удалось загрузить список" : "Список загружается…"}
               </p>
             </div>
             <button type="button" className="af-manage" onClick={naServery}>
@@ -297,8 +297,8 @@ export function Glavnyy({
           </div>
           <p className="af-mode-note">
             {rezhim === "avto"
-              ? "Affory выбирает сервер с наименьшей задержкой."
-              : "Нажмите на сервер, чтобы сразу подключиться к нему."}
+              ? "Affory выбирает сервер с наименьшей задержкой"
+              : "Нажми на сервер, чтобы подключиться к нему"}
           </p>
           <div className="af-server-tools">
           <input
@@ -310,10 +310,10 @@ export function Glavnyy({
             onChange={(e) => setQuery(e.target.value)}
           />
           <button type="button" className="af-manage" disabled={molchit || busy || zanyato || loading || !izvestnye.length || !naProverit} onClick={naProverit}>
-            {proverkaIdet ? "Проверяем…" : "Проверить серверы"}
+            {proverkaIdet ? "Проверка…" : "Проверить серверы"}
           </button>
           </div>
-          <p className="af-delay-note">Последняя проверка: VPN через туннель, узел при выключенном VPN.</p>
+          <p className="af-delay-note">Последняя проверка: VPN через туннель, узел при выключенном VPN</p>
           <div className="af-server-list" aria-label="Список серверов">
             {shown.map((server) => {
               const active = podnyat && status.nesushchiy_id === server.id;
@@ -344,15 +344,15 @@ export function Glavnyy({
                 </button>
               );
             })}
-            {loading && <div className="af-empty" role="status">Загружаем серверы…</div>}
-            {spisokOtkaz && <div className="af-empty">Список серверов недоступен. Причина и повторная загрузка указаны выше.</div>}
+            {loading && <div className="af-empty" role="status">Серверы загружаются…</div>}
+            {spisokOtkaz && <div className="af-empty">Список серверов недоступен. Причина и кнопка повтора выше</div>}
             {!loading && !spisokOtkaz && shown.length === 0 && (
               <div className="af-empty">
-                <b>{query ? "Ничего не найдено" : "Добавьте первый сервер"}</b>
+                <b>{query ? "Ничего не найдено" : "Добавь первый сервер"}</b>
                 <p>
                   {query
-                    ? "Попробуйте другое имя или адрес."
-                    : "Вставьте ссылку на сервер или подписку."}
+                    ? "Попробуй другое имя или адрес"
+                    : "Вставь ссылку на сервер или подписку"}
                 </p>
                 {!query && (
                   <Knopka rang="glavnaya" onClick={naServery}>

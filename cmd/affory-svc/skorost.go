@@ -69,7 +69,7 @@ func (s *Sluzhba) startSpeedTest(k protokol.Kadr) protokol.Kadr {
 	case protokol.SostVyklyuchen:
 		if s.zaslonAktiven {
 			s.mu.Unlock()
-			return otkaz(k.Id, k.Imya, protokol.KodTeloNegodno, "сначала восстановите сеть после отключения")
+			return otkaz(k.Id, k.Imya, protokol.KodTeloNegodno, "сначала восстанови сеть после отключения")
 		}
 	case protokol.SostPodnyat:
 		if s.portProksiNash <= 0 {

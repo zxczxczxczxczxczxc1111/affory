@@ -58,7 +58,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "bandwidth-unmeasured": { deystvie: "povtorit", tekst: "полоса не измерена: мишень не задана, не отвечает или замер прерван" },
   "request-invalid": { deystvie: "povtorit", tekst: "команда пришла в негодном виде: повтори действие" },
   "update-archive-invalid": { deystvie: "nichego", tekst: "архив сборки не принят: хеш не совпал или состав не тот" },
-  "update-rollback-failed": { deystvie: "nichego", tekst: "обновление откатилось, но служба не отвечает: переустановите из установщика" },
+  "update-rollback-failed": { deystvie: "nichego", tekst: "обновление откатилось, но служба не отвечает: переустанови из установщика" },
   "update-check-failed": { deystvie: "povtorit", tekst: "сервер обновлений не ответил, проверить позже" },
   "update-download-failed": { deystvie: "povtorit", tekst: "обновление не скачалось или хеш не совпал, работает прежняя версия" },
   "internal-error": { deystvie: "povtorit", tekst: "команда не выполнена: внутренняя ошибка службы" },

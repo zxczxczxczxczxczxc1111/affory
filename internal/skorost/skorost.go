@@ -126,7 +126,7 @@ func (r Runner) Run(ctx context.Context, c *http.Client, preferred string, progr
 			return result
 		}
 	}
-	result.Error = "Ни один сервис не завершил приём и отдачу. Повторите позже."
+	result.Error = "ни один сервис не завершил приём и отдачу, повтори позже"
 	return result
 }
 

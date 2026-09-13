@@ -69,10 +69,10 @@ it("a pending operation closes the menu and disables further selections", () => 
 });
 it("loading servers is distinct from an empty configured list", () => {
   const { rerender } = render(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} />);
-  expect(screen.getByText("Загружаем серверы…")).toBeInTheDocument();
-  expect(screen.queryByText("Добавьте первый сервер")).toBeNull();
+  expect(screen.getByText("Серверы загружаются…")).toBeInTheDocument();
+  expect(screen.queryByText("Добавь первый сервер")).toBeNull();
   rerender(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} spisok={{ servery: [], vybran: "", podpiska_zadana: false, podpiska_uzel: "" }} />);
-  expect(screen.getByText("Добавьте первый сервер")).toBeInTheDocument();
+  expect(screen.getByText("Добавь первый сервер")).toBeInTheDocument();
   expect(screen.queryByText("Сведения о сервере")).toBeNull();
 });
 it("Russian site policy is visible above site rules and preserves explicit routes", () => {

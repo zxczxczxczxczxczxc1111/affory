@@ -153,7 +153,7 @@ it("blocks duplicate dialogs and discards a selection after leaving the form", a
   const send = openAppForm(picker);
   fireEvent.change(screen.getByLabelText("Путь к приложению"), { target: { value: "C:\\Apps\\old.exe" } });
   fireEvent.click(screen.getByRole("button", { name: "Выбрать на ПК…" }));
-  const pending = screen.getByRole("button", { name: "Выбираем…" });
+  const pending = screen.getByRole("button", { name: "Выбор…" });
   expect(pending).toBeDisabled();
   expect(screen.getByRole("button", { name: "Сохранить правило" })).toBeDisabled();
   fireEvent.click(pending);

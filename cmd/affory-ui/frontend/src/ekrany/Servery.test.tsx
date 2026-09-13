@@ -176,11 +176,11 @@ describe("серверы: подписка и добавление", () => {
     expect(document.body.textContent).not.toMatch(/https?:\/\/|vless:|anytls:/);
   });
 
-  it("форма добавления с уже заданной подпиской предупреждает, что новая её заменит", () => {
+  it("форма добавления с уже заданной подпиской говорит, что новая ляжет про запас", () => {
     risovat(spisok([server(1)]));
     fireEvent.click(screen.getByTestId("dobavit"));
     fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-    expect(screen.getByTestId("forma")).toHaveTextContent(/заменит/);
+    expect(screen.getByTestId("forma")).toHaveTextContent(/про запас/);
   });
 
   it("пустой список это первый запуск §9.2: поле для ссылки и одно действие, без «0 серверов»", () => {
@@ -549,4 +549,17 @@ describe("серверы: адрес подписки из буфера", () => 
     fireEvent.click(screen.getByRole("radio", { name: "сервер по ссылке" }));
     expect(document.activeElement).toBe(screen.getByTestId("ssylka"));
   });
+});
+
+// Подсказка врала: addSubscription кладёт адрес ПРО ЗАПАС и активной делает
+// только когда активной ещё нет (cmd/affory-svc/podpiski.go). «Заменит текущую
+// подписку» обещало смену списка серверов там, где её не происходит.
+it("подсказка при заданной подписке обещает запас, а не замену", () => {
+  risovat(spisok([server(1)], { podpiska_zadana: true }));
+  fireEvent.click(screen.getByTestId("dobavit"));
+  fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
+  const p = screen.getByTestId("forma").textContent ?? "";
+  expect(p).toMatch(/про запас/);
+  expect(p).not.toMatch(/заменит текущую/);
+  expect(p).toMatch(/на экране не показывается/);
 });
