@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -56,7 +57,13 @@ type Most interface {
 	// Повышение прав окна (03.09.2026): служба часть команд отдаёт только
 	// администратору, а окно стартует ярлыком без повышения, и без этого
 	// метода действие «Повторить от администратора» ничего не делало.
-	PerezapustitSPravami() error
+	PerezapustitSPravami(vkladka string) error
+	// Вкладка, с которой окно просили открыться (см. flagVkladka). Пустая
+	// строка значит обычный запуск.
+	StartovayaVkladka() string
+	// Перезапуск окна ПОСЛЕ обновления (13.09.2026): подмена меняет файл, а
+	// работающий процесс продолжает рисовать старый интерфейс.
+	PerezapustitOkno() error
 }
 
 func (m *most) UdalitProgrammu(steretKlyuchi bool) error {
@@ -432,6 +439,51 @@ const sobytieOkna = "okno"
 // показать окно на брошенной вкладке.
 const sobytieVkladki = "vkladka"
 
+// PerezapustitOkno поднимает НОВОЕ окно из каталога программы и закрывает это.
+//
+// Зачем. Подмена при обновлении отодвигает работающий affory-ui.exe в .ubrat и
+// кладёт на его место новый файл; Windows держит открытый образ, поэтому
+// процесс живёт дальше и рисует СТАРЫЙ интерфейс. 13.09.2026 в госте это видно
+// числом: служба после подмены называет себя 1.1.2, окно остаётся тем же
+// процессом со сборкой 0.9.9. Человек читает это как «программа не
+// обновилась» и лезет ставить выпуск установщиком руками.
+//
+// Имя файла добавляется к КАТАЛОГУ своего процесса, а не берётся у него
+// целиком: os.Executable у отодвинутого процесса отдаёт affory-ui.exe.ubrat,
+// то есть прежний образ, и перезапуск поднял бы ровно то, от чего уходим.
+// Каталог переименование файла не меняет.
+//
+// Каталог берётся у себя, а не у internal/sostoyanie: оболочке тот пакет
+// запрещён границей (granitsa_test.go), и обходить её ради одной строки нельзя.
+//
+// Без повышения прав: окно после обновления должно вернуться таким же, каким
+// человек его оставил, а запрос UAC на ровном месте выглядит как новая беда.
+func (m *most) PerezapustitOkno() error {
+	svoy, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("свой путь не читается: %w", err)
+	}
+	katalog := filepath.Dir(svoy)
+	novoe := filepath.Join(katalog, "affory-ui.exe")
+	if _, err := os.Stat(novoe); err != nil {
+		return fmt.Errorf("новый файл окна не найден: %w", err)
+	}
+	cmd := exec.Command(novoe)
+	cmd.Dir = katalog
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("новое окно не запустилось: %w", err)
+	}
+	// Старое уходит ПОСЛЕ удачного запуска и с паузой: два окна это два трея и
+	// две подписки, а пустой экран между ними человек читает как падение.
+	go func() {
+		time.Sleep(700 * time.Millisecond)
+		if p := application.Get(); p != nil {
+			p.Quit()
+		}
+	}()
+	return nil
+}
+
 // kanalZakrytKadr is the synthetic frame the shell emits when the pipe dies.
 // It is shaped like a real event so the frontend needs no second code path.
 func kanalZakrytKadr() string {
@@ -452,15 +504,40 @@ func kanalZakrytKadr() string {
 //
 // Повышается ОКНО, а не отдельная команда: служба смотрит на токен того, кто
 // пришёл в канал, и разовое повышение одной команды ей не показать никак.
-func (m *most) PerezapustitSPravami() error {
+// vkladkiOkna это ЗАКРЫТЫЙ набор: строка уходит в командную строку нового
+// процесса, и принимать сюда что угодно значит пускать чужой текст в запуск.
+var vkladkiOkna = map[string]bool{"podklyuchenie": true, "pravila": true, "servery": true, "nastroyki": true}
+
+// StartovayaVkladka читает флаг вкладки из своей же командной строки.
+func (m *most) StartovayaVkladka() string {
+	for _, a := range os.Args[1:] {
+		v, est := strings.CutPrefix(a, flagVkladka+"=")
+		if est && vkladkiOkna[v] {
+			return v
+		}
+	}
+	return ""
+}
+
+func (m *most) PerezapustitSPravami(vkladka string) error {
 	svoy, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("свой путь не читается: %w", err)
 	}
 	verb, _ := windows.UTF16PtrFromString("runas")
 	fayl, _ := windows.UTF16PtrFromString(svoy)
-	if err := windows.ShellExecute(0, verb, fayl, nil, nil, windows.SW_SHOWNORMAL); err != nil {
-		// Отказ от запроса прав это не поломка: человек нажал «Нет».
+	var parametry *uint16
+	if vkladkiOkna[vkladka] {
+		parametry, _ = windows.UTF16PtrFromString(flagVkladka + "=" + vkladka)
+	}
+	if err := windows.ShellExecute(0, verb, fayl, parametry, nil, windows.SW_SHOWNORMAL); err != nil {
+		// Отказ от запроса прав это не поломка: человек нажал «Нет». Свой текст,
+		// а не системный: Windows отвечает по-английски («The operation was
+		// canceled by the user»), и живой прогон 13.09.2026 показал эту строку
+		// в русском окне.
+		if errors.Is(err, windows.ERROR_CANCELLED) {
+			return errors.New("права не выданы: запрос отклонён")
+		}
 		return fmt.Errorf("повышение не состоялось: %w", err)
 	}
 	// Старое окно уходит: два экземпляра означают два трея, два наблюдателя и

@@ -34,7 +34,7 @@ func (s *Sluzhba) trebuetAdmina(ctx context.Context, k protokol.Kadr) *protokol.
 		return nil
 	}
 	o := otkaz(k.Id, k.Imya, protokol.KodTrebuetsyaAdmin,
-		"команда доступна только администратору этой машины")
+		"нужны права администратора")
 	return &o
 }
 

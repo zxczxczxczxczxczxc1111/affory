@@ -558,7 +558,7 @@ export function Nastroyki({
             {vyvestiProfil && (
               <Ryad
                 nazvanie="вывести профиль"
-                poyasnenie={pochemuSero(undefined) ?? "серверы, подписка и правила одним файлом; ключи внутри, поэтому файл хранить как пароль; только для администратора машины"}
+                poyasnenie={pochemuSero(undefined) ?? "серверы, подписка и правила одним файлом; ключи внутри, поэтому файл хранить как пароль; нужны права администратора"}
                 aktiven={mozhnoZvat}
               >
                 <Knopka
@@ -574,7 +574,7 @@ export function Nastroyki({
             {vvestiProfil && (
               <Ryad
                 nazvanie="ввести профиль"
-                poyasnenie={pochemuSero(undefined) ?? "заменит серверы, подписку и правила целиком; только для администратора машины"}
+                poyasnenie={pochemuSero(undefined) ?? "заменит серверы, подписку и правила целиком; нужны права администратора"}
                 aktiven={mozhnoZvat}
               >
                 <Knopka

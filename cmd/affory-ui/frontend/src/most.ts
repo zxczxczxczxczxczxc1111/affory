@@ -83,9 +83,32 @@ export async function udalitProgrammu(steretKlyuchi: boolean): Promise<void> {
  *  в канал, поэтому повысить одну команду нельзя: повышается всё окно. Старое
  *  закрывается само, через мгновение после запроса прав. Отказ от запроса это
  *  отклонённое обещание, а не поломка. */
-export async function perezapustitSPravami(): Promise<void> {
+export async function perezapustitSPravami(vkladka: string): Promise<void> {
   try {
-    await Call.ByName("main.most.PerezapustitSPravami");
+    await Call.ByName("main.most.PerezapustitSPravami", vkladka);
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Вкладка, с которой окно просили открыться: её передаёт себе же окно,
+ *  поднимаясь с правами. Пустая строка значит обычный запуск. */
+export async function startovayaVkladka(): Promise<string> {
+  try {
+    return (await Call.ByName("main.most.StartovayaVkladka")) as string;
+  } catch {
+    // Старая оболочка метода не знает. Обычный запуск это не ошибка.
+    return "";
+  }
+}
+
+/** Перезапуск окна ПОСЛЕ обновления, без запроса прав. Подмена меняет файл на
+ *  диске, а работающий процесс держит прежний образ и рисует старый интерфейс:
+ *  13.09.2026 в госте служба после подмены назвалась 1.1.2 при окне со сборкой
+ *  0.9.9. Новое окно поднимается из каталога программы, это уходит само. */
+export async function perezapustitOkno(): Promise<void> {
+  try {
+    await Call.ByName("main.most.PerezapustitOkno");
   } catch (e) {
     throw new Error(e instanceof Error ? e.message : String(e));
   }

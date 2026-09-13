@@ -32,6 +32,11 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
   const doslovno = (TEKST_SLUZHBY_DOSLOVNO.has(kod) || z === undefined) && tekst;
   const osnovnoy = doslovno ? tekst : (z?.tekst ?? kod);
   const podpis = podpisDeystviya[deystvie];
+  // Служба и окно про одно и то же говорят своими словами, и на экране это
+  // читалось как две строки об одном: «эта команда только для администратора
+  // машины», а под ней «команда доступна только администратору этой машины».
+  // Повтор не рисуем, а живой текст (например, отказ от запроса прав) рисуем.
+  const povtor = (tekst ?? "").trim() === (osnovnoy ?? "").trim();
 
   return (
     <section
@@ -52,7 +57,7 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
         </button>
       )}
       <p className="text-foreground pr-8 text-base" data-testid="otkaz-tekst">{osnovnoy}</p>
-      {!doslovno && tekst && (
+      {!doslovno && tekst && !povtor && (
         <p className="text-fg-secondary text-sm" data-testid="otkaz-prichina">{tekst}</p>
       )}
       {deystvie === "pokazat-vinovnika" && (

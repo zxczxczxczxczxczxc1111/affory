@@ -87,4 +87,15 @@ describe("экраны отказов", () => {
     fireEvent.click(screen.getByTestId("otkaz-deystvie"));
     expect(na).toHaveBeenCalledWith("povtorit");
   });
+  it("не печатает причину, которая слово в слово повторяет заголовок", () => {
+    // Служба и окно называют одно и то же своими словами; на экране это
+    // читалось как две строки об одном (живой прогон 13.09.2026).
+    render(<Otkaz kod="admin-required" tekst="нужны права администратора" naDeystvie={() => undefined} />);
+    expect(screen.queryByTestId("otkaz-prichina")).toBeNull();
+  });
+
+  it("печатает причину, когда она добавляет новое", () => {
+    render(<Otkaz kod="admin-required" tekst="права не выданы: запрос отклонён" naDeystvie={() => undefined} />);
+    expect(screen.getByTestId("otkaz-prichina").textContent).toContain("запрос отклонён");
+  });
 });

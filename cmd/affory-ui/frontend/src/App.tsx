@@ -10,7 +10,7 @@ import type { Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
-  dobavitSEkrana, perezapustitSPravami, prochitatProfil, sohranitProfil, spisokProtsessov,
+  dobavitSEkrana, perezapustitOkno, perezapustitSPravami, prochitatProfil, sohranitProfil, spisokProtsessov, startovayaVkladka,
   tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, type Zapushchennyy,
 } from "./most";
 import { Servery, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
@@ -213,6 +213,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // Шаг идущего обновления и зов трея к нему. Оба живут здесь, а не на экране
   // настроек: события приходят в оболочку, а экран может быть не показан вовсе.
   const [hodObnovleniya, zadatHod] = useState<HodObnovleniya | null>(null);
+  /** Версия, которую называла служба, пока это окно рисовало её интерфейс.
+   *  Сменилась значит на диске уже другая программа, а процесс всё тот же. */
+  const svoyaVersiya = useRef<string | null>(null);
+  /** Подмена началась: после неё окно обязано и полосу погасить, и уйти. */
+  const podmenaNachalas = useRef(false);
   const [vestiKObnovleniyu, zadatVesti] = useState(0);
   // Last profile outcome in the person's words. A press with no visible
   // result reads as "the button does nothing" (owner, 03.09.2026).
@@ -509,7 +514,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       case "zaprosit-prava":
         // Declining UAC used to clear the banner, so refusing the prompt
         // looked exactly like being granted the rights (guest run 03.09.2026).
-        void perezapustitSPravami().catch((e: unknown) =>
+        // Вкладка уходит с собой: новое окно открывается там, где человек
+        // нажал кнопку, а не на «Подключении» (живой прогон 13.09.2026).
+        void perezapustitSPravami(vkladkaSeychas.current).catch((e: unknown) =>
           zadatOtkaz({
             kod: "admin-required",
             tekst: e instanceof Error ? e.message : String(e),
@@ -528,6 +535,14 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   }, [ubratOtkaz, vypolnit, otkaz]);
 
   useEffect(() => naVidimostOkna(zadatOknoVidno), []);
+
+  // Окно, поднятое с правами, открывается на той вкладке, с которой их просили.
+  // Один раз при старте: дальше вкладку выбирает человек.
+  useEffect(() => {
+    void startovayaVkladka().then((v) => {
+      if ((VKLADKI as readonly string[]).includes(v)) zadatVkladku(v as Vkladka);
+    });
+  }, []);
 
   // Everything the window asks for at startup, in one place: the reconnect
   // path below repeats exactly this list and nothing else.
@@ -560,6 +575,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         const h = kadr.telo as HodObnovleniya;
         // Отказ гасит полосу: причина приезжает отдельным отказом команды, как
         // у любой другой кнопки, и держать после неё полосу значит врать.
+        if (h.shag === "podmena") podmenaNachalas.current = true;
         zadatHod(h.shag === "otkaz" ? null : h);
       } else if (kadr.imya === "kanal-zakryt") {
         zadatSvyaz("net");
@@ -589,6 +605,36 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     // это не то, за чем он её разворачивал.
     if (oknoVidno) void oprositTiho();
   }, [oknoVidno, oprositTiho]);
+
+  // Обновление меняет файл программы, а не этот процесс. Windows держит
+  // открытый образ, подмена отодвигает его в .ubrat, и окно продолжает рисовать
+  // ПРЕЖНИЙ код: живой прогон в госте 13.09.2026 показал службу 1.1.2 при окне
+  // сборки 0.9.9 и том же pid. Со стороны это «программа не обновилась».
+  //
+  // Признак сменившейся программы один: служба называет номер, отличный от
+  // того, с которым это окно живёт. Он же гасит полосу, которую иначе гасить
+  // некому: последнее событие приходит ДО остановки службы.
+  useEffect(() => {
+    const nomer = status?.versiya_programmy;
+    if (!nomer) return; // служба молчит или это сборка без номера
+    if (svoyaVersiya.current === null) {
+      svoyaVersiya.current = nomer;
+      return;
+    }
+    if (svoyaVersiya.current === nomer) {
+      // Тот же номер после подмены это откат или тот же выпуск из архива:
+      // уходить некуда, но полоса обязана погаснуть.
+      if (podmenaNachalas.current) {
+        podmenaNachalas.current = false;
+        zadatHod(null);
+      }
+      return;
+    }
+    svoyaVersiya.current = nomer;
+    podmenaNachalas.current = false;
+    zadatHod(null);
+    void perezapustitOkno().catch((e: unknown) => zhaloba("Новое окно не открылось", e));
+  }, [status?.versiya_programmy, zhaloba]);
 
   // Трей просит открыть вкладку. Пункт «Обновить до X» открывает окно и зовёт
   // сюда: до 13.09.2026 он просто показывал окно на брошенной вкладке, и это
@@ -768,7 +814,12 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         {/* A refusal is shown on whichever tab is open: a declined UAC on
             Settings must not wait for the human to walk back to Connection. */}
         {pokazat && !ustanovka && (
-          <div className="px-8 pt-6">
+          // Закреплён сверху НАМЕРЕННО: баннер живёт в той же прокрутке, что и
+          // содержимое вкладки, и человек, стоящий внизу настроек у карточки
+          // обновления, отказ наверху не видел вовсе. Замер в госте 13.09.2026:
+          // баннер на Y от -72 до -50 при окне от 12, то есть за кромкой. С
+          // экрана это читалось как «нажал, и ничего не произошло».
+          <div data-testid="otkaz-obertka" className="bg-background sticky top-0 z-20 px-8 pt-6">
             <Otkaz
               kod={pokazat.kod}
               tekst={pokazat.tekst}

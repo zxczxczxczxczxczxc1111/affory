@@ -19,6 +19,12 @@ import (
 // affory-svc/avtozapusk.go; the two binaries share no package.
 const flagTrey = "--trey"
 
+// flagVkladka передаётся ОКНУ, которое поднимается с правами: без него человек,
+// нажавший «Повторить от администратора» на «Настройках», получал новое окно на
+// «Подключении» и заново искал кнопку, ради которой права и просил.
+// Живой прогон в госте 13.09.2026.
+const flagVkladka = "--vkladka"
+
 // The embed directive is the one line a rewrite of this file loses first.
 // The build still passes, the window opens empty, and nothing says why.
 //
@@ -127,7 +133,7 @@ func main() {
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		trey.Zapustilos()
 	})
-	uved := novyyUvedomlyatel(uvedomleniya)
+	uved := novyyUvedomlyatel(uvedomleniya, ikonkaOkna)
 	m.naStatus = func(st protokol.StatusOtvet) {
 		trey.Obnovit(st)
 		uved.Prinyat(st)

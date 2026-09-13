@@ -32,7 +32,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "core-not-responding": { deystvie: "povtorit", tekst: "ядро не отвечает по управляющему порту" },
   "wintun-missing": { deystvie: "postavit-sluzhbu", tekst: "драйвер адаптера не установился" },
   "no-admin": { deystvie: "postavit-sluzhbu", tekst: "служба не установлена или не отвечает" },
-  "admin-required": { deystvie: "zaprosit-prava", tekst: "эта команда только для администратора машины" },
+  "admin-required": { deystvie: "zaprosit-prava", tekst: "нужны права администратора" },
   "firewall-disabled": { deystvie: "nichego", tekst: "режим «весь трафик» недоступен: брандмауэр выключен" },
   "firewall-failed": { deystvie: "povtorit", tekst: "не удалось поставить защиту" },
   "killswitch-orphan": { deystvie: "nichego", tekst: "остались правила защиты без VPN, сняты" },

@@ -40,6 +40,10 @@ const stend = vi.hoisted(() => {
     arhiv: "" as string,
     arhivLomaetsya: false,
     pravaLomayutsya: null as string | null,
+    /** Сколько раз окно просило перезапустить себя после обновления. */
+    perezapuskov: 0,
+    pravaProsili: "",
+    startovaya: "",
     /** Commands whose answer is not a frame at all: most.ts throws a plain
      *  Error, which is neither a refusal frame nor a dead pipe. */
     bityeKadry: new Set<string>(),
@@ -119,8 +123,13 @@ vi.mock("./most", () => ({
   sluzhbaUstanovlena: async () => stend.s.sluzhbaEst,
   ustanovitSluzhbu: async () => undefined,
   udalitProgrammu: async () => undefined,
-  perezapustitSPravami: async () => {
+  perezapustitSPravami: async (vkladka: string) => {
+    stend.s.pravaProsili = vkladka;
     if (stend.s.pravaLomayutsya) throw new Error(stend.s.pravaLomayutsya);
+  },
+  startovayaVkladka: async () => stend.s.startovaya,
+  perezapustitOkno: async () => {
+    stend.s.perezapuskov += 1;
   },
   vybratArhiv: async () => {
     if (stend.s.arhivLomaetsya) throw new Error("диалог выбора файла не открылся");
@@ -200,6 +209,14 @@ function mostProby() {
     otkazatVPravah(soobshchenie: string) {
       s.pravaLomayutsya = soobshchenie;
     },
+    /** Вкладка, которую окно унесло с собой в запрос прав. */
+    vkladkaZaprosaPrav(): string {
+      return s.pravaProsili;
+    },
+    /** Чем окно ответит на вопрос «с какой вкладки тебя просили открыть». */
+    zadatStartovuyuVkladku(v: string) {
+      s.startovaya = v;
+    },
     otvechatTelom(komanda: string, telo: unknown) {
       s.tela.set(komanda, telo);
     },
@@ -222,6 +239,10 @@ function mostProby() {
     },
     skolkoRaz(komanda: string): number {
       return s.schet.get(komanda) ?? 0;
+    },
+    /** Перезапуск окна после подмены: старое окно рисует старый код. */
+    perezapuskovOkna(): number {
+      return s.perezapuskov;
     },
     /** Окно ушло в трей или свернулось: ровно то, что делает крестик. */
     okno(vidno: boolean) {
@@ -246,6 +267,9 @@ beforeEach(() => {
   s.zhiv = true;
   s.zaderzhkaMs = 0;
   s.status = { sostoyanie: "vyklyuchen" };
+  s.perezapuskov = 0;
+  s.pravaProsili = "";
+  s.startovaya = "";
   s.schet = new Map();
   s.otkazy = new Map();
   s.podpischiki = [];
@@ -592,6 +616,40 @@ describe("баннер отказа", () => {
     expect(screen.queryByTestId("otkaz")).toBeNull();
   });
 
+  it("баннер закреплён в прокрутке, иначе его не видно снизу страницы", async () => {
+    const most = mostProby();
+    most.otvechatOtkazom("clearJournal", "journal-clear-failed");
+    render(<App />);
+    await screen.findByText(/Интернет работает напрямую/i);
+    fireEvent.click(screen.getByText("Правила"));
+    fireEvent.click(await screen.findByTestId("ochistit-zhurnal"));
+    await screen.findByTestId("otkaz");
+    // Баннер и содержимое вкладки прокручиваются ОДНИМ окном (af-viewport).
+    // Без закрепления человек у нижней кнопки отказ получал за верхней кромкой:
+    // замер в госте 13.09.2026 дал баннер на Y от -72 при окне от 12.
+    const obertka = screen.getByTestId("otkaz-obertka");
+    expect(obertka.className).toContain("sticky");
+    expect(obertka.className).toContain("top-0");
+  });
+
+  it("запрос прав уносит с собой вкладку, где нажали кнопку", async () => {
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "otkaz", oshibka: { kod: "admin-required", tekst: "только для администратора" } });
+    render(<App />);
+    fireEvent.click(await screen.findByText("Настройки"));
+    fireEvent.click(await screen.findByRole("button", { name: /от администратора/i }));
+    // Без этого новое окно открывалось на «Подключении», и человек заново искал
+    // кнопку, ради которой права и просил (живой прогон 13.09.2026).
+    await waitFor(() => expect(most.vkladkaZaprosaPrav()).toBe("nastroyki"));
+  });
+
+  it("окно, поднятое с правами, открывается на той же вкладке", async () => {
+    const most = mostProby();
+    most.zadatStartovuyuVkladku("nastroyki");
+    render(<App />);
+    await screen.findByText(/запускать при входе в Windows/i);
+  });
+
   it("отказ от повышения прав не выглядит успехом", async () => {
     const most = mostProby();
     most.zadatStatus({ sostoyanie: "otkaz", oshibka: { kod: "admin-required", tekst: "только для администратора" } });
@@ -833,6 +891,41 @@ describe("оболочка: обновление", () => {
     most.sobytie({ tip: "sobytie", imya: "obnovlenie-hod", telo: { shag: "otkaz", tekst: "архив не скачан" } });
 
     await waitFor(() => expect(screen.queryByRole("progressbar", { name: /обновлени/i })).toBeNull());
+  });
+
+  // 13.09.2026, живой прогон в госте: подмена прошла, служба назвалась 1.1.2,
+  // а окно осталось ТЕМ ЖЕ процессом с pid 14572. Windows держит открытый файл,
+  // подмена отодвигает его в .ubrat, и человек после обновления смотрит на
+  // старый интерфейс, пока не закроет программу руками.
+  it("перезапускает себя, когда служба вернулась с другой версией", async () => {
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "vyklyuchen", versiya_programmy: "0.9.9" });
+    render(<App periodOprosaMs={BYSTRO} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Настройки" }));
+    await screen.findByText(/программа 0\.9\.9/);
+
+    most.sobytie({ tip: "sobytie", imya: "obnovlenie-hod", telo: { shag: "podmena", versiya: "1.1.2", srok_s: 20 } });
+    most.oborvat();
+    most.ozhit({ sostoyanie: "vyklyuchen", versiya_programmy: "1.1.2" });
+
+    await waitFor(() => expect(most.perezapuskovOkna()).toBe(1), { timeout: 3000 });
+  });
+
+  // Полоса гасла только на отказе. После удачной подмены служба уже мертва и
+  // события не пришлёт, поэтому «подмена файлов, служба перезапускается,
+  // осталось 0 с» висела в окне до конца его жизни.
+  it("гасит полосу, когда служба вернулась после подмены", async () => {
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "vyklyuchen", versiya_programmy: "1.1.2" });
+    render(<App periodOprosaMs={BYSTRO} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Настройки" }));
+
+    most.sobytie({ tip: "sobytie", imya: "obnovlenie-hod", telo: { shag: "podmena", versiya: "1.1.2", srok_s: 20 } });
+    await screen.findByRole("progressbar", { name: /обновлени/i });
+    most.oborvat();
+    most.ozhit({ sostoyanie: "vyklyuchen", versiya_programmy: "1.1.2" });
+
+    await waitFor(() => expect(screen.queryByRole("progressbar", { name: /обновлени/i })).toBeNull(), { timeout: 3000 });
   });
 
   it("открывает настройки, когда трей зовёт к обновлению", async () => {

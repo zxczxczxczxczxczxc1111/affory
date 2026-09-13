@@ -20,23 +20,29 @@ func st(s protokol.Sostoyanie, nesushchiy, imya string, tekst string) protokol.S
 
 func TestUvedomleniyaPoPerehodam(t *testing.T) {
 	sluchai := []struct {
-		imya      string
-		pred, nov protokol.StatusOtvet
-		zagolovok string
+		imya        string
+		pred, nov   protokol.StatusOtvet
+		uzheSkazali string
+		zagolovok   string
 	}{
-		{"смена несущего под туннелем", st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), st(protokol.SostPodnyat, "b", "vpn-pc-raw", ""), "несёт vpn-pc-raw"},
-		{"первый несущий при подъёме молчит", st(protokol.SostPodnimaetsya, "", "", ""), st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), ""},
-		{"тот же несущий молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostPodnyat, "a", "x", ""), ""},
-		{"срыв", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostNeNeset, "", "", "VPN перестал нести трафик"), "VPN не несёт трафик"},
-		{"отказ подъёма", st(protokol.SostPodnimaetsya, "", "", ""), st(protokol.SostOtkaz, "", "", "серверов нет"), "подключиться не удалось"},
-		{"восстановление", st(protokol.SostVosstanavl, "", "", ""), st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), "VPN восстановлен"},
-		{"отключение человеком молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostVyklyuchen, "", "", ""), ""},
-		{"служба замолчала молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostSluzhbaMolchit, "", "", ""), ""},
-		{"новая версия один раз", st(protokol.SostVyklyuchen, "", "", ""), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), "есть обновление 0.6.3"},
-		{"та же версия молчит", sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), ""},
+		{"смена несущего под туннелем", st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), st(protokol.SostPodnyat, "b", "vpn-pc-raw", ""), "", "несёт vpn-pc-raw"},
+		{"первый несущий при подъёме молчит", st(protokol.SostPodnimaetsya, "", "", ""), st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), "", ""},
+		{"тот же несущий молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostPodnyat, "a", "x", ""), "", ""},
+		{"срыв", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostNeNeset, "", "", "VPN перестал нести трафик"), "", "VPN не несёт трафик"},
+		{"отказ подъёма", st(protokol.SostPodnimaetsya, "", "", ""), st(protokol.SostOtkaz, "", "", "серверов нет"), "", "подключиться не удалось"},
+		{"восстановление", st(protokol.SostVosstanavl, "", "", ""), st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), "", "VPN восстановлен"},
+		{"отключение человеком молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostVyklyuchen, "", "", ""), "", ""},
+		{"служба замолчала молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostSluzhbaMolchit, "", "", ""), "", ""},
+		{"новая версия один раз", st(protokol.SostVyklyuchen, "", "", ""), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), "", "есть обновление 0.6.3"},
+		{"та же версия молчит", sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), "", ""},
+		// Окно поднимается при каждом входе в Windows, и память процесса про
+		// «уже сказали» с ним умирает: в госте 13.09.2026 набралась двадцать
+		// одна всплывашка про одно и то же обновление.
+		{"версия из прошлого запуска молчит", st(protokol.SostVyklyuchen, "", "", ""), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), "0.6.3", ""},
+		{"версия новее той, о которой говорили", st(protokol.SostVyklyuchen, "", "", ""), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.4"), "0.6.3", "есть обновление 0.6.4"},
 	}
 	for _, c := range sluchai {
-		u, est := chtoSoobshchit(c.pred, c.nov)
+		u, est := chtoSoobshchit(c.pred, c.nov, c.uzheSkazali)
 		if (c.zagolovok == "") != !est {
 			t.Errorf("%s: уведомление есть=%v, ждали %q", c.imya, est, c.zagolovok)
 			continue
