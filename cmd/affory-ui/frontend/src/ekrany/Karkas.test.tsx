@@ -82,3 +82,31 @@ it("GitHub opens through the shell without making the title bar draggable", () =
   expect(open).toHaveBeenCalledOnce();
   expect(button.style.getPropertyValue("--wails-draggable")).toBe("no-drag");
 });
+
+// Редизайн 16.09.2026: разделов в полосе три. «Серверы» остались вкладкой в
+// коде (на них уводит кнопка «Управлять»), но собственной кнопки в полосе у
+// них больше нет: набор серверов живёт на экране подключения.
+describe("каркас: три раздела и третья кнопка окна", () => {
+  it("в полосе три раздела, «Серверы» в неё не выходят", () => {
+    render(<Karkas vkladka="podklyuchenie" naVkladku={nichego} naSvernut={nichego} naZakryt={nichego}>x</Karkas>);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Подключение", "Правила", "Настройки",
+    ]);
+    expect(screen.queryByRole("tab", { name: "Серверы" })).toBeNull();
+  });
+
+  it("на вкладке серверов подсвечено «Подключение»: полоса не теряет место", () => {
+    render(<Karkas vkladka="servery" naVkladku={nichego} naSvernut={nichego} naZakryt={nichego}>x</Karkas>);
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Подключение");
+  });
+
+  it("развернуть зовёт наверх, а без обработчика кнопка неактивна", () => {
+    const ra = vi.fn();
+    render(<Karkas vkladka="podklyuchenie" naVkladku={nichego} naSvernut={nichego} naRazvernut={ra} naZakryt={nichego}>x</Karkas>);
+    fireEvent.click(screen.getByTestId("razvernut"));
+    expect(ra).toHaveBeenCalledOnce();
+    cleanup();
+    render(<Karkas vkladka="podklyuchenie" naVkladku={nichego} naSvernut={nichego} naZakryt={nichego}>x</Karkas>);
+    expect((screen.getByTestId("razvernut") as HTMLButtonElement).disabled).toBe(true);
+  });
+});

@@ -11,21 +11,22 @@ Affory includes a Windows process-family extension. The corresponding source,
 patch, build scripts and release fingerprint accompany each release.
 See ustanovka/YADRO-ISHODNIKI.txt and ustanovka/GPL-3.0.txt.
 
-Manrope
--------
-Designer: Mikhail Sharanda.
-Source: https://github.com/google/fonts/tree/main/ofl/manrope
+Inter
+-----
+Designer: Rasmus Andersson.
+Source: https://github.com/rsms/inter
 License: SIL Open Font License 1.1.
-The bundled variable font includes Latin and Cyrillic characters. The original
-Manrope[wght].ttf was renamed manrope-variable.ttf without changes.
-Full license: cmd/affory-ui/frontend/src/shrifty/OFL-Manrope.txt.
+Two woff2 subsets are bundled, Latin and Cyrillic, taken from the upstream
+release without changes to glyph outlines.
+Full license: cmd/affory-ui/frontend/src/shrifty/OFL-Inter.txt.
 
 Service icons
 -------------
 Source: https://github.com/simple-icons/simple-icons/tree/15.0.0/icons
 License: CC0 1.0.
-Included marks: YouTube, Discord, OpenAI (ChatGPT), Instagram, WhatsApp,
-Telegram, Spotify and Netflix. SVG geometry is unchanged; fill is #e5e0ed.
+Included marks: YouTube, Discord, OpenAI (ChatGPT), Instagram, Claude,
+Telegram, Spotify and SoundCloud. SVG geometry is unchanged; the marks are
+drawn as a CSS mask, so the interface, not the file, decides their colour.
 Full text: cmd/affory-ui/frontend/src/assets/services/LICENSE.simple-icons.txt.
 Brand names and marks belong to their respective owners. These marks identify
 routing destinations and do not imply endorsement.

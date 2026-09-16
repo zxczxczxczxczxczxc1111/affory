@@ -94,7 +94,10 @@ Section "Affory" SEC_AFFORY
   File "YADRO-ISHODNIKI.txt"
   File /oname=LICENSE.opencck.txt "..\internal\katalog\LICENSE.opencck"
   File /oname=LICENSE.simple-icons.txt "..\cmd\affory-ui\frontend\src\assets\services\LICENSE.simple-icons.txt"
-  File /oname=OFL-Manrope.txt "..\cmd\affory-ui\frontend\src\shrifty\OFL-Manrope.txt"
+  File /oname=OFL-Inter.txt "..\cmd\affory-ui\frontend\src\shrifty\OFL-Inter.txt"
+  ; Установка поверх прежней версии: Manrope из дерева ушёл, но его лицензия
+  ; лежит рядом с программой у всех, кто ставил 1.1.x.
+  Delete "$INSTDIR\OFL-Manrope.txt"
 
   ; Служба ставит себя сама: каталог данных, отпечатки, ключ Run, аварийный
   ; лист, запуск. Ставится поверх существующей (обновление), режим не снимается.
@@ -153,6 +156,9 @@ Section "Uninstall"
   Delete "$INSTDIR\YADRO-ISHODNIKI.txt"
   Delete "$INSTDIR\LICENSE.opencck.txt"
   Delete "$INSTDIR\LICENSE.simple-icons.txt"
+  Delete "$INSTDIR\OFL-Inter.txt"
+  ; Manrope ушёл вместе с редизайном 16.09.2026: старая установка держит его
+  ; лицензию рядом с программой, и обновление обязано её убрать.
   Delete "$INSTDIR\OFL-Manrope.txt"
   Delete "$INSTDIR\ESLI-NET-INTERNETA.txt"
   Delete "$INSTDIR\*.ubrat"
