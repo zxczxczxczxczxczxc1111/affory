@@ -7,7 +7,7 @@
 // Данные подставные и намеренно узнаваемые: адреса из RFC 5737, ключей нет
 // нигде. Настоящие адреса в кадр не попадают никогда.
 
-const VERSIYA = "1.1.1";
+const VERSIYA = "1.2.0";
 
 const servery = [
   { id: "nl", imya: "Нидерланды · Амстердам", transport: "reality-tcp", host: "203.0.113.11", port: 443, iz_podpiski: true },
@@ -45,16 +45,33 @@ const pravila = {
     prilozheniya: [
       { put: "C:\\Program Files\\Mozilla Firefox\\firefox.exe", imya: "firefox.exe", potomki: true, marshrut: "direct" },
       { put: "C:\\Users\\home\\AppData\\Local\\Steam\\steam.exe", imya: "steam.exe", potomki: true, marshrut: "direct" },
+      { put: "C:\\Program Files\\qBittorrent\\qbittorrent.exe", imya: "qbittorrent.exe", potomki: false, marshrut: "vpn" },
     ],
-    domeny: [{ domen: "gosuslugi.ru", marshrut: "direct" }],
-    servisy: [{ id: "youtube", marshrut: "vpn" }],
-  },
-  katalog: {
-    versiya: "2026.09",
-    istochnik: "встроенный",
+    domeny: [
+      { domen: "gosuslugi.ru", marshrut: "direct" },
+      { domen: "rutracker.org", marshrut: "vpn" },
+    ],
+    // Явные маршруты сервисов: два ведут мимо туннеля, счётчик вкладки
+    // показывает шесть из восьми.
     servisy: [
-      { id: "youtube", imya: "YouTube", domeny: ["youtube.com", "ytimg.com"], istochnik: "встроенный" },
-      { id: "discord", imya: "Discord", domeny: ["discord.com"], istochnik: "встроенный" },
+      { id: "telegram", marshrut: "direct" },
+      { id: "spotify", marshrut: "direct" },
+    ],
+  },
+  // Каталог повторяет встроенный (internal/katalog/servisy.json): те же
+  // восемь сервисов и те же домены, иначе снимок врёт о содержимом выпуска.
+  katalog: {
+    versiya: "2026.09.08",
+    istochnik: "https://iplist.opencck.org/ru/",
+    servisy: [
+      { id: "youtube", imya: "YouTube", domeny: ["youtube.com", "youtu.be", "googlevideo.com"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "discord", imya: "Discord", domeny: ["discord.com", "discord.gg", "discord.media"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "chatgpt", imya: "ChatGPT", domeny: ["chatgpt.com", "openai.com", "oaistatic.com"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "instagram", imya: "Instagram", domeny: ["instagram.com", "cdninstagram.com"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "claude", imya: "Claude", domeny: ["claude.ai", "claude.com", "anthropic.com"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "telegram", imya: "Telegram", domeny: ["telegram.org", "telegram.me", "t.me"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "spotify", imya: "Spotify", domeny: ["spotify.com", "scdn.co", "spotifycdn.com"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "soundcloud", imya: "SoundCloud", domeny: ["soundcloud.com", "sndcdn.com", "snd.sc"], istochnik: "https://github.com/rekryt/iplist/" },
     ],
   },
 };
