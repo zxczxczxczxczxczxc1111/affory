@@ -109,6 +109,9 @@ it("server checks remain available without VPN and never confuse node latency wi
     zaderzhki={[{ id: "s", tcping_ms: 4, realping_ms: 148 }]} />);
   fireEvent.click(screen.getByRole("button", { name: "Проверить серверы" }));
   expect(check).toHaveBeenCalledOnce();
-  expect(screen.getByText("VPN 148 мс")).toBeInTheDocument();
-  expect(screen.getByText("узел 4 мс")).toBeInTheDocument();
+  // Обе величины стоят одной строкой, но остаются РАЗНЫМИ величинами:
+  // строка «VPN 148 мс · узел 4 мс» не выдаёт рукопожатие за туннель.
+  const zaderzhka = screen.getByTestId("zaderzhka-s");
+  expect(zaderzhka).toHaveTextContent("VPN 148 мс");
+  expect(zaderzhka).toHaveTextContent("узел 4 мс");
 });

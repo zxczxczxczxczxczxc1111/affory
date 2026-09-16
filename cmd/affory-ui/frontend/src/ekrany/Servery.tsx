@@ -596,9 +596,26 @@ export function Zaderzhka({ zamer, compact = false }: { zamer?: ZamerZaderzhki; 
     typeof zamer.realping_ms === "number"
       ? `VPN ${zamer.realping_ms} мс`
       : zamer.realping_otkaz || "VPN не измерен";
+  // «VPN отключён» это не отказ замера, а состояние: в сжатом виде оно
+  // печатается как «не измерен», всё прочее как «недоступен».
+  const tunnelKratko =
+    typeof zamer.realping_ms === "number"
+      ? `VPN ${zamer.realping_ms} мс`
+      : zamer.realping_otkaz && !zamer.realping_otkaz.includes("VPN отключён")
+        ? "VPN недоступен"
+        : "VPN не измерен";
   return (
-    <span data-testid={`zaderzhka-${zamer.id}`} className={compact ? "af-delay-pair" : "text-fg-muted shrink-0 text-xs"} title={`${uzel} · ${tunnel}`}>
-      {compact ? <><span>{typeof zamer.realping_ms === "number" ? `VPN ${zamer.realping_ms} мс` : zamer.realping_otkaz && !zamer.realping_otkaz.includes("VPN отключён") ? "VPN недоступен" : "VPN не измерен"}</span><small>{typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}</small></> : <>{uzel} · {tunnel}</>}
+    <span
+      data-testid={`zaderzhka-${zamer.id}`}
+      className={compact ? "min-w-0 truncate" : "text-fg-muted shrink-0 text-xs"}
+      title={`${uzel} · ${tunnel}`}
+    >
+      {/* Сжатый вид это ОДНА строка. Двумя строками он стоял в строке
+          сервера высотой 52px рядом с названием, не помещался и наезжал на
+          соседние строки списка (16.09.2026). Длинный отказ узла в сжатом
+          виде не печатается вовсе: он длиннее строки, а целиком всё лежит в
+          подсказке. */}
+      {compact ? `${tunnelKratko} · ${typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}` : `${uzel} · ${tunnel}`}
     </span>
   );
 }
