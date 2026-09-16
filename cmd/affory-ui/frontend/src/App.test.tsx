@@ -72,7 +72,14 @@ const stend = vi.hoisted(() => {
       case "listServers":
         return { servery: [], vybran: "", podpiska_zadana: false, podpiska_uzel: "" };
       case "listRules":
-        return { protsessy: [], domeny: [] };
+        // Набор маршрутов служба отдаёт ВСЕГДА, с 1.0.0: пустой ответ без
+        // него означал бы службу старее окна, и проба рисовала бы экран
+        // «правила не прочитаны» там, где в жизни рисуется рабочий.
+        return {
+          protsessy: [],
+          domeny: [],
+          trafik: { po_umolchaniyu: "vpn", prilozheniya: [], domeny: [], servisy: [] },
+        };
       default:
         return {};
     }
@@ -578,7 +585,8 @@ describe("баннер отказа", () => {
     render(<App />);
     await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
-    fireEvent.click(await screen.findByTestId("ochistit-zhurnal"));
+    fireEvent.click(await screen.findByTestId("razdel-zhurnal"));
+    fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
     fireEvent.click(screen.getByTestId("otkaz-zakryt"));
     expect(screen.queryByTestId("otkaz")).toBeNull();
@@ -590,7 +598,8 @@ describe("баннер отказа", () => {
     render(<App />);
     await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
-    fireEvent.click(await screen.findByTestId("ochistit-zhurnal"));
+    fireEvent.click(await screen.findByTestId("razdel-zhurnal"));
+    fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
     // The refusal belongs to the tab that asked for it: a rules failure has
     // no business staring at a person who walked over to Connection.
@@ -632,7 +641,8 @@ describe("баннер отказа", () => {
     render(<App />);
     await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
-    fireEvent.click(await screen.findByTestId("ochistit-zhurnal"));
+    fireEvent.click(await screen.findByTestId("razdel-zhurnal"));
+    fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
     // Баннер и содержимое вкладки прокручиваются ОДНИМ окном (af-viewport).
     // Без закрепления человек у нижней кнопки отказ получал за верхней кромкой:

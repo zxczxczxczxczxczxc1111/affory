@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PravilaProps } from "./Pravila";
+import type { StatusOtvet } from "../protokol";
 import { imyaMarshruta, type Marshrut, type PravilaTrafika } from "../trafik";
 import { Flazhok, Knopka, Poisk, Pole, SegmentStolbik, Svorachivaemyy, Tumbler } from "./ui";
 import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
@@ -614,7 +615,9 @@ export function Marshruty({
                             <IkSayt className="h-4 w-4" />
                           </span>
                           <span className="flex min-w-0 flex-col gap-0.5">
-                            <span className="text-foreground truncate text-sm font-medium">{d.domen}</span>
+                            {/* Обрезка плюс подсказка: домен длиной в две сотни знаков
+                                не должен ни выезжать за колонку, ни пропадать насовсем. */}
+                            <span className="text-foreground truncate text-sm font-medium" title={d.domen}>{d.domen}</span>
                             <span className="text-fg-muted text-[13px]">Включая поддомены</span>
                           </span>
                         </span>
@@ -697,59 +700,76 @@ export function Marshruty({
           {/* Журнал стоит под всеми тремя вкладками, а не внутри одной: он
               про правила целиком, и человек, включивший его на «Сайтах», не
               должен искать его заново, перейдя на «Приложения». */}
-          <div className="mt-5 flex flex-col">
-            <Svorachivaemyy
-              testId="razdel-zhurnal"
-              zagolovok="Журнал соединений"
-              poyasnenie={status.zhurnal ? "включён" : "выключен"}
-              deti={
-                <div className="flex flex-col gap-3">
-                  <p>
-                    Служба записывает, какое приложение к какому адресу пошло и каким маршрутом.
-                    Нужен, когда правило не срабатывает и надо увидеть, что происходит на самом деле.
-                  </p>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-fg-secondary text-sm">Вести журнал</span>
-                    <Tumbler
-                      testId="zhurnal"
-                      podpis="Журнал соединений"
-                      aktiven={!disabled}
-                      vkl={status.zhurnal ?? false}
-                      naSmenu={(vkl) => naKomandu("setJournal", { vkl })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="flex min-w-0 flex-col gap-0.5">
-                      <span className="text-fg-secondary text-sm">Подробный журнал для отладки</span>
-                      <span className="text-fg-muted text-[13px] leading-relaxed">
-                        Раз в секунду: занятые порты, соединения, скорость и задержка. Нужен, когда
-                        связь пропадает без видимой причины
-                      </span>
-                    </span>
-                    <Tumbler
-                      testId="diagnostika"
-                      podpis="Подробный журнал для отладки"
-                      aktiven={!disabled}
-                      vkl={status.diagnostika ?? false}
-                      naSmenu={(vkl) => naKomandu("setDiagnostics", { vkl })}
-                    />
-                  </div>
-                  <div>
-                    <Knopka
-                      rang="vtoraya"
-                      testId="ochistit-zhurnal"
-                      aktiven={!disabled}
-                      onClick={() => naKomandu("clearJournal", {})}
-                    >
-                      Очистить журнал
-                    </Knopka>
-                  </div>
-                </div>
-              }
-            />
-          </div>
+          <RazdelZhurnala status={status} disabled={disabled} naKomandu={naKomandu} />
         </div>
       </div>
     </section>
+  );
+}
+
+/** Журнал соединений: один блок на оба вида экрана правил. Пока он жил
+ *  внутри Marshruty, у экрана без данных была СВОЯ копия тумблеров, и
+ *  подробный журнал в ней однажды отстал от службы на целую волну. */
+export function RazdelZhurnala({
+  status,
+  disabled,
+  naKomandu,
+}: {
+  status: StatusOtvet;
+  disabled: boolean;
+  naKomandu: (komanda: string, telo: unknown) => void;
+}) {
+  return (
+    <div className="mt-5 flex flex-col">
+      <Svorachivaemyy
+        testId="razdel-zhurnal"
+        zagolovok="Журнал соединений"
+        poyasnenie={status.zhurnal ? "включён" : "выключен"}
+        deti={
+          <div className="flex flex-col gap-3">
+            <p>
+              Служба записывает, какое приложение к какому адресу пошло и каким маршрутом.
+              Нужен, когда правило не срабатывает и надо увидеть, что происходит на самом деле.
+            </p>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-fg-secondary text-sm">Вести журнал</span>
+              <Tumbler
+                testId="zhurnal"
+                podpis="Журнал соединений"
+                aktiven={!disabled}
+                vkl={status.zhurnal ?? false}
+                naSmenu={(vkl) => naKomandu("setJournal", { vkl })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-fg-secondary text-sm">Подробный журнал для отладки</span>
+                <span className="text-fg-muted text-[13px] leading-relaxed">
+                  Раз в секунду: занятые порты, соединения, скорость и задержка. Нужен, когда
+                  связь пропадает без видимой причины
+                </span>
+              </span>
+              <Tumbler
+                testId="diagnostika"
+                podpis="Подробный журнал для отладки"
+                aktiven={!disabled}
+                vkl={status.diagnostika ?? false}
+                naSmenu={(vkl) => naKomandu("setDiagnostics", { vkl })}
+              />
+            </div>
+            <div>
+              <Knopka
+                rang="vtoraya"
+                testId="ochistit-zhurnal"
+                aktiven={!disabled}
+                onClick={() => naKomandu("clearJournal", {})}
+              >
+                Очистить журнал
+              </Knopka>
+            </div>
+          </div>
+        }
+      />
+    </div>
   );
 }
