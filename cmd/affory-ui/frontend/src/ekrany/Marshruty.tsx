@@ -171,13 +171,26 @@ export function Marshruty({
   // приложений и сайтов, а «российские сайты напрямую» не показывал вообще
   // никто: чтобы узнать про них, надо было догадаться открыть «Сайты».
   const ruSpisokVkl = pravila?.bez_ru_spiska !== true;
-  const VKLADKI: { v: typeof tab; podpis: string; schyot: number; vklyucheno?: string }[] = [
-    { v: "services", podpis: "Сервисы", schyot: services.length },
-    { v: "apps", podpis: "Приложения", schyot: apps.length },
+  // Сервисы считаются ПО ТУМБЛЕРАМ, а не по записям набора. Записей в режиме
+  // «Всё через VPN» нет вовсе, и восемь включённых сервисов показывались
+  // нулём; а явный маршрут пишется даже когда совпал с умолчанием (так он
+  // переживает смену режима), и счёт рос от одного переключения туда-обратно.
+  const servisovCherezVPN = katalog.filter(
+    (s) => (services.find((r) => r.id === s.id)?.marshrut ?? trafik.po_umolchaniyu) === "vpn",
+  ).length;
+  const VKLADKI: { v: typeof tab; podpis: string; schyot: number; poyasnenie?: string; vklyucheno?: string }[] = [
+    {
+      v: "services",
+      podpis: "Сервисы",
+      schyot: servisovCherezVPN,
+      poyasnenie: `${servisovCherezVPN} из ${katalog.length} через VPN`,
+    },
+    { v: "apps", podpis: "Приложения", schyot: apps.length, poyasnenie: `${apps.length} правил приложений` },
     {
       v: "sites",
       podpis: "Сайты",
       schyot: domains.length,
+      poyasnenie: `${domains.length} правил сайтов`,
       vklyucheno: ruSpisokVkl ? "Российские сайты идут напрямую" : undefined,
     },
   ];
@@ -229,7 +242,7 @@ export function Marshruty({
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <nav role="tablist" aria-label="Вид правил" className="border-border flex shrink-0 items-stretch gap-1 border-b px-8">
-          {VKLADKI.map(({ v, podpis, schyot, vklyucheno }) => {
+          {VKLADKI.map(({ v, podpis, schyot, poyasnenie, vklyucheno }) => {
             const on = v === tab;
             return (
               <button
@@ -243,8 +256,15 @@ export function Marshruty({
                 }`}
               >
                 {podpis}
+                {/* Счёт у вкладок значит разное, и это названо словами в
+                    подсказке: у сервисов это тумблеры, у остальных записи. */}
                 {schyot > 0 && (
-                  <span className={`text-[13px] font-normal ${on ? "text-accent-ink" : "text-fg-faint"}`}>{schyot}</span>
+                  <span
+                    title={poyasnenie}
+                    className={`text-[13px] font-normal ${on ? "text-accent-ink" : "text-fg-faint"}`}
+                  >
+                    {schyot}
+                  </span>
                 )}
                 {/* Точка значит «здесь включено то, чего в счёте правил нет».
                     Она названа словами, а не оставлена загадкой: имя читает и

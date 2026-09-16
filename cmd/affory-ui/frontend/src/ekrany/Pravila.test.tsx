@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Pravila } from "./Pravila";
 import type { StatusOtvet } from "../protokol";
-import type { PravilaTrafika } from "../trafik";
+import type { KatalogServisov, PravilaTrafika } from "../trafik";
 
 afterEach(cleanup);
 
@@ -25,6 +25,7 @@ function risovat(pere: {
     protsessy: string[];
     domeny: string[];
     trafik?: PravilaTrafika;
+    katalog?: KatalogServisov;
     bez_ru_spiska?: boolean;
   } | null;
   naKomandu?: (komanda: string, telo: unknown) => void;
@@ -44,6 +45,15 @@ function risovat(pere: {
   );
   return naKomandu;
 }
+
+/** Каталог сервисов, как его шлёт служба: восемь наборов доменов. */
+const KATALOG: KatalogServisov = {
+  versiya: "2026.09.08",
+  istochnik: "https://github.com/rekryt/iplist",
+  servisy: ["youtube", "discord", "chatgpt", "instagram", "claude", "telegram", "spotify", "soundcloud"].map(
+    (id) => ({ id, imya: id, domeny: [`${id}.com`], istochnik: "https://github.com/rekryt/iplist" }),
+  ),
+};
 
 /** Набор маршрутов, каким его отдаёт служба: рабочий вид экрана. */
 function sTrafikom(trafik: Partial<PravilaTrafika> = {}, prochee: { bez_ru_spiska?: boolean } = {}) {
@@ -172,14 +182,59 @@ describe("вкладки говорят, что на них включено", (
     expect(screen.queryByTestId("vklyucheno-sites")).toBeNull();
   });
 
-  it("счёт есть у всех трёх вкладок, а не только у приложений и сайтов", () => {
+});
+
+describe("счёт на вкладке «Сервисы» отвечает за тумблеры, а не за записи набора", () => {
+  // Два дефекта одного корня (найдены владельцем 16.09.2026): счёт брал длину
+  // списка ЯВНЫХ маршрутов. В режиме «Всё через VPN» явных записей нет вовсе,
+  // и восемь включённых сервисов показывались нулём; а каждое переключение
+  // добавляло запись, и счёт рос, хотя на экране ничего не прибавлялось.
+  it("восемь включённых сервисов показываются восемью, а не нулём", () => {
     risovat({
       otlozheno: {},
-      pravila: sTrafikom({
-        servisy: [{ id: "youtube", marshrut: "vpn" }, { id: "claude", marshrut: "direct" }],
-      }),
+      pravila: { ...sTrafikom(), katalog: KATALOG },
     });
-    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("2");
+    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("8");
+  });
+
+  it("выключенный сервис уменьшает счёт, а не увеличивает", () => {
+    risovat({
+      otlozheno: {},
+      pravila: {
+        ...sTrafikom({ servisy: [{ id: "youtube", marshrut: "direct" }] }),
+        katalog: KATALOG,
+      },
+    });
+    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("7");
+  });
+
+  it("явный маршрут, совпавший с умолчанием, счёт не раздувает", () => {
+    // Запись остаётся намеренно: она переживает смену режима. Но на экране
+    // сервис по-прежнему просто включён, и счёт обязан это повторять.
+    risovat({
+      otlozheno: {},
+      pravila: {
+        ...sTrafikom({ servisy: [{ id: "youtube", marshrut: "vpn" }, { id: "claude", marshrut: "vpn" }] }),
+        katalog: KATALOG,
+      },
+    });
+    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("8");
+  });
+
+  it("в режиме «Только выбранное» счёт равен числу выбранных", () => {
+    risovat({
+      otlozheno: {},
+      pravila: {
+        ...sTrafikom({ po_umolchaniyu: "direct", servisy: [{ id: "youtube", marshrut: "vpn" }] }),
+        katalog: KATALOG,
+      },
+    });
+    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("1");
+  });
+
+  it("без каталога счёта нет: считать нечего, а ноль это измеренное значение", () => {
+    risovat({ otlozheno: {}, pravila: sTrafikom() });
+    expect(screen.getByRole("tab", { name: /Сервисы/ })).not.toHaveTextContent(/\d/);
   });
 });
 
