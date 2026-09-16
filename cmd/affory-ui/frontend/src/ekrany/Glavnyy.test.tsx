@@ -40,6 +40,20 @@ describe("главный экран", () => {
     expect(screen.getByTestId("glavnoe-deystvie")).toHaveAccessibleName("Отменить подключение");
   });
 
+  it("на сфере нет надписи: состояние сказано строкой выше, третьей копии не нужно", () => {
+    render(<Glavnyy status={{ sostoyanie: "podnimaetsya" }} naDeystvie={() => {}} />);
+    // Слово о действии живёт в доступном имени, а не текстом поверх картинки.
+    expect(screen.getByTestId("glavnoe-deystvie").textContent).toBe("");
+    expect(screen.getByTestId("glavnoe-deystvie")).toHaveAccessibleName("Отменить подключение");
+  });
+
+  it("от режима трафика есть путь в правила, а не только через полосу разделов", () => {
+    const naPravila = vi.fn();
+    render(<Glavnyy status={{ sostoyanie: "podnyat" }} naPravila={naPravila} />);
+    fireEvent.click(screen.getByTestId("k-pravilam"));
+    expect(naPravila).toHaveBeenCalledTimes(1);
+  });
+
   it("цифры без данных это ПРОЧЕРК, а не ноль", () => {
     // Fallback contract: subscribeStats answers not-implemented until wave 6.
     // Zero is a measured value, and a person is entitled to read it as one.

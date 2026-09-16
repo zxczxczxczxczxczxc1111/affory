@@ -167,10 +167,19 @@ export function Marshruty({
     // Keep typed values available when validation fails; a rejected form is not amnesia.
   };
 
-  const VKLADKI: { v: typeof tab; podpis: string; schyot?: number }[] = [
-    { v: "services", podpis: "Сервисы" },
+  // Что включено на вкладке, видно НЕ ЗАХОДЯ на неё. Прежде счёт был только у
+  // приложений и сайтов, а «российские сайты напрямую» не показывал вообще
+  // никто: чтобы узнать про них, надо было догадаться открыть «Сайты».
+  const ruSpisokVkl = pravila?.bez_ru_spiska !== true;
+  const VKLADKI: { v: typeof tab; podpis: string; schyot: number; vklyucheno?: string }[] = [
+    { v: "services", podpis: "Сервисы", schyot: services.length },
     { v: "apps", podpis: "Приложения", schyot: apps.length },
-    { v: "sites", podpis: "Сайты", schyot: domains.length },
+    {
+      v: "sites",
+      podpis: "Сайты",
+      schyot: domains.length,
+      vklyucheno: ruSpisokVkl ? "Российские сайты идут напрямую" : undefined,
+    },
   ];
 
   return (
@@ -220,7 +229,7 @@ export function Marshruty({
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <nav role="tablist" aria-label="Вид правил" className="border-border flex shrink-0 items-stretch gap-1 border-b px-8">
-          {VKLADKI.map(({ v, podpis, schyot }) => {
+          {VKLADKI.map(({ v, podpis, schyot, vklyucheno }) => {
             const on = v === tab;
             return (
               <button
@@ -234,8 +243,20 @@ export function Marshruty({
                 }`}
               >
                 {podpis}
-                {schyot !== undefined && schyot > 0 && (
+                {schyot > 0 && (
                   <span className={`text-[13px] font-normal ${on ? "text-accent-ink" : "text-fg-faint"}`}>{schyot}</span>
+                )}
+                {/* Точка значит «здесь включено то, чего в счёте правил нет».
+                    Она названа словами, а не оставлена загадкой: имя читает и
+                    подсказка, и чтение с экрана. */}
+                {vklyucheno && (
+                  <span
+                    className="bg-accent-ink h-1.5 w-1.5 shrink-0 rounded-full"
+                    data-testid={`vklyucheno-${v}`}
+                    title={vklyucheno}
+                    aria-label={vklyucheno}
+                    role="img"
+                  />
                 )}
                 {on && <span aria-hidden className="bg-accent-ink absolute inset-x-0 bottom-0 h-[2px] rounded-t" />}
               </button>

@@ -159,6 +159,30 @@ describe("правила: четыре состояния списка", () => {
   });
 });
 
+describe("вкладки говорят, что на них включено", () => {
+  // Про «российские сайты напрямую» нельзя было узнать, не открыв вкладку
+  // «Сайты»: счёт правил её не считает, а больше о ней не говорил никто.
+  it("включённый российский список помечает вкладку «Сайты» и называет себя", () => {
+    risovat({ otlozheno: {}, pravila: sTrafikom({}, { bez_ru_spiska: false }) });
+    expect(screen.getByTestId("vklyucheno-sites")).toHaveAccessibleName(/российские сайты/i);
+  });
+
+  it("выключенный российский список метки не оставляет", () => {
+    risovat({ otlozheno: {}, pravila: sTrafikom({}, { bez_ru_spiska: true }) });
+    expect(screen.queryByTestId("vklyucheno-sites")).toBeNull();
+  });
+
+  it("счёт есть у всех трёх вкладок, а не только у приложений и сайтов", () => {
+    risovat({
+      otlozheno: {},
+      pravila: sTrafikom({
+        servisy: [{ id: "youtube", marshrut: "vpn" }, { id: "claude", marshrut: "direct" }],
+      }),
+    });
+    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("2");
+  });
+});
+
 describe("российский список", () => {
   // Решено 08.09.2026: список российских доменов работал всегда, а в окне про
   // него не было ни строки. Человек видел, что банк открывается напрямую, и не

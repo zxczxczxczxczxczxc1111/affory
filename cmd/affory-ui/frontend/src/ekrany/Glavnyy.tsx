@@ -12,7 +12,7 @@ import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
 import sphere from "../assets/affory-sphere.png";
 import { Knopka, Poisk, PROCHERK, Segment, Vertushka } from "./ui";
-import { IkGalka, IkPitanie, IkServer } from "../ikonki";
+import { IkGalka, IkServer } from "../ikonki";
 import { slovoPosleChisla } from "../chisla";
 
 // Pure over props. No subscription, no bridge, no runtime import: App.tsx
@@ -143,6 +143,7 @@ export function Glavnyy({
   skorost,
   naProverit,
   proverkaIdet = false,
+  naPravila,
 }: GlavnyyProps) {
   const izvestnye = servery ?? spisok?.servery ?? [];
   const podnyat = status.sostoyanie === "podnyat";
@@ -226,13 +227,9 @@ export function Glavnyy({
                 podnyat ? "opacity-100" : "opacity-45 saturate-0"
               }`}
             />
-            {/* Слово о том, что сделает нажатие, проступает на наведении: на
-                самой сфере нет ни одной надписи, и без него она молчит. */}
-            <span className="text-fg-secondary pointer-events-none absolute bottom-[6%] inline-flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1 text-[13px] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
-              {busy
-                ? <><Vertushka className="h-3.5 w-3.5" />{action}</>
-                : <><IkPitanie className="h-3.5 w-3.5" />{action}</>}
-            </span>
+            {/* Надписи на сфере нет намеренно: состояние стоит строкой выше, и
+                подсказка на наведении повторяла его третий раз. Слово о том,
+                что сделает нажатие, осталось в aria-label для чтения с экрана. */}
           </button>
 
           <p className="text-foreground mt-5 text-center text-[17px] font-medium" data-testid="nesushchiy">
@@ -258,6 +255,21 @@ export function Glavnyy({
                 ? "Через VPN, кроме прямых маршрутов"
                 : "Через VPN только то, что в правилах"}
             </p>
+            {/* Отсюда до списка исключений был один путь: догадаться про
+                раздел «Правила» в полосе наверху. Подчёркивания нет, ссылка
+                опознаётся цветом (правило интерфейса). */}
+            {naPravila && (
+              <p className="mt-1.5 text-center">
+                <button
+                  type="button"
+                  data-testid="k-pravilam"
+                  onClick={naPravila}
+                  className="text-accent-ink hover:brightness-125 text-[13px] font-medium"
+                >
+                  Настроить правила
+                </button>
+              </p>
+            )}
           </div>
 
           <dl className="border-border mt-6 grid w-full max-w-[420px] grid-cols-3 border-t pt-5 text-center" data-testid="statistika">
