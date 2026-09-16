@@ -289,7 +289,7 @@ export function Glavnyy({
                       ? "Список не прочитался"
                       // «Читаю список» при молчащей службе это обещание работы,
                       // которой не идёт: читать не у кого.
-                      : molchit ? "Список некому отдать" : "Читаю список"}
+                      : molchit ? "Служба не отвечает" : "Читаю список"}
                 </p>
               </div>
               <Knopka rang="vtoraya" bolshaya onClick={naServery}>Управлять</Knopka>
@@ -299,6 +299,7 @@ export function Glavnyy({
               <Segment
                 aria-label="Как выбирается сервер"
                 rastyanut
+                ton="tihiy"
                 aktiven={!(molchit || busy || zanyato)}
                 vybrano={rezhim}
                 naVybor={(r) => naRezhim?.(r as Rezhim)}
