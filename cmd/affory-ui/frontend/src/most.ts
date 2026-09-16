@@ -6,6 +6,10 @@ export function oknoSvernut(): void {
   void Window.Minimise();
 }
 
+export function oknoRazvernut(): void {
+  void Window.ToggleMaximise();
+}
+
 export function oknoZakryt(): void {
   void Window.Close();
 }

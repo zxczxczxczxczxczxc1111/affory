@@ -41,3 +41,12 @@ func TestIkonkaPrilozheniyaZadanaNastoyashchimPNG(t *testing.T) {
 		t.Error("Options.Icon не PNG: Wails не сделает из него иконку")
 	}
 }
+
+// Правый щелчок в окне не должен открывать меню Chromium: владелец увидел в
+// 1.1.3 «Save as» и «Inspect». Проверка на опции, а не на живое окно: само
+// меню рисует WebView2, и в тесте его не спросишь.
+func TestOknoOpciiVyklyuchaetRodnoeMenyu(t *testing.T) {
+	if !oknoOpcii().DefaultContextMenuDisabled {
+		t.Fatal("родное меню WebView2 включено: правый щелчок откроет Save as и Inspect")
+	}
+}

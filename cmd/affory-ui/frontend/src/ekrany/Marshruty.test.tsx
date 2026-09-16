@@ -36,7 +36,9 @@ it("service toggle sends a domain bundle route without inventing process exclusi
     />,
   );
   fireEvent.click(screen.getByLabelText("YouTube через VPN"));
-  expect(document.querySelector(".af-route-summary")).toHaveTextContent("1 правило");
+  // Число и слово стоят в разных строках макета, поэтому пробел между ними
+  // рисует раскладка, а не текст.
+  expect(screen.getByTestId("svodka-pravil").textContent).toMatch(/1\s*правило/);
   expect(screen.getByText("2 домена с поддоменами")).toBeInTheDocument();
   expect(send).toHaveBeenCalledWith(
     "setRules",
@@ -58,7 +60,7 @@ it("changing the default preserves explicit direct domain intent", () => {
       naKomandu={send}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Всё через VPN" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Всё через VPN" }));
   expect(send).toHaveBeenCalledWith(
     "setRules",
     expect.objectContaining({
@@ -77,8 +79,8 @@ it("application picker persists the complete path and descendant scope", () => {
       naKomandu={send}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Приложения" }));
-  fireEvent.click(screen.getByRole("button", { name: "+ Добавить" }));
+  fireEvent.click(screen.getByRole("tab", { name: /Приложения/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
   fireEvent.click(screen.getByRole("button", { name: /^Steam,/ }));
   fireEvent.click(screen.getByRole("button", { name: "Сохранить правило" }));
   expect(send).toHaveBeenCalledWith(
@@ -103,8 +105,8 @@ function openAppForm(picker: () => Promise<string>) {
   const send = vi.fn();
   render(<Pravila status={{ sostoyanie: "vyklyuchen" }} pravila={rules} otlozheno={{}}
     naVyborPrilozheniya={picker} naKomandu={send} />);
-  fireEvent.click(screen.getByRole("button", { name: "Приложения" }));
-  fireEvent.click(screen.getByRole("button", { name: "+ Добавить" }));
+  fireEvent.click(screen.getByRole("tab", { name: /Приложения/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
   return send;
 }
 
@@ -158,10 +160,10 @@ it("blocks duplicate dialogs and discards a selection after leaving the form", a
   expect(screen.getByRole("button", { name: "Сохранить правило" })).toBeDisabled();
   fireEvent.click(pending);
   expect(picker).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole("button", { name: /Сайты/ }));
+  fireEvent.click(screen.getByRole("tab", { name: /Сайты/ }));
   await act(async () => choose("C:\\Apps\\new.exe"));
-  fireEvent.click(screen.getByRole("button", { name: "Приложения" }));
-  fireEvent.click(screen.getByRole("button", { name: "+ Добавить" }));
+  fireEvent.click(screen.getByRole("tab", { name: /Приложения/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
   expect(screen.getByLabelText("Путь к приложению")).toHaveValue("C:\\Apps\\old.exe");
   expect(send).not.toHaveBeenCalled();
 });
@@ -223,6 +225,9 @@ it("detailed log toggle lives on the routes screen, not only on the legacy one",
       naKomandu={send}
     />,
   );
+  // Журнал и подробная запись лежат в свёрнутом разделе: закрытый раздел не
+  // отрисован, и человек до переключателя доходит тем же щелчком.
+  fireEvent.click(screen.getByTestId("razdel-zhurnal"));
   fireEvent.click(screen.getByTestId("diagnostika"));
   expect(send).toHaveBeenCalledWith("setDiagnostics", { vkl: true });
   expect(send).not.toHaveBeenCalledWith("setJournal", expect.anything());
@@ -236,5 +241,6 @@ it("detailed log toggle follows the state reported by the service", () => {
       naKomandu={vi.fn()}
     />,
   );
+  fireEvent.click(screen.getByTestId("razdel-zhurnal"));
   expect((screen.getByTestId("diagnostika") as HTMLInputElement).checked).toBe(true);
 });

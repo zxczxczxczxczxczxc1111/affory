@@ -5,6 +5,18 @@ import type { StatusOtvet } from "../protokol";
 
 afterEach(cleanup);
 
+/** Редкие настройки живут в сворачиваемых разделах, и содержимое закрытого
+ *  раздела не отрисовано вовсе. Тест, который до него добирается, обязан его
+ *  раскрыть: иначе он проверял бы разметку, которой человек на экране не
+ *  видит. Раскрываются все сразу, чтобы тест не знал, в каком разделе лежит
+ *  проверяемая строка. */
+function raskrytVse() {
+  // Раскрывает только закрытые: щелчок по уже открытому разделу его закроет,
+  // и вызов после rerender гасил бы то, что раскрыл вызов до него.
+  for (const zagolovok of screen.queryAllByTestId(/^razdel-/))
+    if (zagolovok.getAttribute("aria-expanded") === "false") fireEvent.click(zagolovok);
+}
+
 // Task 4.8: two switches for two decisions (§9.2). Flipping one must send
 // exactly its own command and never touch the other: a combined switch would
 // promise a tunnel the human did not ask for.
@@ -15,6 +27,7 @@ function status(pere: Partial<StatusOtvet> = {}): StatusOtvet {
 describe("настройки: автозапуск и подключение при старте", () => {
   it("показывает умолчания §9.2: автозапуск включён, подключение при старте выключено", () => {
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     expect((screen.getByTestId("avtozapusk") as HTMLInputElement).checked).toBe(true);
     expect((screen.getByTestId("pri-starte") as HTMLInputElement).checked).toBe(false);
   });
@@ -22,6 +35,7 @@ describe("настройки: автозапуск и подключение п�
   it("переключение «подключаться при старте» шлёт только setConnectOnStart", () => {
     const naKomandu = vi.fn();
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={naKomandu} naUdalenie={vi.fn()} />);
+    raskrytVse();
     fireEvent.click(screen.getByTestId("pri-starte"));
     expect(naKomandu).toHaveBeenCalledTimes(1);
     expect(naKomandu).toHaveBeenCalledWith("setConnectOnStart", { vkl: true });
@@ -30,6 +44,7 @@ describe("настройки: автозапуск и подключение п�
   it("переключение автозапуска шлёт только setAutostart с обратным значением", () => {
     const naKomandu = vi.fn();
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={naKomandu} naUdalenie={vi.fn()} />);
+    raskrytVse();
     fireEvent.click(screen.getByTestId("avtozapusk"));
     expect(naKomandu).toHaveBeenCalledTimes(1);
     expect(naKomandu).toHaveBeenCalledWith("setAutostart", { vkl: false });
@@ -37,6 +52,7 @@ describe("настройки: автозапуск и подключение п�
 
   it("пока служба молчит, переключатели неактивны, а не врут умолчанием", () => {
     render(<Nastroyki status={{ sostoyanie: "sluzhba-molchit" }} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     expect((screen.getByTestId("avtozapusk") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId("pri-starte") as HTMLInputElement).disabled).toBe(true);
   });
@@ -59,6 +75,7 @@ function polnyy(pere: Partial<StatusOtvet> = {}) {
       naUdalenie={vi.fn()}
     />,
   );
+  raskrytVse();
   return naKomandu;
 }
 
@@ -73,6 +90,7 @@ describe("настройки: полоса канала", () => {
   // hy2-brutal нашей же подписки ровно такой.
   it("без настройки сказано, что число берётся из ссылки, а не показан ноль", () => {
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     const r = screen.getByTestId("polosa");
     expect(r).toHaveTextContent(/из ссылки/);
     expect(r).not.toHaveTextContent(/ядро считает полосу само/);
@@ -81,6 +99,7 @@ describe("настройки: полоса канала", () => {
 
   it("объявленная полоса видна числами", () => {
     render(<Nastroyki status={status({ polosa_vverh: 250, polosa_vniz: 440 })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     const r = screen.getByTestId("polosa");
     expect(r).toHaveTextContent("250");
     expect(r).toHaveTextContent("440");
@@ -95,6 +114,7 @@ describe("настройки: полоса канала", () => {
     // что отдача меряется туда же, куда приём, и получает 405.
     const na = vi.fn();
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={na} naUdalenie={vi.fn()} />);
+    raskrytVse();
     fireEvent.change(screen.getByTestId("polosa-mishen"), {
       target: { value: "https://example.org/big.bin" },
     });
@@ -128,6 +148,7 @@ describe("настройки: полоса канала", () => {
         }}
       />,
     );
+    raskrytVse();
     const r = screen.getByTestId("zamer-polosy");
     expect(r).toHaveTextContent("87");
     expect(r).toHaveTextContent("27");
@@ -154,6 +175,7 @@ describe("настройки: полоса канала", () => {
         }}
       />,
     );
+    raskrytVse();
     fireEvent.click(screen.getByTestId("obyavit-polosu"));
     expect(na).toHaveBeenCalledWith("setBandwidth", { vverh: 24, vniz: 78 });
   });
@@ -176,6 +198,7 @@ describe("настройки: полоса канала", () => {
         }}
       />,
     );
+    raskrytVse();
     expect((screen.getByTestId("obyavit-polosu") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId("zamer-polosy")).toHaveTextContent("405");
   });
@@ -185,6 +208,7 @@ describe("настройки: полоса канала", () => {
     // тратит трафик мобильного тарифа без спроса.
     const na = vi.fn();
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={na} naUdalenie={vi.fn()} />);
+    raskrytVse();
     fireEvent.click(screen.getByTestId("izmerit-polosu"));
     expect(na).not.toHaveBeenCalled();
   });
@@ -192,6 +216,7 @@ describe("настройки: полоса канала", () => {
   it("сохранение шлёт setBandwidth парой чисел", () => {
     const na = vi.fn();
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={na} naUdalenie={vi.fn()} />);
+    raskrytVse();
     fireEvent.change(screen.getByTestId("polosa-vverh"), { target: { value: "250" } });
     fireEvent.change(screen.getByTestId("polosa-vniz"), { target: { value: "440" } });
     fireEvent.click(screen.getByTestId("sohranit-polosu"));
@@ -201,6 +226,7 @@ describe("настройки: полоса канала", () => {
   it("половина пары не отправляется: одно число означало бы нулевое второе", () => {
     const na = vi.fn();
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={na} naUdalenie={vi.fn()} />);
+    raskrytVse();
     fireEvent.change(screen.getByTestId("polosa-vniz"), { target: { value: "440" } });
     expect(screen.getByTestId("sohranit-polosu")).toBeDisabled();
     fireEvent.click(screen.getByTestId("sohranit-polosu"));
@@ -210,12 +236,14 @@ describe("настройки: полоса канала", () => {
   it("снятие шлёт пару нулей, и только когда полоса объявлена", () => {
     const na = vi.fn();
     render(<Nastroyki status={status({ polosa_vverh: 250, polosa_vniz: 440 })} otlozheno={{}} naKomandu={na} naUdalenie={vi.fn()} />);
+    raskrytVse();
     fireEvent.click(screen.getByTestId("snyat-polosu"));
     expect(na).toHaveBeenCalledWith("setBandwidth", { vverh: 0, vniz: 0 });
   });
 
   it("человека предупреждают, что завышенное число вредит", () => {
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     expect(screen.getByTestId("polosa")).toHaveTextContent(/завышенн/i);
   });
 });
@@ -285,6 +313,7 @@ describe("настройки: отложенные команды", () => {
         naUdalenie={vi.fn()}
       />,
     );
+    raskrytVse();
     expect(screen.getByTestId("proverka")).toHaveTextContent(/волне 8/);
     expect(screen.queryByText(/волне 6/)).toBeNull();
   });
@@ -296,6 +325,7 @@ describe("настройки: отложенные команды", () => {
       <Nastroyki status={{ sostoyanie: "podnyat" }} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         adresVyhoda={{ adres: "203.0.113.5", cherez: "tunnel", vremya: "12:03" }} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/203\.0\.113\.5/);
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/через VPN/);
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/12:03/);
@@ -303,6 +333,7 @@ describe("настройки: отложенные команды", () => {
       <Nastroyki status={{ sostoyanie: "vyklyuchen" }} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         adresVyhoda={{ adres: "198.51.100.7", cherez: "napryamuyu", vremya: "12:04" }} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/напрямую/);
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/198\.51\.100\.7/);
   });
@@ -312,6 +343,7 @@ describe("настройки: отложенные команды", () => {
     render(
       <Nastroyki status={{ sostoyanie: "podnyat" }} otlozheno={{}} naKomandu={na} naUdalenie={vi.fn()} />,
     );
+    raskrytVse();
     expect(na).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("proverit-adres"));
     expect(na).toHaveBeenCalledWith("checkExitIp", {});
@@ -323,6 +355,7 @@ describe("настройки: отложенные команды", () => {
 describe("настройки: результат проверки утечек", () => {
   it("без ответа списка нет", () => {
     render(<Nastroyki status={status()} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     expect(screen.queryByTestId("punkty")).toBeNull();
   });
 
@@ -335,6 +368,7 @@ describe("настройки: результат проверки утечек",
       ],
     };
     render(<Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} proverka={proverka} />);
+    raskrytVse();
     const punkty = screen.getByTestId("punkty");
     expect(punkty.querySelectorAll("li").length).toBe(3);
     expect(punkty.textContent).toContain("не проверяется");
@@ -350,6 +384,7 @@ describe("настройки: обновление", () => {
     const naKomandu = vi.fn();
     const naObnovlenie = vi.fn();
     render(<Nastroyki status={{ sostoyanie: "vyklyuchen" }} otlozheno={{}} naKomandu={naKomandu} naUdalenie={vi.fn()} naObnovlenie={naObnovlenie} />);
+    raskrytVse();
     const knopka = screen.getByTestId("proverit-obnovlenie") as HTMLButtonElement;
     expect(knopka.disabled).toBe(false);
     fireEvent.click(knopka);
@@ -365,7 +400,7 @@ describe("настройки: обновление с сервера", () => {
     const naKomandu = polnyy({ versiya_programmy: "0.6.2", obnovlenie_provereno: "2026-09-03T10:00:00Z" });
     const ryad = screen.getByTestId("obnovlenie");
     expect(ryad).toHaveTextContent(/0\.6\.2/);
-    expect(ryad).toHaveTextContent(/проверено/);
+    expect(ryad).toHaveTextContent(/проверено/i);
     fireEvent.click(screen.getByTestId("proverit-versiyu"));
     expect(naKomandu).toHaveBeenCalledWith("checkUpdate", {});
   });
@@ -373,7 +408,7 @@ describe("настройки: обновление с сервера", () => {
   it("с находкой: «есть 0.6.3» с размером и кнопка «Установить» зовёт downloadUpdate", () => {
     const naKomandu = polnyy({ versiya_programmy: "0.6.2", obnovlenie: { versiya: "0.6.3", razmer: 9244901, provereno: "2026-09-03T10:00:00Z" } });
     const ryad = screen.getByTestId("obnovlenie");
-    expect(ryad).toHaveTextContent(/есть 0\.6\.3/);
+    expect(ryad).toHaveTextContent(/есть 0\.6\.3/i);
     expect(ryad).toHaveTextContent(/8,8 МБ/);
     fireEvent.click(screen.getByTestId("ustanovit-obnovlenie"));
     expect(naKomandu).toHaveBeenCalledWith("downloadUpdate", {});
@@ -381,7 +416,7 @@ describe("настройки: обновление с сервера", () => {
 
   it("ни разу не проверялось: так и написано, кнопка проверки есть", () => {
     polnyy({ versiya_programmy: "0.6.2" });
-    expect(screen.getByTestId("obnovlenie")).toHaveTextContent(/ещё не проверялось/);
+    expect(screen.getByTestId("obnovlenie")).toHaveTextContent(/ещё не проверялось/i);
     expect(screen.getByTestId("proverit-versiyu")).toBeTruthy();
   });
 });
@@ -400,8 +435,9 @@ const REZULTAT = {
 describe("настройки: четыре состояния", () => {
   it("пусто: проверок не было, и экран не рисует ни результата, ни нулей", () => {
     render(<Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     expect(screen.queryByTestId("punkty")).toBeNull();
-    expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/по кнопке/);
+    expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/по кнопке/i);
     expect(screen.getByTestId("proverka").textContent).not.toMatch(/\b0\b/);
   });
 
@@ -410,6 +446,7 @@ describe("настройки: четыре состояния", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         proverka={REZULTAT} proverkaOtkaz={{ kod: "exit-ip-unmeasured" }} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("otkaz-proverki")).toHaveTextContent(/адрес выхода не измерен/);
     expect(screen.queryByTestId("punkty")).toBeNull();
     expect(screen.queryByText(/интернет видит/)).toBeNull();
@@ -421,6 +458,7 @@ describe("настройки: четыре состояния", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         proverka={{ punkty }} />,
     );
+    raskrytVse();
     const spisokEl = screen.getByTestId("punkty");
     expect(spisokEl.className).toMatch(/overflow-y-auto/);
     expect(spisokEl.querySelectorAll("li").length).toBe(40);
@@ -432,6 +470,7 @@ describe("настройки: четыре состояния", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         adresVyhoda={{ adres: dlinnyy, cherez: "tunnel", vremya: "12:03" }} />,
     );
+    raskrytVse();
     expect(screen.getByText(new RegExp(dlinnyy)).className).toMatch(/break-words/);
   });
 });
@@ -443,6 +482,7 @@ describe("настройки: серая кнопка называет прич�
       <Nastroyki status={{ sostoyanie: "sluzhba-molchit" }} svyaz="net" povtorit={povtorit}
         otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />,
     );
+    raskrytVse();
     for (const id of ["proverit-utechki", "proverit-adres", "proverit-versiyu", "proverit-obnovlenie"]) {
       expect(screen.getByTestId(id)).toBeDisabled();
     }
@@ -455,6 +495,7 @@ describe("настройки: серая кнопка называет прич�
 
   it("пока hello не ответил, причина другая и волну никто не выдумывает", () => {
     render(<Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={null} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     expect(screen.getByTestId("proverit-utechki")).toBeDisabled();
     expect(screen.getByTestId("proverka")).toHaveTextContent(/служба ещё не ответила/);
     expect(screen.queryByText(/волне/)).toBeNull();
@@ -467,6 +508,7 @@ describe("настройки: свежесть результата", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         proverka={REZULTAT} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("proverka-snyata")).toHaveTextContent(/\d\d:\d\d/);
   });
 
@@ -475,11 +517,13 @@ describe("настройки: свежесть результата", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         proverka={REZULTAT} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("punkty")).toBeTruthy();
     rerender(
       <Nastroyki status={status({ sostoyanie: "vyklyuchen" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         proverka={REZULTAT} />,
     );
+    raskrytVse();
     expect(screen.queryByTestId("punkty")).toBeNull();
     expect(screen.getByTestId("proverka-ustarela")).toHaveTextContent(/проверь заново/);
   });
@@ -489,6 +533,7 @@ describe("настройки: свежесть результата", () => {
       <Nastroyki status={status({ sostoyanie: "vyklyuchen" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         adresVyhoda={{ adres: "203.0.113.5", cherez: "tunnel", vremya: "12:03" }} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("adres-vyhoda")).not.toHaveTextContent(/через VPN/);
     expect(screen.getByTestId("adres-vyhoda")).toHaveTextContent(/VPN с тех пор отключён/);
   });
@@ -504,6 +549,7 @@ describe("настройки: профиль", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         vyvestiProfil={vyvesti} vvestiProfil={vvesti} />,
     );
+    raskrytVse();
     // Empty password sends nothing: the service would refuse it anyway, and a
     // refusal the screen could have predicted is a refusal it should not cause.
     expect(screen.getByTestId("vyvesti-profil")).toBeDisabled();
@@ -520,6 +566,7 @@ describe("настройки: профиль", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         vyvestiProfil={vi.fn()} vvestiProfil={vi.fn()} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("parol-profilya")).toHaveAttribute("type", "password");
   });
 
@@ -528,6 +575,7 @@ describe("настройки: профиль", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         vyvestiProfil={vi.fn()} vvestiProfil={vi.fn()} itogProfilya="профиль записан: D:\profil.affory" />,
     );
+    raskrytVse();
     expect(screen.getByTestId("itog-profilya")).toHaveTextContent(/профиль записан/);
   });
 
@@ -539,12 +587,14 @@ describe("настройки: профиль", () => {
       <Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={null} naKomandu={vi.fn()} naUdalenie={vi.fn()}
         vyvestiProfil={vi.fn()} vvestiProfil={vi.fn()} />,
     );
+    raskrytVse();
     expect(screen.getByTestId("vyvesti-profil")).toBeDisabled();
     expect(screen.getByTestId("vvesti-profil")).toBeDisabled();
   });
 
   it("без обработчиков раздела профиля нет: пустая кнопка обещала бы то, чего нет", () => {
     render(<Nastroyki status={status({ sostoyanie: "podnyat" })} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
     expect(screen.queryByTestId("vyvesti-profil")).toBeNull();
   });
 });
@@ -563,6 +613,7 @@ describe("настройки: ход обновления", () => {
         hodObnovleniya={{ shag: "skachivanie", versiya: "1.1.0", skachano: 13790155, vsego: 27580311 }}
       />,
     );
+    raskrytVse();
     const ryad = screen.getByTestId("obnovlenie");
     expect(ryad).toHaveTextContent(/1\.1\.0/);
     expect(ryad).toHaveTextContent(/50\s?%/);
@@ -580,6 +631,7 @@ describe("настройки: ход обновления", () => {
         hodObnovleniya={{ shag: "podmena", versiya: "1.1.0", srok_s: 20 }}
       />,
     );
+    raskrytVse();
     const ryad = screen.getByTestId("obnovlenie");
     expect(ryad).toHaveTextContent(/подменя|перезапуск/i);
     expect(ryad).toHaveTextContent(/20 с|20 сек/);
@@ -598,6 +650,7 @@ describe("настройки: ход обновления", () => {
         naUdalenie={vi.fn()}
       />,
     );
+    raskrytVse();
     expect(screen.getByTestId("obnovlenie")).not.toHaveTextContent(/\bdev\b/);
   });
 });
@@ -617,6 +670,7 @@ it("по зову из трея подсвечивает карточку обн
       vestiKObnovleniyu={0}
     />,
   );
+    raskrytVse();
   expect(scrollIntoView).not.toHaveBeenCalled();
 
   rerender(
@@ -628,6 +682,7 @@ it("по зову из трея подсвечивает карточку обн
       vestiKObnovleniyu={1}
     />,
   );
+    raskrytVse();
   expect(scrollIntoView).toHaveBeenCalledTimes(1);
   expect(screen.getByTestId("obnovlenie").parentElement).toHaveClass("af-privlech");
 });

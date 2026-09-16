@@ -49,13 +49,15 @@
       "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/socials/instagram.com.json"
     },
     {
-      "id": "whatsapp",
-      "imya": "WhatsApp",
+      "id": "claude",
+      "imya": "Claude",
       "domeny": [
-        "whatsapp.com",
-        "whatsapp.net"
+        "claude.ai",
+        "claude.com",
+        "anthropic.com",
+        "claudeusercontent.com"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/messengers/whatsapp.com.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/ai/claude.ai.json"
     },
     {
       "id": "telegram",
@@ -79,16 +81,14 @@
       "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/music/spotify.com.json"
     },
     {
-      "id": "netflix",
-      "imya": "Netflix",
+      "id": "soundcloud",
+      "imya": "SoundCloud",
       "domeny": [
-        "netflix.com",
-        "nflxext.com",
-        "nflximg.net",
-        "nflxvideo.net",
-        "nflxso.net"
+        "soundcloud.com",
+        "sndcdn.com",
+        "snd.sc"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/video/netflix.com.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/music/soundcloud.com.json"
     }
   ]
 }

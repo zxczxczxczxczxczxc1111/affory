@@ -119,6 +119,7 @@ vi.mock("./most", () => ({
     };
   },
   oknoSvernut: () => undefined,
+    oknoRazvernut: () => undefined,
   oknoZakryt: () => undefined,
   sluzhbaUstanovlena: async () => stend.s.sluzhbaEst,
   ustanovitSluzhbu: async () => undefined,
@@ -295,6 +296,14 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+/** Редкие настройки лежат в сворачиваемых разделах экрана настроек, и
+ *  содержимое закрытого раздела не отрисовано. Тест, которому нужна строка
+ *  внутри, раскрывает разделы так же, как это сделал бы человек. */
+function raskrytRazdelyNastroek() {
+  for (const zagolovok of screen.queryAllByTestId(/^razdel-/))
+    if (zagolovok.getAttribute("aria-expanded") === "false") fireEvent.click(zagolovok);
+}
+
 describe("оболочка окна", () => {
   it("обновляет процессы при открытии формы и возврате в окно, сохраняя ввод", async () => {
     // Programs launch after tabs open; snapshots have yet to develop telepathy.
@@ -303,11 +312,11 @@ describe("оболочка окна", () => {
       trafik: { po_umolchaniyu: "vpn", prilozheniya: [], domeny: [], servisy: [] },
     });
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByRole("tab", { name: "Правила" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Приложения" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Приложения/ }));
     stend.s.protsessy = [{ imya: "local.exe", put: "C:\\Users\\Test\\AppData\\Local\\App\\local.exe" }];
-    fireEvent.click(screen.getByRole("button", { name: "+ Добавить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
     fireEvent.click(await screen.findByRole("button", { name: /^local.exe,/ }));
     fireEvent.change(screen.getByLabelText("Поиск приложения"), { target: { value: "roaming" } });
     stend.s.protsessy = [{ imya: "roaming.exe", put: "C:\\Users\\Test\\AppData\\Roaming\\App\\roaming.exe" }];
@@ -325,10 +334,10 @@ describe("оболочка окна", () => {
       trafik: { po_umolchaniyu: "vpn", prilozheniya: [], domeny: [], servisy: [] },
     });
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByRole("tab", { name: "Правила" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Приложения" }));
-    fireEvent.click(screen.getByRole("button", { name: "+ Добавить" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Приложения/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
     fireEvent.click(screen.getByRole("button", { name: "Выбрать на ПК…" }));
     await waitFor(() => expect(screen.getByLabelText("Путь к приложению")).toHaveValue("C:\\Program Files\\Steam\\steam.exe"));
     expect(stend.s.sled.filter(call => call.chto === "vybratPrilozhenie")).toHaveLength(1);
@@ -342,7 +351,7 @@ describe("оболочка окна", () => {
     most.otvechatMedlenno(200);
     render(<App />);
     expect(screen.queryByText(/служба не отвечает/i)).toBeNull();
-    await screen.findByText(/Интернет работает напрямую/i, {}, { timeout: 3000 });
+    await screen.findByText(/выключено/i, {}, { timeout: 3000 });
   });
 });
 
@@ -350,23 +359,23 @@ describe("окно переживает перезапуск службы", () =
   it("после обрыва канала сам возвращается к живой службе", async () => {
     const most = mostProby();
     render(<App periodOprosaMs={BYSTRO} />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
 
     most.oborvat();
-    await screen.findByText(/Нет связи со службой/i);
+    await screen.findByText(/служба не отвечает/i);
 
     most.ozhit({ sostoyanie: "podnyat" });
     // The service sends `state` only on a change, so nothing arrives on its
     // own: the window has to ask again or stay a brick.
-    await screen.findByText(/Подключено через VPN/i, {}, { timeout: 3000 });
+    await screen.findByText(/^подключено$/i, {}, { timeout: 3000 });
   });
 
   it("после восстановления канала заново спрашивает списки и подписку", async () => {
     const most = mostProby();
     render(<App periodOprosaMs={BYSTRO} />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     most.oborvat();
-    await screen.findByText(/Нет связи со службой/i);
+    await screen.findByText(/служба не отвечает/i);
     most.ozhit({ sostoyanie: "vyklyuchen" });
     await waitFor(
       () => {
@@ -383,12 +392,12 @@ describe("окно переживает перезапуск службы", () =
     // Long period on purpose: only the button may bring the window back, so
     // a poll cannot green this test behind the person's back.
     render(<App periodOprosaMs={100000} />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     most.oborvat();
     const knopka = await screen.findByRole("button", { name: /повторить|подключиться заново/i });
     most.ozhit({ sostoyanie: "vyklyuchen" });
     fireEvent.click(knopka);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
   });
 
   it("опрос по умолчанию раз в пять секунд, как у трея", async () => {
@@ -492,7 +501,7 @@ describe("ни один отказ не пропадает молча", () => {
     const most = mostProby();
     most.otvechatOtkazom("listRules", "secrets-unreadable");
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
     await waitFor(() => expect(most.skolkoRaz("listRules")).toBeGreaterThan(0));
     expect(screen.queryByText(/исключениях нет/i)).toBeNull();
@@ -501,7 +510,7 @@ describe("ни один отказ не пропадает молча", () => {
   it("битый кадр не пропадает в unhandled rejection, а доезжает до экрана", async () => {
     const most = mostProby();
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     // The bridge answers something that is not a frame: most.ts throws a
     // plain Error, and vypolnit used to rethrow it into nowhere.
     most.lomatKadr("connect");
@@ -513,7 +522,7 @@ describe("ни один отказ не пропадает молча", () => {
     const most = mostProby();
     most.lomatBufer();
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByRole("button", { name: "Управлять" }));
     fireEvent.click(await screen.findByRole("button", { name: /из буфера/i }));
     await screen.findByText(/буфер обмена не прочитался/i);
@@ -523,7 +532,7 @@ describe("ни один отказ не пропадает молча", () => {
     const most = mostProby();
     most.lomatProtsessy();
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
     await screen.findByText(/список процессов не читается/i);
   });
@@ -542,7 +551,7 @@ describe("ни один отказ не пропадает молча", () => {
       otkazy: [{ stroka: 4, prichina: "транспорт не поддерживается" }],
     });
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByRole("button", { name: "Управлять" }));
     fireEvent.click(await screen.findByTestId("obnovit-podpisku"));
     const k = await screen.findByTestId("otkazy-podpiski");
@@ -554,8 +563,9 @@ describe("ни один отказ не пропадает молча", () => {
     const most = mostProby();
     most.lomatArhiv();
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.click(await screen.findByRole("button", { name: /выбрать архив/i }));
     await screen.findByText(/диалог выбора файла не открылся/i);
   });
@@ -566,7 +576,7 @@ describe("баннер отказа", () => {
     const most = mostProby();
     most.otvechatOtkazom("clearJournal", "journal-clear-failed");
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
     fireEvent.click(await screen.findByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
@@ -578,7 +588,7 @@ describe("баннер отказа", () => {
     const most = mostProby();
     most.otvechatOtkazom("clearJournal", "journal-clear-failed");
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
     fireEvent.click(await screen.findByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
@@ -620,7 +630,7 @@ describe("баннер отказа", () => {
     const most = mostProby();
     most.otvechatOtkazom("clearJournal", "journal-clear-failed");
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
     fireEvent.click(await screen.findByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
@@ -668,8 +678,9 @@ describe("профиль выносится и вносится из окна", 
     most.zadatPutSohraneniya("C:\vygruzka\profil.affory");
     most.otvechatTelom("exportProfile", { profil: "QUZGT1JZLVBST0ZJTA==" });
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.change(await screen.findByTestId("parol-profilya"), { target: { value: PAROL } });
     fireEvent.click(screen.getByTestId("vyvesti-profil"));
 
@@ -685,8 +696,9 @@ describe("профиль выносится и вносится из окна", 
     const most = mostProby();
     most.zadatPutSohraneniya("");
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.change(await screen.findByTestId("parol-profilya"), { target: { value: PAROL } });
     fireEvent.click(screen.getByTestId("vyvesti-profil"));
     await waitFor(() => expect(most.sledSo("")).toContain("vybratKudaSohranit"));
@@ -697,8 +709,9 @@ describe("профиль выносится и вносится из окна", 
     const most = mostProby();
     most.zadatFayl("C:\vygruzka\profil.affory", "QUZGT1JZLVBST0ZJTA==");
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.change(await screen.findByTestId("parol-profilya"), { target: { value: PAROL } });
     const bylo = most.skolkoRaz("listServers");
     fireEvent.click(screen.getByTestId("vvesti-profil"));
@@ -714,8 +727,9 @@ describe("профиль выносится и вносится из окна", 
     most.zadatFayl("C:\vygruzka\profil.affory", "QUZGT1JZ");
     most.otvechatOtkazom("importProfile", "secrets-unreadable", "пароль неверен либо файл повреждён");
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.change(await screen.findByTestId("parol-profilya"), { target: { value: PAROL } });
     fireEvent.click(screen.getByTestId("vvesti-profil"));
     await screen.findByText(/пароль неверен либо файл повреждён/i);
@@ -734,8 +748,9 @@ describe("замер полосы", () => {
       cherez_tunnel: true, potokov: 4,
     });
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.change(await screen.findByTestId("polosa-mishen"), {
       target: { value: "https://example.org/big.bin" },
     });
@@ -759,8 +774,9 @@ describe("замер полосы", () => {
       mbit_vniz: 87.4, sovet_vniz: 78, mbit_vverh: 27.1, sovet_vverh: 24, cherez_tunnel: true,
     });
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.change(await screen.findByTestId("polosa-mishen"), {
       target: { value: "https://example.org/big.bin" },
     });
@@ -784,8 +800,9 @@ describe("замер полосы", () => {
       cherez_tunnel: false,
     });
     render(<App />);
-    await screen.findByText(/Интернет работает напрямую/i);
+    await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
     fireEvent.change(await screen.findByTestId("polosa-mishen"), {
       target: { value: "https://example.org/big.bin" },
     });
@@ -876,7 +893,7 @@ describe("оболочка: обновление", () => {
     });
 
     const ryad = await screen.findByTestId("obnovlenie");
-    expect(ryad).toHaveTextContent(/обновление до 1\.1\.0/);
+    expect(ryad).toHaveTextContent(/обновление до 1\.1\.0/i);
     expect(await screen.findByRole("progressbar", { name: /обновлени/i })).toHaveAttribute("aria-valuenow", "25");
   });
 
@@ -902,7 +919,7 @@ describe("оболочка: обновление", () => {
     most.zadatStatus({ sostoyanie: "vyklyuchen", versiya_programmy: "0.9.9" });
     render(<App periodOprosaMs={BYSTRO} />);
     fireEvent.click(await screen.findByRole("tab", { name: "Настройки" }));
-    await screen.findByText(/программа 0\.9\.9/);
+    await screen.findByText(/программа 0\.9\.9/i);
 
     most.sobytie({ tip: "sobytie", imya: "obnovlenie-hod", telo: { shag: "podmena", versiya: "1.1.2", srok_s: 20 } });
     most.oborvat();

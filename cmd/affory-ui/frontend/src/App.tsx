@@ -16,7 +16,7 @@ import {
 import { Servery, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
 import { VKLADKI, type Vkladka } from "./ekrany/vkladki";
 import {
-  KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, naVkladku, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
+  KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, naVkladku, oknoRazvernut, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
   udalitProgrammu, ustanovitSluzhbu, zvat, type Kadr,
 } from "./most";
 import { naladitVstavku } from "./vstavka";
@@ -810,7 +810,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
 
   return (
     <main className="affory-desktop bg-background text-foreground h-screen" data-testid="oboloshka">
-      <Karkas naGitHub={() => { void otkrytGitHub().catch((e: unknown) => zhaloba("Не удалось открыть GitHub", e)); }} vkladka={vkladka} naVkladku={zadatVkladku} naSvernut={oknoSvernut} naZakryt={oknoZakryt} zablokirovany={ustanovka !== null}>
+      <Karkas naGitHub={() => { void otkrytGitHub().catch((e: unknown) => zhaloba("Не удалось открыть GitHub", e)); }} vkladka={vkladka} naVkladku={zadatVkladku} naSvernut={oknoSvernut} naRazvernut={oknoRazvernut} naZakryt={oknoZakryt} zablokirovany={ustanovka !== null}>
         {/* A refusal is shown on whichever tab is open: a declined UAC on
             Settings must not wait for the human to walk back to Connection. */}
         {pokazat && !ustanovka && (
@@ -909,6 +909,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             povtorit={() => void sprositVsyo()}
             proverka={proverka}
             proverkaOtkaz={proverkaOtkaz}
+            // Какая именно команда сейчас в полёте. Кнопка, за которой стоит
+            // секунда ожидания, обязана сказать об этом сама: молчание после
+            // нажатия человек читает как зависшую программу и жмёт второй раз.
+            zanyatyeKomandy={busyCommand ? { [busyCommand]: true } : {}}
             vyvestiProfil={(parol) => void vyvestiProfil(parol)}
             vvestiProfil={(parol) => void vvestiProfil(parol)}
             itogProfilya={itogProfilya}

@@ -1,16 +1,22 @@
 import type { CSSProperties, ReactNode } from "react";
 import { VKLADKI, nazvanieVkladki, type Vkladka } from "./vkladki";
+import { IkNastroyki, IkPodklyuchenie, IkPravila, IkRazvernut, IkSvernut, IkZakryt } from "../ikonki";
+import { ZnachokServisa } from "./ui";
 import sphere from "../assets/affory-sphere.png";
 import github from "../assets/github-white.svg";
 
 // Window frame: our own title bar (the window is frameless, §8.3) and the
-// four tabs. Pure over props like every screen; minimise and close are calls
-// UP to App, which owns the bridge. This file never imports the runtime.
+// tabs. Pure over props like every screen; minimise, maximise and close are
+// calls UP to App, which owns the bridge. This file never imports the runtime.
+//
+// Разделов в полосе три: «Серверы» остались вкладкой в коде, но в полосу не
+// выходят и открываются кнопкой «Управлять» на экране подключения.
 
 export interface KarkasProps {
   vkladka: Vkladka;
   naVkladku: (v: Vkladka) => void;
   naSvernut: () => void;
+  naRazvernut?: () => void;
   naZakryt: () => void;
   naGitHub?: () => void;
   /** First run (§9.2): tabs are disabled until the service exists. The
@@ -25,19 +31,29 @@ export interface KarkasProps {
 const TASHCHIT: CSSProperties = { ["--wails-draggable" as string]: "drag" } as CSSProperties;
 const NE_TASHCHIT: CSSProperties = { ["--wails-draggable" as string]: "no-drag" } as CSSProperties;
 
-export function Karkas({ vkladka, naVkladku, naSvernut, naZakryt, naGitHub, zablokirovany = false, children }: KarkasProps) {
+const ZNACHKI: Partial<Record<Vkladka, typeof IkPodklyuchenie>> = {
+  podklyuchenie: IkPodklyuchenie,
+  pravila: IkPravila,
+  nastroyki: IkNastroyki,
+};
+
+export function Karkas({ vkladka, naVkladku, naSvernut, naRazvernut, naZakryt, naGitHub, zablokirovany = false, children }: KarkasProps) {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen min-w-0 flex-col">
       <header
         data-testid="polosa"
         style={TASHCHIT}
-        className="af-titlebar flex h-polosa shrink-0 items-center justify-between border-b border-border bg-rail pl-4 select-none"
+        className="af-titlebar border-border bg-rail flex h-polosa shrink-0 items-stretch justify-between border-b pl-4 select-none"
       >
-        <div className="af-title-left flex items-center gap-6">
-          <span className="af-brand flex items-center gap-2 text-[17px] font-semibold tracking-tight"><img src={sphere} alt="" className="h-6 w-6" />Affory</span>
+        <div className="af-title-left flex min-w-0 items-center gap-7">
+          <span className="af-brand flex shrink-0 items-center gap-2.5 text-[15px] font-semibold tracking-tight">
+            <img src={sphere} alt="" className="h-[22px] w-[22px]" />
+            Affory
+          </span>
           <nav role="tablist" aria-label="Разделы" className="flex h-polosa items-stretch">
             {VKLADKI.filter(v => v !== "servery").map((v) => {
               const aktivna = v === vkladka || (v === "podklyuchenie" && vkladka === "servery");
+              const Znachok = ZNACHKI[v];
               return (
                 <button
                   key={v}
@@ -48,29 +64,57 @@ export function Karkas({ vkladka, naVkladku, naSvernut, naZakryt, naGitHub, zabl
                   disabled={zablokirovany}
                   onClick={() => naVkladku(v)}
                   className={
+                    // Ink, never fill: a fill-only tab has no edge on black.
                     aktivna
-                      // Ink, never fill: a fill-only tab has no edge on black.
-                      ? "text-accent-ink border-b-2 border-accent-ink px-3 text-sm font-medium disabled:opacity-40"
-                      : "text-fg-muted hover:text-foreground border-b-2 border-transparent px-3 text-sm font-medium disabled:opacity-40 disabled:hover:text-fg-muted"
+                      ? "text-accent-ink relative flex items-center gap-2 px-3.5 text-sm font-medium disabled:opacity-40"
+                      : "text-fg-muted hover:text-fg-secondary relative flex items-center gap-2 px-3.5 text-sm font-medium disabled:opacity-40 disabled:hover:text-fg-muted"
                   }
                 >
-                  {nazvanieVkladki(v)}
+                  {/* Мягкая поверхность и тонкая линия: заливка отвечает за
+                      «где я», линия за то, чтобы это было видно на чёрном. */}
+                  {aktivna && <span aria-hidden className="bg-fill-subtle absolute inset-x-1 inset-y-[7px] -z-10 rounded-md" />}
+                  {Znachok && <Znachok className="h-[18px] w-[18px]" />}
+                  <span className={aktivna ? "text-foreground" : undefined}>{nazvanieVkladki(v)}</span>
+                  {aktivna && <span aria-hidden className="bg-accent-ink absolute inset-x-1 bottom-0 h-[2px] rounded-t" />}
                 </button>
               );
             })}
           </nav>
         </div>
-        <div className="af-window-controls flex h-polosa items-stretch">
-          <button type="button" className="af-github" style={NE_TASHCHIT} onClick={naGitHub} aria-label="Открыть GitHub Affory" title="GitHub Affory"><img src={github} alt="" /></button>
+        <div className="af-window-controls flex shrink-0 items-stretch">
+          <button
+            type="button"
+            className="af-github text-fg-secondary hover:text-foreground mr-1 flex items-center px-3 transition-colors"
+            style={NE_TASHCHIT}
+            onClick={naGitHub}
+            aria-label="Открыть GitHub Affory"
+            title="GitHub Affory"
+          >
+            {/* Готовый логотип со словом внутри: своё слово рядом дало бы
+                «GitHub GitHub», а резать логотип ради кота значит держать два
+                файла вместо одного. */}
+            <ZnachokServisa src={github} className="h-4 w-[70px]" />
+          </button>
           <button
             type="button"
             data-testid="svernut"
             aria-label="Свернуть"
             style={NE_TASHCHIT}
             onClick={naSvernut}
-            className="text-fg-muted hover:bg-fill-hover hover:text-foreground w-12 text-base"
+            className="text-fg-muted hover:bg-fill-subtle hover:text-foreground flex w-11 items-center justify-center transition-colors"
           >
-            &#x2013;
+            <IkSvernut className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            data-testid="razvernut"
+            aria-label="Развернуть"
+            style={NE_TASHCHIT}
+            onClick={naRazvernut}
+            disabled={!naRazvernut}
+            className="text-fg-muted hover:bg-fill-subtle hover:text-foreground flex w-11 items-center justify-center transition-colors disabled:opacity-40"
+          >
+            <IkRazvernut className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -78,13 +122,13 @@ export function Karkas({ vkladka, naVkladku, naSvernut, naZakryt, naGitHub, zabl
             aria-label="Закрыть"
             style={NE_TASHCHIT}
             onClick={naZakryt}
-            className="text-fg-muted hover:bg-danger hover:text-background w-12 text-base"
+            className="text-fg-muted hover:bg-danger hover:text-background flex w-11 items-center justify-center transition-colors"
           >
-            &#x00D7;
+            <IkZakryt className="h-4 w-4" />
           </button>
         </div>
       </header>
-      <div className="af-viewport min-h-0 flex-1 overflow-auto">{children}</div>
+      <div className="af-viewport flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }

@@ -20,6 +20,9 @@ describe("managed speed test", () => {
     const cancel = vi.fn();
     render(<Skorost snapshot={base} error="" pending={false} disabled start={vi.fn()} cancel={cancel} />);
     fireEvent.click(screen.getByRole("button", { name: "Остановить" }));
+    // Выбор сервиса лежит в свёрнутом разделе: закрытый раздел не отрисован,
+    // и проверять его состояние, не раскрыв, значило бы проверять пустоту.
+    fireEvent.click(screen.getByText("Сервис замера"));
     expect(cancel).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("Первый сервис замера")).toBeDisabled();
   });

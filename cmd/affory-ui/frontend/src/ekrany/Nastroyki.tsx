@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { HodObnovleniya, OtkazNaEkrane, RezultatProverki, ShagObnovleniya, Sostoyanie, StatusOtvet } from "../protokol";
 import { otlozhenaDo } from "./Pravila";
 import { Udalenie } from "./Udalenie";
-import { Karta, Knopka, Kolonka, Neudacha, Pole, Polosa, Razdel, Ryad, Shapka, Tumbler } from "./ui";
+import { Knopka, Neudacha, Panel, Pole, Polosa, Ryad, RyadRazdela, Tumbler } from "./ui";
+import {
+  IkArhiv, IkDiagnostika, IkMonitor, IkObnovit,
+  IkProfil, IkProksi, IkPusk, IkShchit, IkStrelkaVpravo,
+} from "../ikonki";
 import { obyom } from "./Glavnyy";
 
 // Settings tab. 4.8 brought the two launch switches, 4.7 the uninstall, 4.11
 // the rest: the §9.2 defaults shown rather than implied, the "all traffic"
 // mode with its warning, the local proxy port, and the three deferred
 // checks (leaks, exit address, update) disabled with the wave from hello.
-// Rare settings live here in sections; there is no second page.
+// Rare settings live here in collapsible sections; there is no second page,
+// потому что страница, которую надо искать, это страница, которой не
+// пользуются.
 
 export interface NastroykiProps {
   status: StatusOtvet;
@@ -53,6 +59,10 @@ export interface NastroykiProps {
   /** Растёт, когда трей просит показать обновление. Числом, а не флагом:
    *  второе нажатие обязано подсветить карточку снова. */
   vestiKObnovleniyu?: number;
+  /** Идёт ли длинная команда прямо сейчас: замер полосы, проверка утечек,
+   *  проверка адреса, проверка версии. Кнопка без вертушки читается как
+   *  зависшая программа, и человек жмёт её второй раз. */
+  zanyatyeKomandy?: Record<string, boolean>;
 }
 
 /** Замер полосы, обе стороны. Число и его отсутствие здесь разные вещи:
@@ -102,10 +112,13 @@ const ITOG: Record<string, string> = {
   ne_vidim: "не проверяется",
 };
 
+type Razdel = "hysteria" | "diagnostika" | "profil";
+
 export function Nastroyki({
   status, otlozheno, svyaz, povtorit, naKomandu, naUdalenie,
   proverka = null, proverkaOtkaz = null, naObnovlenie, adresVyhoda = null, zamerPolosy = null,
-  vyvestiProfil, vvestiProfil, itogProfilya = null, hodObnovleniya = null, vestiKObnovleniyu = 0,
+  vyvestiProfil, vvestiProfil, itogProfilya = null, zanyatyeKomandy = {},
+  hodObnovleniya = null, vestiKObnovleniyu = 0,
 }: NastroykiProps) {
   // The password lives exactly as long as this screen does, goes into the body
   // of one command and nowhere else: not a file name, not an argument, not a
@@ -131,6 +144,10 @@ export function Nastroyki({
   // The mode question waits for an answer: switching re-raises the tunnel
   // and drops every connection, which is not what a toggle usually does.
   const [vopros, zadatVopros] = useState<boolean | null>(null);
+  // Разделы открываются независимо друг от друга: аккордеон, который
+  // закрывает предыдущий, заставляет человека открывать один и тот же раздел
+  // по второму разу, стоит ему заглянуть в соседний.
+  const [otkryty, zadatOtkryty] = useState<Razdel[]>([]);
   // Полоса живёт строками, а не числами: пустое поле это «не введено», а не
   // ноль, и ноль отсюда уходит в службу только по кнопке «Снять».
   const [vverh, zadatVverh] = useState("");
@@ -171,20 +188,34 @@ export function Nastroyki({
   const utechki = otlozhenaDo(otlozheno, "checkLeaks");
   const adresOtlozhen = otlozhenaDo(otlozheno, "checkExitIp");
   const obnovlenie = otlozhenaDo(otlozheno, "installUpdate");
+  const zhdyot = (k: string) => zanyatyeKomandy[k] === true;
+  const perekluchit = (r: Razdel) =>
+    zadatOtkryty(otkryty.includes(r) ? otkryty.filter((x) => x !== r) : [...otkryty, r]);
 
   return (
-    <Kolonka aria-label="Настройки">
+    <section aria-label="Настройки" className="mx-auto flex w-full max-w-[940px] flex-col gap-7 px-8 py-7">
       {/* No summary line: versiya_sluzhby is the protocol number, and "служба 1"
           under the title told the human nothing (owner, 02.09.2026). */}
-      <Shapka zagolovok="Настройки" svodka={svyazNet ? "служба не отвечает" : undefined}>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-foreground text-[26px] font-semibold leading-tight">Настройки</h2>
+          <p className="text-fg-muted mt-1.5 text-sm">
+            {svyazNet ? "Служба не отвечает, настройки только для чтения" : "Настрой поведение программы под свои задачи"}
+          </p>
+        </div>
         {svyazNet && povtorit && (
-          <Knopka rang="vtoraya" testId="povtorit-svyaz" onClick={povtorit}>Повторить</Knopka>
+          <Knopka rang="vtoraya" bolshaya testId="povtorit-svyaz" onClick={povtorit}>Повторить</Knopka>
         )}
-      </Shapka>
+      </header>
 
-      <Razdel nazvanie="запуск">
-        <Karta>
-          <Ryad nazvanie="запускать при входе в Windows" poyasnenie="программа поднимается в трее, окно не открывается" aktiven={aktiven}>
+      <Gruppa nazvanie="Запуск" poyasnenie="Автозапуск и автоматическое подключение">
+        <Panel>
+          <Ryad
+            znachok={<IkMonitor className="h-[18px] w-[18px]" />}
+            nazvanie="Запускать при входе в Windows"
+            poyasnenie="Программа поднимается в трее, окно не открывается"
+            aktiven={aktiven}
+          >
             <Tumbler
               testId="avtozapusk"
               podpis="запускать при входе в Windows"
@@ -193,7 +224,12 @@ export function Nastroyki({
               naSmenu={(vkl) => naKomandu("setAutostart", { vkl })}
             />
           </Ryad>
-          <Ryad nazvanie="подключаться при старте" poyasnenie="VPN поднимает служба, до входа в систему" aktiven={aktiven}>
+          <Ryad
+            znachok={<IkPusk className="h-[18px] w-[18px]" />}
+            nazvanie="Подключаться при старте"
+            poyasnenie="VPN поднимает служба, до входа в систему"
+            aktiven={aktiven}
+          >
             <Tumbler
               testId="pri-starte"
               podpis="подключаться при старте"
@@ -202,35 +238,36 @@ export function Nastroyki({
               naSmenu={(vkl) => naKomandu("setConnectOnStart", { vkl })}
             />
           </Ryad>
-        </Karta>
-      </Razdel>
+        </Panel>
+      </Gruppa>
 
-      <Razdel nazvanie="защита">
+      <Gruppa nazvanie="Защита" poyasnenie="Безопасность и стабильность соединения">
         {vopros !== null ? (
-          <section role="dialog" aria-label="Смена режима" className="border-border bg-surface flex flex-col gap-3 rounded-lg border p-5">
-            <h3 className="text-foreground text-base font-semibold">
-              {vopros ? "включить режим «весь трафик»" : "выключить режим «весь трафик»"}
-            </h3>
-            <p className="text-fg-secondary text-sm">
-              VPN переподключается под новый режим, все соединения разорвутся и поднимутся заново.
-              загрузки и звонки оборвутся
+          <section role="dialog" aria-label="Смена режима" className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-5">
+            <h4 className="text-foreground text-sm font-semibold">
+              {vopros ? "Включить блокировку сети при обрыве VPN" : "Выключить блокировку сети при обрыве VPN"}
+            </h4>
+            <p className="text-fg-secondary text-[13px] leading-relaxed">
+              VPN переподключится под новый режим, все соединения разорвутся и поднимутся заново.
+              Загрузки и звонки оборвутся
             </p>
             <div className="flex gap-2">
-              <Knopka rang="glavnaya" testId="podtverdit-rezhim" onClick={() => { naKomandu("setKillSwitch", { vkl: vopros }); zadatVopros(null); }}>
+              <Knopka rang="glavnaya" bolshaya testId="podtverdit-rezhim" onClick={() => { naKomandu("setKillSwitch", { vkl: vopros }); zadatVopros(null); }}>
                 {vopros ? "Включить" : "Выключить"}
               </Knopka>
-              <Knopka rang="tekst" testId="otmena-rezhima" onClick={() => zadatVopros(null)}>Отмена</Knopka>
+              <Knopka rang="tekst" bolshaya testId="otmena-rezhima" onClick={() => zadatVopros(null)}>Отмена</Knopka>
             </div>
           </section>
         ) : (
-          <Karta>
+          <Panel>
             <Ryad
+              znachok={<IkShchit className="h-[18px] w-[18px]" />}
               testId="ves-trafik-ryad"
-              nazvanie="блокировать сеть при обрыве VPN"
+              nazvanie="Блокировать сеть при обрыве VPN"
               poyasnenie={
                 mozhnoRezhim || !aktiven
-                  ? "действует во время подключения, после отключения сеть освобождается"
-                  : "защита включится вместе с VPN"
+                  ? "Действует во время подключения, после отключения сеть освобождается"
+                  : "Защита включится вместе с VPN"
               }
               aktiven={mozhnoRezhim}
             >
@@ -243,269 +280,327 @@ export function Nastroyki({
               />
             </Ryad>
             <Ryad
+              znachok={<IkProksi className="h-[18px] w-[18px]" />}
               testId="proksi"
-              nazvanie="локальный прокси"
-              poyasnenie={
-                status.port_proksi
-                  ? `127.0.0.1:${status.port_proksi} · http и socks, для программ, которые ходят через прокси`
+              nazvanie="Локальный прокси"
+              poyasnenie="Адрес для программ, которые ходят через прокси сами"
+              aktiven={aktiven}
+            >
+              {/* Адрес выделяется целиком по щелчку и копируется клавишами.
+                  Своя кнопка «Скопировать» здесь была лишней: она умела ровно
+                  то же, что Ctrl+C, и занимала место в строке (владелец,
+                  16.09.2026). */}
+              <span className="text-fg-secondary select-all text-[13px]">
+                {status.port_proksi
+                  ? `127.0.0.1:${status.port_proksi} · HTTP и SOCKS`
                   : podnyat
                     ? "не поднят: порт занят другой программой, VPN это не задевает"
-                    : "поднимается вместе с VPN"
-              }
-              aktiven={aktiven}
-            />
-          </Karta>
+                    : "поднимается вместе с VPN"}
+              </span>
+            </Ryad>
+          </Panel>
         )}
 
-        {/* Полоса канала. Нужна ровно одному протоколу, hysteria2, у которого
-            объявление полосы и ЕСТЬ переключатель Brutal: отдельного флага нет.
-            Поэтому здесь не «ограничить скорость», а «сказать протоколу, какой
-            канал он делит».
+        <div className="mt-1 flex flex-col">
+          {/* Полоса канала. Нужна ровно одному протоколу, hysteria2, у которого
+              объявление полосы и ЕСТЬ переключатель Brutal: отдельного флага нет.
+              Поэтому здесь не «ограничить скорость», а «сказать протоколу, какой
+              канал он делит».
 
-            Источников два. Ссылка сервера может нести upmbps и downmbps сама,
-            и наша подписка так и делает для входа hy2-brutal. Эти поля её
-            перебивают: ссылку пишет держатель сервера, а тут человек говорит
-            про СВОЙ домашний канал, которым Brutal и управляет. Пустые поля
-            значат «взять из ссылки», а не «BBR». */}
-        <details className="af-details af-settings-details"><summary>Параметры Hysteria2 и ручной замер</summary><Karta testId="polosa">
-          <Ryad
-            nazvanie="полоса канала"
-            poyasnenie={
-              objavlena
-                ? `${status.polosa_vverh} вверх · ${status.polosa_vniz} вниз, Мбит · включает Brutal у hysteria2`
-                : "Автоматически из ссылки сервера. Ручные значения включают Brutal; завышенные могут ухудшить соединение"
-            }
-            aktiven={aktiven}
-            lomat
-          >
-            <div className="flex items-center gap-2">
-              <Pole
-                testId="polosa-vverh"
-                tip="text"
-                znachenie={vverh}
-                naVvod={(z) => zadatVverh(z.replace(/[^0-9]/g, ""))}
-                placeholder="вверх"
-                aktiven={aktiven}
-                aria-label="полоса вверх, Мбит"
-                className="w-24"
-              />
-              <Pole
-                testId="polosa-vniz"
-                tip="text"
-                znachenie={vniz}
-                naVvod={(z) => zadatVniz(z.replace(/[^0-9]/g, ""))}
-                placeholder="вниз"
-                aktiven={aktiven}
-                aria-label="полоса вниз, Мбит"
-                className="w-24"
-              />
-              <Knopka
-                rang="vtoraya"
-                testId="sohranit-polosu"
-                aktiven={aktiven && paraGodna}
-                onClick={() => naKomandu("setBandwidth", { vverh: Number(vverh), vniz: Number(vniz) })}
-              >
-                Сохранить
-              </Knopka>
-              {objavlena && (
-                <Knopka
-                  rang="vtoraya"
-                  testId="snyat-polosu"
+              Источников два. Ссылка сервера может нести upmbps и downmbps сама,
+              и наша подписка так и делает для входа hy2-brutal. Эти поля её
+              перебивают: ссылку пишет держатель сервера, а тут человек говорит
+              про СВОЙ домашний канал, которым Brutal и управляет. Пустые поля
+              значат «взять из ссылки», а не «BBR». */}
+          <RyadRazdela
+            testId="razdel-hysteria"
+            znachok={<IkStrelkaVpravo className="h-4 w-4" />}
+            nazvanie="Параметры Hysteria2 и ручной замер"
+            poyasnenie="Объявленная полоса канала и проверка скорости"
+            otkryt={otkryty.includes("hysteria")}
+            naZhmyh={() => perekluchit("hysteria")}
+            deti={
+              <Panel testId="polosa">
+                <Ryad
+                  nazvanie="Полоса канала"
+                  poyasnenie={
+                    objavlena
+                      ? `${status.polosa_vverh} вверх · ${status.polosa_vniz} вниз, Мбит · включает Brutal у hysteria2`
+                      : "Автоматически из ссылки сервера. Ручные значения включают Brutal; завышенные могут ухудшить соединение."
+                  }
                   aktiven={aktiven}
-                  onClick={() => {
-                    zadatVverh("");
-                    zadatVniz("");
-                    naKomandu("setBandwidth", { vverh: 0, vniz: 0 });
-                  }}
+                  lomat
                 >
-                  Снять
-                </Knopka>
-              )}
-            </div>
-          </Ryad>
-          {/* Замер вместо ввода. Число для Brutal обязано быть измерением: он
-              шлёт ровно с объявленной скоростью, и цену завышения платит канал
-              человека, который своей полосы не знает.
+                  <div className="flex items-center gap-2">
+                    <Pole
+                      testId="polosa-vverh"
+                      tip="text"
+                      znachenie={vverh}
+                      naVvod={(z) => zadatVverh(z.replace(/[^0-9]/g, ""))}
+                      placeholder="вверх"
+                      aktiven={aktiven}
+                      aria-label="полоса вверх, Мбит"
+                      className="w-24"
+                    />
+                    <Pole
+                      testId="polosa-vniz"
+                      tip="text"
+                      znachenie={vniz}
+                      naVvod={(z) => zadatVniz(z.replace(/[^0-9]/g, ""))}
+                      placeholder="вниз"
+                      aktiven={aktiven}
+                      aria-label="полоса вниз, Мбит"
+                      className="w-24"
+                    />
+                    <Knopka
+                      rang="vtoraya"
+                      testId="sohranit-polosu"
+                      aktiven={aktiven && paraGodna}
+                      onClick={() => naKomandu("setBandwidth", { vverh: Number(vverh), vniz: Number(vniz) })}
+                    >
+                      Сохранить
+                    </Knopka>
+                    {objavlena && (
+                      <Knopka
+                        rang="vtoraya"
+                        testId="snyat-polosu"
+                        aktiven={aktiven}
+                        onClick={() => {
+                          zadatVverh("");
+                          zadatVniz("");
+                          naKomandu("setBandwidth", { vverh: 0, vniz: 0 });
+                        }}
+                      >
+                        Снять
+                      </Knopka>
+                    )}
+                  </div>
+                </Ryad>
+                {/* Замер вместо ввода. Число для Brutal обязано быть измерением: он
+                    шлёт ровно с объявленной скоростью, и цену завышения платит канал
+                    человека, который своей полосы не знает.
 
-              Мишень задаётся ЯВНО и умолчания не имеет. Клиент не ходит
-              самовольно на чужой хост и не тратит трафик мобильного тарифа без
-              спроса: минута скачивания это десятки мегабайт. */}
-          <Ryad
-            nazvanie="измерить полосу"
-            poyasnenie="Для собственного сервера измерений. Обычная страница сайта не принимает тестовую загрузку"
-            aktiven={aktiven}
-            lomat
-          >
-            <div className="flex items-center gap-2">
-              <Pole
-                testId="polosa-mishen"
-                tip="text"
-                znachenie={mishen}
-                naVvod={zadatMishen}
-                placeholder="https://адрес/большой-файл"
-                aktiven={aktiven}
-                aria-label="мишень замера приёма"
-                className="w-56"
-              />
-              {/* Вторая мишень отдельная, потому что направления живут по
-                  разным адресам: у speed.cloudflare.com это __down и __up.
-                  Пустое поле значит «отдачу не мерим», и замер приёма всё
-                  равно состоится. */}
-              <Pole
-                testId="polosa-mishen-vverh"
-                tip="text"
-                znachenie={mishenVverh}
-                naVvod={zadatMishenVverh}
-                placeholder="https://адрес/приём-заливки"
-                aktiven={aktiven}
-                aria-label="мишень замера отдачи"
-                className="w-56"
-              />
-              <Knopka
-                rang="vtoraya"
-                testId="izmerit-polosu"
-                aktiven={aktiven && mishen.trim() !== ""}
-                onClick={() => {
-                  const adres = mishen.trim();
-                  if (adres === "") return;
-                  naKomandu("measureBandwidth", {
-                    adres, adres_vverh: mishenVverh.trim(), potokov: 4, sekund: 10,
-                  });
-                }}
-              >
-                Измерить
-              </Knopka>
-            </div>
-          </Ryad>
-          {/* Результат прямо под кнопкой. Замер тратит десятки мегабайт, и
-              молчание после него человек читает как сломанную кнопку, а
-              значит жмёт ещё раз (решено 03.09.2026). */}
-          {zamerPolosy && (
-            <div className="border-border border-t p-4" data-testid="zamer-polosy">
-              <p className="text-sm">
-                приём {mbit(zamerPolosy.mbitVniz)} · отдача {mbit(zamerPolosy.mbitVverh)}
-                {" · "}
-                {zamerPolosy.cherezTunnel ? "через VPN" : "напрямую, VPN не подключён"}
-                {" · "}
-                {zamerPolosy.vremya}
-              </p>
-              {zamerPolosy.otkazVverh !== "" && (
-                <p className="text-fg-muted mt-1 text-xs" data-testid="zamer-otkaz-vverh">
-                  отдача не измерена: {zamerPolosy.otkazVverh}
-                </p>
-              )}
-              <div className="mt-3 flex items-center gap-2">
-                {/* Объявляется СОВЕТ, а не замер. Запас вниз и есть весь смысл:
-                    Brutal шлёт ровно с объявленной скоростью, и завышение
-                    стоило на стенде 10% полосы и 30% задержки. */}
-                <Knopka
-                  rang="vtoraya"
-                  testId="obyavit-polosu"
-                  aktiven={aktiven && zamerPolosy.sovetVniz !== null && zamerPolosy.sovetVverh !== null}
-                  onClick={() => {
-                    if (zamerPolosy.sovetVniz === null || zamerPolosy.sovetVverh === null) return;
-                    zadatVverh(String(zamerPolosy.sovetVverh));
-                    zadatVniz(String(zamerPolosy.sovetVniz));
-                    naKomandu("setBandwidth", { vverh: zamerPolosy.sovetVverh, vniz: zamerPolosy.sovetVniz });
-                  }}
+                    Мишень задаётся ЯВНО и умолчания не имеет. Клиент не ходит
+                    самовольно на чужой хост и не тратит трафик мобильного тарифа без
+                    спроса: минута скачивания это десятки мегабайт. */}
+                <Ryad
+                  nazvanie="Измерить полосу"
+                  poyasnenie={
+                    zhdyot("measureBandwidth")
+                      ? "Идёт замер: качаю файл и засекаю время, это десятки мегабайт и до полуминуты"
+                      : "Для собственного сервера измерений. Обычная страница сайта не принимает тестовую загрузку."
+                  }
+                  aktiven={aktiven}
+                  lomat
                 >
-                  {zamerPolosy.sovetVverh !== null && zamerPolosy.sovetVniz !== null ? `Применить ${zamerPolosy.sovetVverh} / ${zamerPolosy.sovetVniz} Мбит/с к Hysteria2` : "Применить к Hysteria2"}
-                </Knopka>
-                {zamerPolosy.sovetVverh === null && (
-                  <span className="text-fg-muted text-xs">
-                    Для применения нужен успешный замер в обе стороны.
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Pole
+                      testId="polosa-mishen"
+                      tip="text"
+                      znachenie={mishen}
+                      naVvod={zadatMishen}
+                      placeholder="https://адрес/большой-файл"
+                      aktiven={aktiven}
+                      aria-label="мишень замера приёма"
+                      className="w-56"
+                    />
+                    {/* Вторая мишень отдельная, потому что направления живут по
+                        разным адресам: у speed.cloudflare.com это __down и __up.
+                        Пустое поле значит «отдачу не мерим», и замер приёма всё
+                        равно состоится. */}
+                    <Pole
+                      testId="polosa-mishen-vverh"
+                      tip="text"
+                      znachenie={mishenVverh}
+                      naVvod={zadatMishenVverh}
+                      placeholder="https://адрес/приём-заливки"
+                      aktiven={aktiven}
+                      aria-label="мишень замера отдачи"
+                      className="w-56"
+                    />
+                    <Knopka
+                      rang="vtoraya"
+                      testId="izmerit-polosu"
+                      zhdyot={zhdyot("measureBandwidth")}
+                      aktiven={aktiven && mishen.trim() !== ""}
+                      onClick={() => {
+                        const adres = mishen.trim();
+                        if (adres === "") return;
+                        naKomandu("measureBandwidth", {
+                          adres, adres_vverh: mishenVverh.trim(), potokov: 4, sekund: 10,
+                        });
+                      }}
+                    >
+                      {zhdyot("measureBandwidth") ? "Меряю" : "Измерить"}
+                    </Knopka>
+                  </div>
+                </Ryad>
+                {/* Результат прямо под кнопкой. Замер тратит десятки мегабайт, и
+                    молчание после него человек читает как сломанную кнопку, а
+                    значит жмёт ещё раз (решено 03.09.2026). */}
+                {zamerPolosy && (
+                  <div className="border-border border-t p-4" data-testid="zamer-polosy">
+                    <p className="text-sm">
+                      приём {mbit(zamerPolosy.mbitVniz)} · отдача {mbit(zamerPolosy.mbitVverh)}
+                      {" · "}
+                      {zamerPolosy.cherezTunnel ? "через VPN" : "напрямую, VPN не подключён"}
+                      {" · "}
+                      {zamerPolosy.vremya}
+                    </p>
+                    {zamerPolosy.otkazVverh !== "" && (
+                      <p className="text-fg-muted mt-1 text-xs" data-testid="zamer-otkaz-vverh">
+                        отдача не измерена: {zamerPolosy.otkazVverh}
+                      </p>
+                    )}
+                    <div className="mt-3 flex items-center gap-2">
+                      {/* Объявляется СОВЕТ, а не замер. Запас вниз и есть весь смысл:
+                          Brutal шлёт ровно с объявленной скоростью, и завышение
+                          стоило на стенде 10% полосы и 30% задержки. */}
+                      <Knopka
+                        rang="vtoraya"
+                        testId="obyavit-polosu"
+                        aktiven={aktiven && zamerPolosy.sovetVniz !== null && zamerPolosy.sovetVverh !== null}
+                        onClick={() => {
+                          if (zamerPolosy.sovetVniz === null || zamerPolosy.sovetVverh === null) return;
+                          zadatVverh(String(zamerPolosy.sovetVverh));
+                          zadatVniz(String(zamerPolosy.sovetVniz));
+                          naKomandu("setBandwidth", { vverh: zamerPolosy.sovetVverh, vniz: zamerPolosy.sovetVniz });
+                        }}
+                      >
+                        {zamerPolosy.sovetVverh !== null && zamerPolosy.sovetVniz !== null ? `Применить ${zamerPolosy.sovetVverh} / ${zamerPolosy.sovetVniz} Мбит/с к Hysteria2` : "Применить к Hysteria2"}
+                      </Knopka>
+                      {zamerPolosy.sovetVverh === null && (
+                        <span className="text-fg-muted text-xs">
+                          Для применения нужен успешный замер в обе стороны.
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
-          )}
-        </Karta></details>
-      </Razdel>
+              </Panel>
+            }
+          />
 
-      <details className="af-details af-settings-details"><summary>Диагностика соединения</summary><Razdel nazvanie="проверка">
-        <Karta testId="proverka">
-          <Ryad
-            nazvanie="утечки"
-            poyasnenie={pochemuSero(utechki) ?? "чей адрес видит интернет, куда уходит DNS"}
-            aktiven={aktiven && !utechki}
-          >
-            <Knopka rang="vtoraya" testId="proverit-utechki" aktiven={mozhnoZvat && !utechki} onClick={() => naKomandu("checkLeaks", {})}>
-              Проверить
-            </Knopka>
-          </Ryad>
-          {proverkaOtkaz && (
-            <div className="border-border border-t p-4">
-              <Neudacha
-                testId="otkaz-proverki"
-                kod={proverkaOtkaz.kod}
-                tekst={proverkaOtkaz.tekst}
-                deystvie={mozhnoZvat && !utechki ? () => naKomandu("checkLeaks", {}) : undefined}
-                podpisDeystviya="Повторить"
-              />
-            </div>
-          )}
-          {ustarela && !proverkaOtkaz && (
-            <Ryad
-              testId="proverka-ustarela"
-              nazvanie="прошлый результат больше не отвечает за сейчас"
-              poyasnenie="состояние VPN сменилось после проверки, проверь заново"
-              aktiven={false}
-            />
-          )}
-          {pokazatPunkty && snyato && (
-            <div className="border-border border-t px-4 py-3">
-              <p className="text-fg-muted mb-1 text-xs" data-testid="proverka-snyata">проверено в {snyato.vremya}</p>
-              <ul data-testid="punkty" className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
-                {proverka.punkty.map((p) => (
-                  <li key={p.imya} data-itog={p.itog} className={p.itog === "utechka" ? "text-warn break-words" : p.itog === "ok" ? "break-words" : "text-fg-muted break-words"}>
-                    <span className="font-medium">{p.imya}</span>
-                    {" · "}
-                    {ITOG[p.itog] ?? p.itog}
-                    {" · "}
-                    <span className="text-fg-muted">{p.tekst}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <Ryad
-            testId="adres-vyhoda"
-            nazvanie="адрес выхода"
-            poyasnenie={pochemuSero(adresOtlozhen) ?? (adresVyhoda ? tekstAdresa(adresVyhoda, podnyat) : "по кнопке и при смене сервера, не по таймеру")}
-            aktiven={aktiven && !adresOtlozhen}
-          >
-            <Knopka rang="vtoraya" testId="proverit-adres" aktiven={mozhnoZvat && !adresOtlozhen} onClick={() => naKomandu("checkExitIp", {})}>
-              Проверить
-            </Knopka>
-          </Ryad>
-        </Karta>
-      </Razdel>
+          <RyadRazdela
+            testId="razdel-diagnostika"
+            znachok={<IkDiagnostika className="h-4 w-4" />}
+            nazvanie="Диагностика соединения"
+            poyasnenie="Проверка утечек и адреса выхода. Ничего не меняет, только смотрит"
+            otkryt={otkryty.includes("diagnostika")}
+            naZhmyh={() => perekluchit("diagnostika")}
+            deti={
+              <Panel testId="proverka">
+                <Ryad
+                  nazvanie="Утечки"
+                  poyasnenie={
+                    pochemuSero(utechki) ??
+                    (zhdyot("checkLeaks")
+                      ? "Смотрю, чей адрес видит интернет и куда уходит DNS"
+                      : "Чей адрес видит интернет, куда уходит DNS")
+                  }
+                  aktiven={aktiven && !utechki}
+                >
+                  <Knopka
+                    rang="vtoraya"
+                    testId="proverit-utechki"
+                    zhdyot={zhdyot("checkLeaks")}
+                    aktiven={mozhnoZvat && !utechki}
+                    onClick={() => naKomandu("checkLeaks", {})}
+                  >
+                    {zhdyot("checkLeaks") ? "Проверяю" : "Проверить"}
+                  </Knopka>
+                </Ryad>
+                {proverkaOtkaz && (
+                  <div className="border-border border-t p-4">
+                    <Neudacha
+                      testId="otkaz-proverki"
+                      kod={proverkaOtkaz.kod}
+                      tekst={proverkaOtkaz.tekst}
+                      deystvie={mozhnoZvat && !utechki ? () => naKomandu("checkLeaks", {}) : undefined}
+                      podpisDeystviya="Повторить"
+                    />
+                  </div>
+                )}
+                {ustarela && !proverkaOtkaz && (
+                  <Ryad
+                    testId="proverka-ustarela"
+                    nazvanie="Прошлый результат больше не отвечает за сейчас"
+                    poyasnenie="Состояние VPN сменилось после проверки, проверь заново"
+                    aktiven={false}
+                  />
+                )}
+                {pokazatPunkty && snyato && (
+                  <div className="border-border border-t px-4 py-3">
+                    <p className="text-fg-muted mb-1 text-xs" data-testid="proverka-snyata">проверено в {snyato.vremya}</p>
+                    <ul data-testid="punkty" className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
+                      {proverka.punkty.map((p) => (
+                        <li key={p.imya} data-itog={p.itog} className={p.itog === "utechka" ? "text-warn break-words" : p.itog === "ok" ? "break-words" : "text-fg-muted break-words"}>
+                          <span className="font-medium">{p.imya}</span>
+                          {" · "}
+                          {ITOG[p.itog] ?? p.itog}
+                          {" · "}
+                          <span className="text-fg-muted">{p.tekst}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <Ryad
+                  testId="adres-vyhoda"
+                  nazvanie="Адрес выхода"
+                  poyasnenie={
+                    pochemuSero(adresOtlozhen) ??
+                    (zhdyot("checkExitIp")
+                      ? "Спрашиваю, каким адресом нас видит интернет"
+                      : adresVyhoda
+                        ? tekstAdresa(adresVyhoda, podnyat)
+                        : "По кнопке и при смене сервера, не по таймеру")
+                  }
+                  aktiven={aktiven && !adresOtlozhen}
+                >
+                  <Knopka
+                    rang="vtoraya"
+                    testId="proverit-adres"
+                    zhdyot={zhdyot("checkExitIp")}
+                    aktiven={mozhnoZvat && !adresOtlozhen}
+                    onClick={() => naKomandu("checkExitIp", {})}
+                  >
+                    {zhdyot("checkExitIp") ? "Спрашиваю" : "Проверить"}
+                  </Knopka>
+                </Ryad>
+              </Panel>
+            }
+          />
+        </div>
+      </Gruppa>
 
-      </details>
-      <Razdel nazvanie="обновление">
-        <Karta>
+      <Gruppa nazvanie="Обновление" poyasnenie="Версия программы и способы её обновить">
+        <Panel>
           {/* The service checks the update server daily on its own; this row
               shows what it found and lets the human act. The archive-from-disk
               path below stays as the second way in. */}
           <div ref={ryadObnovleniya}>
           <Ryad
+            znachok={<IkObnovit className="h-[18px] w-[18px]" />}
             testId="obnovlenie"
             nazvanie={
               idyot
-                ? <span className="flex items-center gap-2">{zagolovokHoda(hodObnovleniya, status.versiya_programmy)}</span>
+                ? zagolovokHoda(hodObnovleniya, status.versiya_programmy)
                 : nahodka
-                  ? `есть ${nahodka.versiya}, ${obyom(nahodka.razmer)}`
+                  ? `Есть ${nahodka.versiya}, ${obyom(nahodka.razmer)}`
                   : versiyaStrokoy(status.versiya_programmy)
             }
             poyasnenie={
               idyot
                 ? <PolosaObnovleniya hod={hodObnovleniya} ostalosS={ostalosPodmeny} />
                 : pochemuSero(undefined) ??
-                  (nahodka
-                    ? "служба скачает архив, сверит хеш и перезапустится; при неудаче за 20 секунд остаётся прежняя версия"
-                    : status.obnovlenie_provereno
-                      ? `проверено ${vremya(status.obnovlenie_provereno)}, новее нет; проверяется раз в сутки`
-                      : "ещё не проверялось; служба проверяет раз в сутки")
+                  (zhdyot("checkUpdate")
+                    ? "Смотрю сервер обновлений"
+                    : nahodka
+                      ? "Служба скачает архив, сверит хеш и перезапустится; при неудаче за 20 секунд остаётся прежняя версия"
+                      : status.obnovlenie_provereno
+                        ? `Проверено ${vremya(status.obnovlenie_provereno)}, новее нет; проверяется раз в сутки`
+                        : "Ещё не проверялось; служба проверяет раз в сутки")
             }
             aktiven={aktiven || idyot}
           >
@@ -517,100 +612,124 @@ export function Nastroyki({
                 Установить
               </Knopka>
             ) : (
-              <Knopka rang="vtoraya" testId="proverit-versiyu" aktiven={mozhnoZvat} onClick={() => naKomandu("checkUpdate", {})}>
-                Проверить
+              <Knopka rang="vtoraya" testId="proverit-versiyu" zhdyot={zhdyot("checkUpdate")} aktiven={mozhnoZvat} onClick={() => naKomandu("checkUpdate", {})}>
+                {zhdyot("checkUpdate") ? "Смотрю сервер" : "Проверить"}
               </Knopka>
             )}
           </Ryad>
           </div>
           <Ryad
+            znachok={<IkArhiv className="h-[18px] w-[18px]" />}
             testId="arhiv-sborki"
-            nazvanie="архив сборки"
-            poyasnenie={pochemuSero(obnovlenie) ?? "архив с файлом .sha256 рядом; второй путь, когда сервер обновлений недоступен"}
+            nazvanie="Архив сборки"
+            poyasnenie={pochemuSero(obnovlenie) ?? "Архив с файлом .sha256 рядом; второй путь, когда сервер обновлений недоступен"}
             aktiven={aktiven && !obnovlenie}
           >
             <Knopka rang="vtoraya" testId="proverit-obnovlenie" aktiven={mozhnoZvat && !obnovlenie} onClick={() => (naObnovlenie ? naObnovlenie() : naKomandu("installUpdate", {}))}>
               Выбрать архив
             </Knopka>
           </Ryad>
-        </Karta>
-      </Razdel>
+        </Panel>
+      </Gruppa>
 
-      <details className="af-details af-settings-details"><summary>Профиль и обслуживание</summary><div>
-      {(vyvestiProfil || vvestiProfil) && (
-        <Razdel nazvanie="профиль">
-          <Karta>
-            <Ryad
-              nazvanie="пароль профиля"
-              poyasnenie={pochemuSero(undefined) ?? "нужен и на вывод, и на ввод; нигде не сохраняется и в журнал не пишется"}
-              aktiven={mozhnoZvat}
-            >
-              <input
-                type="password"
-                data-testid="parol-profilya"
-                aria-label="пароль профиля"
-                autoComplete="off"
-                value={parolProfilya}
-                onChange={(e) => zadatParolProfilya(e.target.value)}
-                className="bg-fill-subtle border-border-hover text-foreground placeholder:text-fg-faint h-8 min-w-0 rounded-md border px-2.5 text-[13px]"
-              />
-            </Ryad>
-            {vyvestiProfil && (
-              <Ryad
-                nazvanie="вывести профиль"
-                poyasnenie={pochemuSero(undefined) ?? "серверы, подписка и правила одним файлом; ключи внутри, поэтому файл хранить как пароль; нужны права администратора"}
-                aktiven={mozhnoZvat}
-              >
-                <Knopka
-                  rang="vtoraya"
-                  testId="vyvesti-profil"
-                  aktiven={mozhnoZvat && parolProfilya !== ""}
-                  onClick={() => vyvestiProfil(parolProfilya)}
-                >
-                  Вывести
-                </Knopka>
-              </Ryad>
-            )}
-            {vvestiProfil && (
-              <Ryad
-                nazvanie="ввести профиль"
-                poyasnenie={pochemuSero(undefined) ?? "заменит серверы, подписку и правила целиком; нужны права администратора"}
-                aktiven={mozhnoZvat}
-              >
-                <Knopka
-                  rang="vtoraya"
-                  testId="vvesti-profil"
-                  aktiven={mozhnoZvat && parolProfilya !== ""}
-                  onClick={() => vvestiProfil(parolProfilya)}
-                >
-                  Ввести
-                </Knopka>
-              </Ryad>
-            )}
-            {itogProfilya && (
-              // The outcome belongs next to the button that produced it: the
-              // banner is for refusals, and a success has no banner at all.
-              <Ryad testId="itog-profilya" nazvanie={itogProfilya} aktiven={false} lomat />
-            )}
-          </Karta>
-        </Razdel>
-      )}
+      <div className="flex flex-col">
+        <RyadRazdela
+          testId="razdel-profil"
+          znachok={<IkProfil className="h-4 w-4" />}
+          nazvanie="Профиль и обслуживание"
+          poyasnenie="Перенос профиля одним файлом и удаление программы"
+          otkryt={otkryty.includes("profil")}
+          naZhmyh={() => perekluchit("profil")}
+          deti={
+            <div className="flex flex-col gap-3">
+              {(vyvestiProfil || vvestiProfil) && (
+                <Panel>
+                  <Ryad
+                    nazvanie="Пароль профиля"
+                    poyasnenie={pochemuSero(undefined) ?? "Нужен и на вывод, и на ввод; нигде не сохраняется и в журнал не пишется"}
+                    aktiven={mozhnoZvat}
+                  >
+                    <input
+                      type="password"
+                      data-testid="parol-profilya"
+                      aria-label="пароль профиля"
+                      autoComplete="off"
+                      value={parolProfilya}
+                      onChange={(e) => zadatParolProfilya(e.target.value)}
+                      className="bg-elevated border-border text-foreground placeholder:text-fg-faint hover:border-border-hover focus:border-border-active h-9 min-w-0 rounded-md border px-3 text-[13px]"
+                    />
+                  </Ryad>
+                  {vyvestiProfil && (
+                    <Ryad
+                      nazvanie="Вывести профиль"
+                      poyasnenie={pochemuSero(undefined) ?? "Серверы, подписка и правила одним файлом; ключи внутри, поэтому файл хранить как пароль; нужны права администратора"}
+                      aktiven={mozhnoZvat}
+                    >
+                      <Knopka
+                        rang="vtoraya"
+                        testId="vyvesti-profil"
+                        aktiven={mozhnoZvat && parolProfilya !== ""}
+                        onClick={() => vyvestiProfil(parolProfilya)}
+                      >
+                        Вывести
+                      </Knopka>
+                    </Ryad>
+                  )}
+                  {vvestiProfil && (
+                    <Ryad
+                      nazvanie="Ввести профиль"
+                      poyasnenie={pochemuSero(undefined) ?? "Заменит серверы, подписку и правила целиком; нужны права администратора"}
+                      aktiven={mozhnoZvat}
+                    >
+                      <Knopka
+                        rang="vtoraya"
+                        testId="vvesti-profil"
+                        aktiven={mozhnoZvat && parolProfilya !== ""}
+                        onClick={() => vvestiProfil(parolProfilya)}
+                      >
+                        Ввести
+                      </Knopka>
+                    </Ryad>
+                  )}
+                  {itogProfilya && (
+                    // The outcome belongs next to the button that produced it: the
+                    // banner is for refusals, and a success has no banner at all.
+                    <Ryad testId="itog-profilya" nazvanie={itogProfilya} aktiven={false} lomat />
+                  )}
+                </Panel>
+              )}
 
-      <Razdel nazvanie="удаление">
-        {dialog ? (
-          <Udalenie naUdalenie={naUdalenie} naOtmenu={() => zadatDialog(false)} />
-        ) : (
-          <Karta>
-            <Ryad nazvanie="удалить программу" poyasnenie="служба, адаптер и файлы; ключи по выбору">
-              <Knopka rang="opasnaya" testId="otkryt-udalenie" onClick={() => zadatDialog(true)}>
-                Удалить
-              </Knopka>
-            </Ryad>
-          </Karta>
-        )}
-      </Razdel>
-      </div></details>
-    </Kolonka>
+              {dialog ? (
+                <Udalenie naUdalenie={naUdalenie} naOtmenu={() => zadatDialog(false)} />
+              ) : (
+                <Panel>
+                  <Ryad nazvanie="Удалить программу" poyasnenie="Служба, адаптер и файлы; ключи по выбору">
+                    <Knopka rang="opasnaya" testId="otkryt-udalenie" onClick={() => zadatDialog(true)}>
+                      Удалить
+                    </Knopka>
+                  </Ryad>
+                </Panel>
+              )}
+            </div>
+          }
+        />
+      </div>
+    </section>
+  );
+}
+
+/** Группа настроек: заголовок, одна строка о том, что внутри, и панель. Три
+ *  группы вместо одного длинного списка: человек ищет глазами раздел, а не
+ *  двадцать четвёртую строку подряд. */
+function Gruppa({ nazvanie, poyasnenie, children }: { nazvanie: string; poyasnenie: string; children: ReactNode }) {
+  return (
+    <section aria-label={nazvanie} className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-foreground text-[17px] font-semibold leading-tight">{nazvanie}</h3>
+        <p className="text-fg-muted mt-1 text-[13px]">{poyasnenie}</p>
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -624,7 +743,7 @@ function vremya(iso: string): string {
  *  из дерева, и ни то, ни другое не называется словом «dev»: 13.09.2026 окно
  *  подписало им минуту обновления, и это прочли как «перебросило на dev». */
 function versiyaStrokoy(versiya?: string): string {
-  return versiya ? `программа ${versiya}` : "версия неизвестна";
+  return versiya ? `Программа ${versiya}` : "Версия неизвестна";
 }
 
 const PODPISI_SHAGOV: Record<ShagObnovleniya, string> = {
@@ -639,7 +758,7 @@ const PODPISI_SHAGOV: Record<ShagObnovleniya, string> = {
  *  своя в эту минуту уже ничего не значит. */
 function zagolovokHoda(hod: HodObnovleniya | null, svoya?: string): string {
   const kuda = hod?.versiya ?? svoya;
-  return kuda ? `обновление до ${kuda}` : "обновление";
+  return kuda ? `Обновление до ${kuda}` : "Обновление";
 }
 
 /** Доля загрузки в процентах; null, когда считать не из чего. */

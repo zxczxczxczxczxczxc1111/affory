@@ -19,7 +19,11 @@ func oknoOpcii() application.WebviewWindowOptions {
 		// on a dark theme. The token file repeats the value; this one runs
 		// earlier than any CSS ever loads.
 		BackgroundColour: application.NewRGB(0, 0, 0),
-		URL:              "/",
+		// Правый щелчок в окне открывал меню Chromium с «Save as» и
+		// «Inspect»: умолчание WebView2, а не остаток отладки. В отладочной
+		// сборке Wails включает меню сам, и это правильно.
+		DefaultContextMenuDisabled: true,
+		URL:                        "/",
 		Windows: application.WindowsWindow{
 			// Keep the OS shadow and resize edges even without a frame.
 			DisableFramelessWindowDecorations: false,

@@ -20,8 +20,9 @@ const vseSostoyaniya = [
 describe("главный экран", () => {
   it.each(vseSostoyaniya)("рисует %s своей подписью", (s) => {
     render(<Glavnyy status={{ sostoyanie: s }} />);
-        const messages = { "sluzhba-molchit": "Нет связи со службой", vyklyuchen: "Интернет работает напрямую", podnimaetsya: "Подключение", podnyat: "Подключено через VPN", "ne-neset": "Соединение не передаёт трафик", vosstanavlivaetsya: "Переподключение", otkaz: "Не удалось подключиться" };
-    expect(screen.getByTestId("sostoyanie")).toHaveTextContent(messages[s]);
+    // Подпись берётся из podpisi.ts: пилюля состояния и трей обязаны
+    // называть одно и то же одним словом, а не двумя разными фразами.
+    expect(screen.getByTestId("sostoyanie")).toHaveTextContent(podpis[s]);
   });
 
   it("у семи состояний семь РАЗНЫХ подписей", () => {
@@ -103,7 +104,7 @@ describe("главный экран: карточка", () => {
   it("сегмент режима шлёт setRouteMode со значением из протокола", () => {
     const na = vi.fn();
     render(<Glavnyy status={{ sostoyanie: "vyklyuchen", rezhim_marshruta: "avto" }} naRezhim={na} />);
-    fireEvent.click(screen.getByRole("button", { name: "Вручную" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Вручную" }));
     expect(na).toHaveBeenCalledWith("ruchnoy");
   });
 
@@ -181,14 +182,15 @@ describe("подпись под переключателем режима", () =
   // ради уже случившегося. Подпись обязана зависеть от того, поднят ли туннель.
   it("на поднятом туннеле обещает применение сразу", () => {
     render(<Glavnyy status={{ sostoyanie: "podnyat", rezhim_marshruta: "ruchnoy" }} />);
-    const ryad = screen.getByText("Выбор сервера").closest("div")!;
-    expect(ryad.textContent).not.toContain("следующего подключения");
+    const podskazka = screen.getByTestId("podskazka-rezhima").textContent ?? "";
+    expect(podskazka).not.toContain("следующего подключения");
+    expect(podskazka).toContain("сразу");
   });
 
   it("на опущенном туннеле честно говорит про следующее подключение", () => {
     // Зеркало: без него проверка выше зелена на подписи, которая молчит всегда.
     render(<Glavnyy status={{ sostoyanie: "vyklyuchen", rezhim_marshruta: "ruchnoy" }} />);
-    expect(screen.getByText("Нажми на сервер, чтобы подключиться к нему")).toBeInTheDocument();
+    expect(screen.getByTestId("podskazka-rezhima")).toHaveTextContent("Нажми на сервер, чтобы подключиться к нему");
   });
 });
 

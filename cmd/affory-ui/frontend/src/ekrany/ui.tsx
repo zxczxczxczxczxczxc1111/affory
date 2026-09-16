@@ -1,5 +1,10 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { tekstOtkaza } from "./otkazy";
+import { Vertushka } from "./ui-novye";
+
+// Примитивы редизайна лежат рядом и выходят наружу отсюда: для экранов
+// адрес один, а править их можно, не трогая старую грамматику.
+export * from "./ui-novye";
 
 // The layout grammar of the whole window, accepted on the mockup 02.09.2026.
 // Screens compose these pieces and never restyle them: one column, cards of
@@ -58,7 +63,10 @@ export function Karta({ children, testId, bezObrezki = false }: {
 
 /** A settings row: name and explanation on the left, the control on the
  *  right. `aktiven=false` greys the name; the control disables itself. */
-export function Ryad({ nazvanie, poyasnenie, podskazka, aktiven = true, lomat = false, children, testId }: {
+export function Ryad({ znachok, nazvanie, poyasnenie, podskazka, aktiven = true, lomat = false, children, testId }: {
+  /** Значок слева от названия. Для строк настроек, где он помогает найти
+   *  нужную глазами; в таблицах правил значков нет по решению владельца. */
+  znachok?: ReactNode;
   nazvanie: ReactNode;
   poyasnenie?: ReactNode;
   /** Подсказка при наведении. Для того, что нужно знать ПОТОМ, а не при
@@ -76,7 +84,8 @@ export function Ryad({ nazvanie, poyasnenie, podskazka, aktiven = true, lomat = 
 }) {
   const ton = aktiven ? "text-foreground text-sm font-medium" : "text-fg-muted text-sm font-medium";
   return (
-    <div data-testid={testId} title={podskazka} className="border-border flex min-h-[52px] items-center gap-4 border-t px-4 py-2 first:border-t-0">
+    <div data-testid={testId} title={podskazka} className="border-border flex min-h-[56px] items-center gap-3.5 border-t px-4 py-3 first:border-t-0">
+      {znachok && <span className="text-fg-muted flex h-8 w-8 shrink-0 items-center justify-center">{znachok}</span>}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className={lomat ? `${ton} break-all` : ton}>{nazvanie}</span>
         {poyasnenie && <span className="text-fg-muted break-words text-xs">{poyasnenie}</span>}
@@ -151,10 +160,13 @@ const RANG: Record<RangKnopki, string> = {
 /** Button. 32px tall, 13px text, flex-centred label: the mockup's crooked
  *  captions were inline-block plus padding, and this is the fix. `bolshaya`
  *  is the 40px variant for the one main action of the connection card. */
-export function Knopka({ rang, aktiven = true, bolshaya = false, testId, className = "", children, ...rest }: {
+export function Knopka({ rang, aktiven = true, bolshaya = false, zhdyot = false, testId, className = "", children, ...rest }: {
   rang: RangKnopki;
   aktiven?: boolean;
   bolshaya?: boolean;
+  /** Кнопка занята и ждёт ответа: сама рисует вертушку и запрещает второе
+   *  нажатие. Без этого «нажал и ничего» читается как зависшая программа. */
+  zhdyot?: boolean;
   testId?: string;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const razmer = bolshaya ? "h-10 px-5 text-sm" : "h-8 text-[13px]";
@@ -162,10 +174,12 @@ export function Knopka({ rang, aktiven = true, bolshaya = false, testId, classNa
     <button
       type="button"
       data-testid={testId}
-      disabled={!aktiven}
+      aria-busy={zhdyot || undefined}
+      disabled={!aktiven || zhdyot}
       className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium leading-none disabled:opacity-40 ${razmer} ${RANG[rang]} ${className}`}
       {...rest}
     >
+      {zhdyot && <Vertushka className={bolshaya ? "h-4 w-4" : "h-3.5 w-3.5"} />}
       {children}
     </button>
   );
@@ -214,15 +228,20 @@ export function Teg({ ton = "obychnyy", testId, children }: { ton?: TonTega; tes
 }
 
 /** Segmented control: a radio group drawn as one pill. */
-export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktiven = true, "aria-label": podpis }: {
+export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktiven = true, rastyanut = false, ton = "yarkiy", "aria-label": podpis }: {
   znacheniya: { z: T; podpis: string }[];
   vybrano: T;
   naVybor: (z: T) => void;
   aktiven?: boolean;
+  rastyanut?: boolean;
+  /** Два веса выбранного сегмента. Яркий там, где выбор это действие; тихий
+   *  там, где это режим, живущий постоянно: постоянная заливка в полную силу
+   *  сама становится шумом. */
+  ton?: "yarkiy" | "tihiy";
   "aria-label"?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={podpis} className="bg-fill-subtle border-border inline-flex rounded-md border p-0.5 text-[13px]">
+    <div role="radiogroup" aria-label={podpis} className={`bg-elevated border-border inline-flex rounded-lg border p-1 text-[13px] ${rastyanut ? "w-full" : ""}`}>
       {znacheniya.map(({ z, podpis: p }) => {
         const on = z === vybrano;
         return (
@@ -233,11 +252,11 @@ export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktive
             aria-checked={on}
             disabled={!aktiven}
             onClick={() => naVybor(z)}
-            className={
+            className={`h-8 rounded-md px-4 font-medium transition-colors ${rastyanut ? "flex-1" : ""} ${
               on
-                ? "bg-fill-hover text-foreground rounded-[5px] px-3 py-1 font-medium"
-                : "text-fg-muted hover:text-foreground rounded-[5px] px-3 py-1 disabled:opacity-40"
-            }
+                ? (ton === "yarkiy" ? "bg-accent/70 text-foreground" : "bg-accent/45 text-foreground")
+                : "text-fg-secondary hover:bg-fill-subtle hover:text-foreground disabled:opacity-40"
+            }`}
           >
             {p}
           </button>
@@ -264,8 +283,8 @@ export function Pole({ testId, znachenie, naVvod, placeholder, aktiven = true, t
 }) {
   return (
     <input
-      ref={priv}
       type={tip}
+      ref={priv}
       data-testid={testId}
       aria-label={podpis}
       value={znachenie}
@@ -273,17 +292,9 @@ export function Pole({ testId, znachenie, naVvod, placeholder, aktiven = true, t
       placeholder={placeholder}
       spellCheck={false}
       onChange={(e) => naVvod(e.target.value)}
-      className={`bg-fill-subtle border-border-hover text-foreground placeholder:text-fg-faint h-8 min-w-0 rounded-md border px-2.5 text-[13px] disabled:opacity-40 ${className}`}
+      className={`bg-elevated border-border text-foreground placeholder:text-fg-faint hover:border-border-hover focus:border-border-active h-9 min-w-0 rounded-md border px-3 text-[13px] disabled:opacity-40 ${className}`}
     />
   );
-}
-
-// A hyphen, not an em dash: banned everywhere, screens included.
-export const PROCHERK = "-";
-
-/** The bin: delete affordance on servers and rules, one drawing for both. */
-export function IkonkaKorzina() {
-  return <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
 }
 
 /** Полоса ожидания.
@@ -318,4 +329,12 @@ export function Polosa({ dolya, podpis, testId }: {
       />
     </span>
   );
+}
+
+// A hyphen, not an em dash: banned everywhere, screens included.
+export const PROCHERK = "-";
+
+/** The bin: delete affordance on servers and rules, one drawing for both. */
+export function IkonkaKorzina() {
+  return <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
 }

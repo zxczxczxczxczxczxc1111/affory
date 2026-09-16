@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { PravilaProps } from "./Pravila";
 import { imyaMarshruta, type Marshrut, type PravilaTrafika } from "../trafik";
-import { Knopka, Pole, Tumbler } from "./ui";
+import { Flazhok, Knopka, Poisk, Pole, SegmentStolbik, Svorachivaemyy, Tumbler } from "./ui";
+import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
 import { IkonkaServisa } from "./IkonkaServisa";
 import { Vybor } from "./Vybor";
 import { slovoPosleChisla } from "../chisla";
+
+// Раздел правил: слева режим по умолчанию и счёт правил, справа три вкладки.
+// Боковая область и вкладки стоят на одном месте во всех трёх видах, поэтому
+// переключение вкладки ничего на экране не двигает.
 
 export function VyborTrafika({
   value,
@@ -16,24 +21,16 @@ export function VyborTrafika({
   onChange: (r: Marshrut) => void;
 }) {
   return (
-    <div className="af-segment" role="group" aria-label="Трафик по умолчанию">
-      <button
-        type="button"
-        aria-pressed={value === "vpn"}
-        disabled={disabled}
-        onClick={() => onChange("vpn")}
-      >
-        Всё через VPN
-      </button>
-      <button
-        type="button"
-        aria-pressed={value === "direct"}
-        disabled={disabled}
-        onClick={() => onChange("direct")}
-      >
-        Только выбранное
-      </button>
-    </div>
+    <SegmentStolbik
+      aria-label="Трафик по умолчанию"
+      aktiven={!disabled}
+      vybrano={value}
+      naVybor={onChange}
+      znacheniya={[
+        { z: "vpn", podpis: "Всё через VPN" },
+        { z: "direct", podpis: "Только выбранное" },
+      ]}
+    />
   );
 }
 
@@ -58,6 +55,19 @@ function RouteSelect({
     />
   );
 }
+
+/** Путь под ширину колонки: начало, многоточие, хвост с именем файла. Предел
+ *  в знаках, а не в пикселях: мерить ширину в каждой строке таблицы значит
+ *  мерить её на каждый кадр, а колонка тут фиксированная. */
+export function sokratitPut(put: string, predel = 58): string {
+  if (put.length <= predel) return put;
+  return `${put.slice(0, 13)}...${put.slice(-(predel - 16))}`;
+}
+
+// Колонки таблиц задаются ОДНОЙ строкой на вид и переиспользуются шапкой и
+// строками: две раскладки рядом это два места, где колонки разъезжаются.
+const SETKA_PRILOZHENIY = "grid grid-cols-[minmax(0,1fr)_190px_150px_110px] items-center gap-x-4";
+const SETKA_SAYTOV = "grid grid-cols-[minmax(0,1fr)_150px_110px] items-center gap-x-4";
 
 export function Marshruty({
   status,
@@ -86,6 +96,8 @@ export function Marshruty({
     trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn",
   );
   const [remove, setRemove] = useState<string | null>(null);
+  const [raskryto, setRaskryto] = useState<Record<string, boolean>>({});
+  const [vesSpisok, setVesSpisok] = useState(false);
   const disabled =
     zanyato ||
     picking ||
@@ -99,6 +111,7 @@ export function Marshruty({
   const apps = trafik.prilozheniya ?? [],
     domains = trafik.domeny ?? [],
     services = trafik.servisy ?? [];
+  const katalog = pravila?.katalog?.servisy ?? [];
   const ruleCount = apps.length + domains.length + services.length;
   const candidates = (zapushchennye ?? []).filter((p) =>
     `${p.imya} ${p.put}`.toLowerCase().includes(query.toLowerCase()),
@@ -152,311 +165,412 @@ export function Marshruty({
       });
     // Keep typed values available when validation fails; a rejected form is not amnesia.
   };
+
+  const VKLADKI: { v: typeof tab; podpis: string; schyot?: number }[] = [
+    { v: "services", podpis: "Сервисы" },
+    { v: "apps", podpis: "Приложения", schyot: apps.length },
+    { v: "sites", podpis: "Сайты", schyot: domains.length },
+  ];
+
   return (
-    <section className="af-routes" aria-label="Правила">
-      <aside className="af-route-aside">
-        <h2>Куда идёт трафик</h2>
+    <section className="flex min-h-0 flex-1" aria-label="Правила">
+      <aside className="border-border flex w-[288px] shrink-0 flex-col gap-4 overflow-y-auto border-r px-6 py-6">
+        <h2 className="text-foreground text-[22px] font-semibold leading-tight">Куда идёт трафик</h2>
         <VyborTrafika
           value={trafik.po_umolchaniyu}
           disabled={disabled}
           onChange={(value) => save({ ...trafik, po_umolchaniyu: value })}
         />
-        <p className="af-note">
+        <p className="text-fg-muted text-sm leading-relaxed">
           {trafik.po_umolchaniyu === "vpn"
             ? "VPN для всего интернета. Добавь приложения и сайты, которые должны работать напрямую"
-            : "Обычное подключение для всего интернета. Выбери, что направить через VPN"}
+            : "Прямой интернет. Через VPN идёт только то, что добавлено в правила"}
         </p>
-        <div className="af-route-summary">
-          <b>{ruleCount}</b> {slovoPosleChisla(ruleCount, "правило", "правила", "правил")}
-          <br />
-          Явные маршруты сохраняются при смене режима
+        <div className="border-border mt-1 border-t pt-4" data-testid="svodka-pravil">
+          <p className="flex items-baseline gap-2">
+            <span className="text-accent-ink text-[26px] font-semibold leading-none">{ruleCount}</span>
+            <span className="text-fg-secondary text-sm">
+              {slovoPosleChisla(ruleCount, "правило", "правила", "правил")}
+            </span>
+          </p>
+          <p className="text-fg-muted mt-2 text-[13px] leading-relaxed">
+            Явные маршруты сохраняются при смене режима
+          </p>
         </div>
         {status.sostoyanie === "vyklyuchen" && (
-          <p className="af-note">
+          <p className="text-fg-muted text-[13px] leading-relaxed">
             Правила начнут работать после нажатия на сферу
           </p>
         )}
         {zanyato && (
-          <p role="status" className="af-note">
-            Правила применяются…
-          </p>
+          <p role="status" className="text-fg-secondary text-[13px]">Применяю правила</p>
         )}
         {pravila?.trebuet_podyoma && (
-          <p role="status" className="af-note">
-            Сохранено, нужен повторный запуск подключения
+          <p role="status" className="text-warn text-[13px] leading-relaxed">
+            Сохранено. Нужен повторный запуск подключения
           </p>
         )}
         {status.kill_switch && (
-          <p className="af-note">
-            Прямые маршруты не работают с блокировкой сети вне VPN,
-            выключи её в настройках защиты
+          <p className="text-fg-muted text-[13px] leading-relaxed">
+            Прямые маршруты не работают с блокировкой сети вне VPN, выключи её в настройках защиты
           </p>
         )}
       </aside>
-      <div className="af-route-content">
-        <nav className="af-route-tabs" aria-label="Виды правил">
-          <button
-            type="button"
-            aria-pressed={tab === "services"}
-            onClick={() => changeTab("services")}
-          >
-            Сервисы
-          </button>
-          <button
-            type="button"
-            aria-pressed={tab === "apps"}
-            onClick={() => changeTab("apps")}
-          >
-            Приложения <small>{apps.length || ""}</small>
-          </button>
-          <button
-            type="button"
-            aria-pressed={tab === "sites"}
-            onClick={() => changeTab("sites")}
-          >
-            Сайты <small>{domains.length || ""}</small>
-          </button>
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <nav role="tablist" aria-label="Вид правил" className="border-border flex shrink-0 items-stretch gap-1 border-b px-8">
+          {VKLADKI.map(({ v, podpis, schyot }) => {
+            const on = v === tab;
+            return (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => changeTab(v)}
+                className={`relative flex h-12 items-center gap-2 px-3 text-sm font-medium transition-colors ${
+                  on ? "text-foreground" : "text-fg-muted hover:text-fg-secondary"
+                }`}
+              >
+                {podpis}
+                {schyot !== undefined && schyot > 0 && (
+                  <span className={`text-[13px] font-normal ${on ? "text-accent-ink" : "text-fg-faint"}`}>{schyot}</span>
+                )}
+                {on && <span aria-hidden className="bg-accent-ink absolute inset-x-0 bottom-0 h-[2px] rounded-t" />}
+              </button>
+            );
+          })}
         </nav>
-        {tab === "sites" && (
-          <section className="af-ru-card" aria-label="Российские сайты">
-            <div>
-              <h3>Российские сайты напрямую</h3>
-              <p>{status.kill_switch
-                ? "Чтобы включить, выключи блокировку сети вне VPN в настройках защиты"
-                : "Сайты из российского списка открываются без VPN. Отдельные правила важнее списка"}</p>
-            </div>
-            <Tumbler testId="ru-spisok" podpis="Российские сайты напрямую"
-              aktiven={!disabled && !status.kill_switch}
-              vkl={pravila?.bez_ru_spiska !== true}
-              naSmenu={(v) => save(trafik, !v)} />
-          </section>
-        )}
-        {tab === "services" ? (
-          <>
-            <div className="af-pane-head">
-              <div>
-                <h3>Популярные сервисы</h3>
-                <p>Домены и поддомены одним переключателем</p>
-              </div>
-            </div>
-            {(pravila?.katalog?.servisy ?? []).length === 0 && (
-              // Пустой каталог рисовал пустоту: заголовок, подпись и полэкрана
-              // ничего. Служба старее окна не шлёт каталог вовсе, и человек
-              // видел сломанную вкладку вместо объяснения.
-              <div className="af-empty" data-testid="net-katalog">
-                <b>Каталог сервисов не пришёл</b>
-                <p>
-                  Список готовых наборов доменов обновляется вместе с программой.
-                  Правила приложений и сайтов работают и без него.
-                </p>
-              </div>
-            )}
-            <div className="af-services">
-              {(pravila?.katalog?.servisy ?? []).map((service) => {
-                const explicit = services.find((r) => r.id === service.id);
-                const effective = explicit?.marshrut ?? trafik.po_umolchaniyu;
-                return (
-                  <article
-                    className="af-service"
-                    data-vpn={effective === "vpn"}
-                    key={service.id}
-                  >
-                    <div className="af-service-head">
-                      <IkonkaServisa id={service.id} imya={service.imya} />
-                      <span className="af-service-name">
-                        <b>{service.imya}</b>
-                        <small>
-                          {effective === "vpn" ? "Через VPN" : "Напрямую"}
-                          {!explicit ? " по умолчанию" : ""}
-                        </small>
-                      </span>
-                      <Tumbler
-                        testId={`service-${service.id}`}
-                        podpis={`${service.imya} через VPN`}
-                        vkl={effective === "vpn"}
-                        aktiven={!disabled}
-                        naSmenu={(on) =>
-                          save({
-                            ...trafik,
-                            servisy: [
-                              ...services.filter((s) => s.id !== service.id),
-                              {
-                                id: service.id,
-                                marshrut: on ? "vpn" : "direct",
-                              },
-                            ],
-                          })
-                        }
-                      />
-                    </div>
-                    <details className="af-service-details">
-                      <summary>
-                        {service.domeny.length} {slovoPosleChisla(service.domeny.length, "домен", "домена", "доменов")} с поддоменами
-                      </summary>
-                      <ul>
-                        {service.domeny.map((d) => (
-                          <li key={d}>{d}</li>
-                        ))}
-                      </ul>
-                      {explicit && (
-                        <button
-                          className="af-link"
-                          type="button"
-                          disabled={disabled}
-                          onClick={() =>
+
+        <div className="min-w-0 flex-1 px-8 py-6">
+          {tab === "services" && (
+            <div className="flex flex-col gap-5">
+              <header>
+                <h3 className="text-foreground text-[17px] font-semibold leading-tight">Популярные сервисы</h3>
+                <p className="text-fg-muted mt-1 text-[13px]">Домены и поддомены одним переключателем</p>
+              </header>
+
+              {katalog.length === 0 && (
+                // Пустой каталог рисовал пустоту: заголовок, подпись и полэкрана
+                // ничего. Служба старее окна не шлёт каталог вовсе, и человек
+                // видел сломанную вкладку вместо объяснения.
+                <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-10 text-center" data-testid="net-katalog">
+                  <span className="text-foreground text-sm font-medium">Каталог сервисов не пришёл</span>
+                  <span className="text-fg-muted max-w-[440px] text-[13px] leading-relaxed">
+                    Список готовых наборов доменов обновляется вместе с программой.
+                    Правила приложений и сайтов работают и без него
+                  </span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-3 min-[1100px]:grid-cols-2">
+                {katalog.map((service) => {
+                  const explicit = services.find((r) => r.id === service.id);
+                  const effective = explicit?.marshrut ?? trafik.po_umolchaniyu;
+                  const vkl = effective === "vpn";
+                  const otkryt = raskryto[service.id] ?? false;
+                  return (
+                    <article key={service.id} className="border-border bg-surface flex flex-col overflow-hidden rounded-xl border">
+                      <div className="flex items-center gap-3 px-4 py-3.5">
+                        <span className={`border-border flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${vkl ? "text-foreground" : "text-fg-faint"}`}>
+                          <IkonkaServisa id={service.id} imya={service.imya} />
+                        </span>
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="text-foreground truncate text-sm font-medium">{service.imya}</span>
+                          <span className="text-fg-muted truncate text-[13px]">
+                            {vkl ? "Через VPN" : "Напрямую"}
+                            {!explicit ? " по умолчанию" : ""}
+                          </span>
+                        </span>
+                        <Tumbler
+                          testId={`service-${service.id}`}
+                          podpis={`${service.imya} через VPN`}
+                          vkl={vkl}
+                          aktiven={!disabled}
+                          naSmenu={(on) =>
                             save({
                               ...trafik,
-                              servisy: services.filter(
-                                (s) => s.id !== service.id,
-                              ),
+                              servisy: [
+                                ...services.filter((s) => s.id !== service.id),
+                                { id: service.id, marshrut: on ? "vpn" : "direct" },
+                              ],
                             })
                           }
-                        >
-                          Вернуть маршрут по умолчанию
-                        </button>
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        aria-expanded={otkryt}
+                        onClick={() => setRaskryto({ ...raskryto, [service.id]: !otkryt })}
+                        className="group border-border hover:bg-surface-hover flex items-center gap-2 border-t px-4 py-2.5 text-left transition-colors"
+                      >
+                        <IkTreugolnik className={`text-fg-muted h-3 w-3 shrink-0 transition-transform ${otkryt ? "rotate-90" : ""}`} />
+                        <span className="text-fg-muted group-hover:text-fg-secondary text-[13px]">
+                          {service.domeny.length} {slovoPosleChisla(service.domeny.length, "домен", "домена", "доменов")} с поддоменами
+                        </span>
+                      </button>
+
+                      {otkryt && (
+                        <ul className="border-border flex flex-col gap-1 border-t px-4 py-3">
+                          {service.domeny.map((d) => (
+                            <li key={d} className="text-fg-secondary text-[13px]">{d}</li>
+                          ))}
+                          {explicit && (
+                            <li>
+                              <Knopka
+                                rang="tekst"
+                                className="mt-1"
+                                aktiven={!disabled}
+                                onClick={() =>
+                                  save({ ...trafik, servisy: services.filter((s) => s.id !== service.id) })
+                                }
+                              >
+                                Вернуть маршрут по умолчанию
+                              </Knopka>
+                            </li>
+                          )}
+                        </ul>
                       )}
-                    </details>
-                  </article>
-                );
-              })}
-            </div>
-            <p className="af-note">
-              Приложение обращается напрямую к IP? Добавь его во вкладке
-              «Приложения»
-            </p>
-            <details className="af-details">
-              <summary>Источник и особенности правил</summary>
-              <p className="af-note">
-                Каталог OpenCCK, версия{" "}
-                {pravila?.katalog?.versiya ?? "неизвестна"}. Обновляется вместе
-                с приложением. Отдельный домен имеет приоритет над набором
-                сервиса. Браузер с защищённым DNS или ECH может скрыть имя
-                сайта; для такого случая добавь приложение целиком
-              </p>
-            </details>
-          </>
-        ) : (
-          <>
-            <div className="af-pane-head">
-              <div>
-                <h3>
-                  {tab === "apps" ? "Правила приложений" : "Правила сайтов"}
-                </h3>
-                <p>
-                  {tab === "apps"
-                    ? "Приложение вместе с дочерними процессами"
-                    : "Домен и все его поддомены"}
-                </p>
+                    </article>
+                  );
+                })}
               </div>
-              <Knopka
-                rang="glavnaya"
-                aktiven={!disabled}
-                onClick={() => { pickerEpoch.current++; setPickerError(""); setPicking(false); setAdding(!adding); }}
-              >
-                {adding ? "Закрыть" : "+ Добавить"}
-              </Knopka>
-            </div>
-            {adding && (
-              <div className="af-rule-form">
-                {tab === "apps" ? (
-                  <>
-                    <Pole
-                      aria-label="Поиск приложения"
-                      znachenie={query}
-                      naVvod={setQuery}
-                      placeholder="Найти среди запущенных…"
-                    />
-                    <div
-                      className="af-process-list"
-                      aria-label="Запущенные приложения"
-                    >
-                      {candidates.map((p) => (
-                        <button
-                          type="button"
-                          key={p.put}
-                          aria-label={`${p.imya}, ${p.put}`}
-                          aria-pressed={path === p.put}
-                          onClick={() => setPath(p.put)}
+
+              <p className="text-fg-muted text-[13px]">
+                Приложение обращается напрямую к IP? Добавь его во вкладке «Приложения»
+              </p>
+
+              <div className="flex flex-col">
+                <Svorachivaemyy
+                  zagolovok="Источник и особенности правил"
+                  deti={
+                    <div className="flex flex-col gap-2">
+                      <p>
+                        Каталог OpenCCK, версия {pravila?.katalog?.versiya ?? "неизвестна"}. Обновляется
+                        вместе с программой. Правило накрывает домен и все его поддомены.
+                      </p>
+                      <p>
+                        Отдельный домен важнее набора сервиса, а набор сервиса важнее общего режима:
+                        выключенный здесь сервис идёт напрямую даже в режиме «Всё через VPN».
+                      </p>
+                      <p>
+                        Браузер с защищённым DNS или ECH может скрыть имя сайта. Для такого случая
+                        добавь приложение целиком во вкладке «Приложения».
+                      </p>
+                    </div>
+                  }
+                />
+                <Svorachivaemyy
+                  zagolovok="Дополнительно"
+                  deti={
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Knopka
+                          rang="vtoraya"
+                          aktiven={!disabled && services.length > 0}
+                          onClick={() => save({ ...trafik, servisy: [] })}
                         >
-                          <b>{p.imya}</b>
-                          <small>{p.put}</small>
-                        </button>
-                      ))}
-                      {candidates.length === 0 && (
-                        <p className="af-note">
-                          Не найдено. Выбери приложение на ПК или укажи путь ниже
+                          Сбросить переключатели
+                        </Knopka>
+                        <Knopka rang="vtoraya" onClick={() => setVesSpisok(!vesSpisok)}>
+                          {vesSpisok ? "Скрыть весь список доменов" : "Показать весь список доменов"}
+                        </Knopka>
+                      </div>
+                      {vesSpisok && (
+                        <ul className="border-border bg-elevated flex flex-col gap-1 rounded-lg border px-4 py-3">
+                          {katalog.flatMap((s) => s.domeny.map((d) => ({ d, s }))).map(({ d, s }) => {
+                            const cherez = (services.find((r) => r.id === s.id)?.marshrut ?? trafik.po_umolchaniyu) === "vpn";
+                            return (
+                              <li key={`${s.id}-${d}`} className="flex items-center justify-between gap-4 text-[13px]">
+                                <span className="text-fg-secondary">{d}</span>
+                                <span className="text-fg-muted">{cherez ? "через VPN" : "напрямую"}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          {tab !== "services" && (
+            <div className="flex flex-col gap-5">
+              {tab === "sites" && (
+                <div className="border-border bg-surface flex items-center gap-4 rounded-xl border px-4 py-3" aria-label="Российские сайты">
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-foreground text-sm font-medium">Российские сайты напрямую</span>
+                    <span className="text-fg-muted text-[13px] leading-relaxed">
+                      {status.kill_switch
+                        ? "Чтобы включить, отключи блокировку сети вне VPN в настройках защиты"
+                        : "Сайты из российского списка открываются без VPN. Свои правила важнее списка"}
+                    </span>
+                  </span>
+                  <Tumbler
+                    testId="ru-spisok"
+                    podpis="Российские сайты напрямую"
+                    aktiven={!disabled && !status.kill_switch}
+                    vkl={pravila?.bez_ru_spiska !== true}
+                    naSmenu={(v) => save(trafik, !v)}
+                  />
+                </div>
+              )}
+
+              <header className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-foreground text-[17px] font-semibold leading-tight">
+                    {tab === "apps" ? "Правила приложений" : "Правила сайтов"}
+                  </h3>
+                  <p className="text-fg-muted mt-1 text-[13px]">
+                    {tab === "apps"
+                      ? "Приложение вместе с дочерними процессами"
+                      : "Домен и все его поддомены"}
+                  </p>
+                </div>
+                <Knopka
+                  rang="glavnaya"
+                  bolshaya
+                  aria-expanded={adding}
+                  aktiven={!disabled}
+                  onClick={() => { pickerEpoch.current++; setPickerError(""); setPicking(false); setAdding(!adding); }}
+                >
+                  <IkPlyus className="h-4 w-4" />
+                  {adding ? "Закрыть" : "Добавить"}
+                </Knopka>
+              </header>
+
+              {adding && (
+                <div className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-4">
+                  {tab === "apps" ? (
+                    <>
+                      <Poisk
+                        aria-label="Поиск приложения"
+                        znachenie={query}
+                        naVvod={setQuery}
+                        placeholder="Найти среди запущенных"
+                      />
+                      <div className="border-border flex max-h-[220px] flex-col overflow-y-auto rounded-lg border" aria-label="Запущенные приложения">
+                        {candidates.map((p) => (
+                          <button
+                            type="button"
+                            key={p.put}
+                            aria-label={`${p.imya}, ${p.put}`}
+                            aria-pressed={path === p.put}
+                            onClick={() => setPath(p.put)}
+                            className={`flex min-w-0 flex-col gap-0.5 px-3 py-2 text-left transition-colors ${
+                              path === p.put ? "bg-accent-soft" : "hover:bg-surface-hover"
+                            }`}
+                          >
+                            <span className="text-foreground truncate text-sm font-medium">{p.imya}</span>
+                            <span className="text-fg-muted truncate text-[13px]" title={p.put}>{sokratitPut(p.put)}</span>
+                          </button>
+                        ))}
+                        {candidates.length === 0 && (
+                          <p className="text-fg-muted px-3 py-6 text-center text-[13px]">
+                            Не найдено. Выбери приложение на ПК или укажи путь ниже
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Pole
+                          aria-label="Путь к приложению"
+                          znachenie={path}
+                          aktiven={!disabled}
+                          naVvod={setPath}
+                          placeholder="C:\Program Files\...\app.exe"
+                          className="min-w-0 flex-1"
+                        />
+                        <Knopka
+                          rang="vtoraya"
+                          zhdyot={picking}
+                          aktiven={!disabled && !!naVyborPrilozheniya}
+                          onClick={() => void browse()}
+                        >
+                          {picking ? "Выбор…" : "Выбрать на ПК…"}
+                        </Knopka>
+                      </div>
+                      {pickerError && (
+                        <p className="text-danger text-[13px]" role="alert">
+                          Не удалось выбрать приложение: {pickerError}
                         </p>
                       )}
-                    </div>
-                    <div className="af-file-picker">
-                      <Pole
-                        aria-label="Путь к приложению"
-                        znachenie={path}
-                        aktiven={!disabled}
-                        naVvod={setPath}
-                        placeholder="C:\Program Files\…\app.exe"
+                      <Flazhok
+                        podpis="Включая дочерние процессы"
+                        vkl={descendants}
+                        naSmenu={setDescendants}
                       />
-                      <Knopka rang="vtoraya" aktiven={!disabled && !!naVyborPrilozheniya} onClick={() => void browse()}>
-                        {picking ? "Выбор…" : "Выбрать на ПК…"}
-                      </Knopka>
-                    </div>
-                    {pickerError && <p className="af-picker-error" role="alert">Не удалось выбрать приложение: {pickerError}</p>}
-                    <label className="af-check">
-                      <input
-                        type="checkbox"
-                        checked={descendants}
-                        onChange={(e) => setDescendants(e.target.checked)}
+                    </>
+                  ) : (
+                    <Pole
+                      aria-label="Домен сайта"
+                      znachenie={domain}
+                      naVvod={setDomain}
+                      placeholder="example.org"
+                    />
+                  )}
+                  <div className="flex items-center justify-end gap-3">
+                    <div className="w-[170px]">
+                      <RouteSelect
+                        label="Маршрут нового правила"
+                        value={route}
+                        onChange={setRoute}
                       />
-                      Включая дочерние процессы
-                    </label>
-                  </>
-                ) : (
-                  <Pole
-                    aria-label="Домен сайта"
-                    znachenie={domain}
-                    naVvod={setDomain}
-                    placeholder="example.org"
-                  />
-                )}
-                <div className="af-form-actions">
-                  <RouteSelect
-                    label="Маршрут нового правила"
-                    value={route}
-                    onChange={setRoute}
-                  />
-                  <Knopka
-                    rang="glavnaya"
-                    aktiven={
-                      !disabled &&
-                      (tab === "apps"
-                        ? path.trim() !== ""
-                        : domain.trim() !== "")
-                    }
-                    onClick={add}
-                  >
-                    Сохранить правило
-                  </Knopka>
+                    </div>
+                    <Knopka
+                      rang="glavnaya"
+                      bolshaya
+                      aktiven={
+                        !disabled &&
+                        (tab === "apps" ? path.trim() !== "" : domain.trim() !== "")
+                      }
+                      onClick={add}
+                    >
+                      Сохранить правило
+                    </Knopka>
+                  </div>
                 </div>
-              </div>
-            )}
-            {(tab === "apps" ? apps.length : domains.length) === 0 && (
-              <div className="af-empty">
-                <b>Пока нет отдельных правил</b>
-                <p>
-                  Сейчас используется маршрут по умолчанию:{" "}
-                  {imyaMarshruta(trafik.po_umolchaniyu)}.
-                </p>
-              </div>
-            )}
-            <div className="af-rules-list">
-              {tab === "apps"
-                ? apps.map((app) => (
-                    <article className="af-app-rule" key={app.put}>
-                      <div className="af-app-head">
-                        <div className="af-app-copy">
-                          <b>{app.imya}</b>
-                          <small>{app.put}</small>
-                        </div>
+              )}
+
+              {(tab === "apps" ? apps.length : domains.length) === 0 ? (
+                <div className="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center">
+                  <IkSsylka className="text-fg-faint h-7 w-7" />
+                  <p className="text-foreground text-sm font-medium">Пока нет отдельных правил</p>
+                  <p className="text-fg-muted max-w-[440px] text-[13px]">
+                    Сейчас используется маршрут по умолчанию: {imyaMarshruta(trafik.po_umolchaniyu)}
+                  </p>
+                </div>
+              ) : tab === "apps" ? (
+                <div>
+                  <div className={`${SETKA_PRILOZHENIY} border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
+                    <span>Приложение</span>
+                    <span>Дочерние процессы</span>
+                    <span>Маршрут</span>
+                    <span className="text-right">Действие</span>
+                  </div>
+                  <ul>
+                    {apps.map((app) => (
+                      <li key={app.put} className={`${SETKA_PRILOZHENIY} border-border hover:bg-surface-hover border-b px-3 py-2.5 transition-colors`}>
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="text-foreground truncate text-sm font-medium">{app.imya}</span>
+                          {/* Длинный путь теряет СЕРЕДИНУ, а не хвост: диск говорит, где
+                              файл живёт, имя говорит, что это за файл, а папки посередине
+                              человек и так не читает. Целиком в подсказке. */}
+                          <span className="text-fg-muted truncate text-[13px]" title={app.put}>{sokratitPut(app.put)}</span>
+                        </span>
+                        <Flazhok
+                          podpis="Включая дочерние процессы"
+                          aktiven={!disabled}
+                          vkl={app.potomki}
+                          naSmenu={(v) =>
+                            save({
+                              ...trafik,
+                              prilozheniya: apps.map((a) => (a.put === app.put ? { ...a, potomki: v } : a)),
+                            })
+                          }
+                        />
                         <RouteSelect
                           label={`Маршрут ${app.imya}`}
                           value={app.marshrut}
@@ -464,147 +578,177 @@ export function Marshruty({
                           onChange={(r) =>
                             save({
                               ...trafik,
-                              prilozheniya: apps.map((a) =>
-                                a.put === app.put ? { ...a, marshrut: r } : a,
-                              ),
+                              prilozheniya: apps.map((a) => (a.put === app.put ? { ...a, marshrut: r } : a)),
                             })
                           }
                         />
-                      </div>
-                      <div className="af-app-options">
-                        <label className="af-check">
-                          <input
-                            type="checkbox"
-                            disabled={disabled}
-                            checked={app.potomki}
-                            onChange={(e) =>
-                              save({
-                                ...trafik,
-                                prilozheniya: apps.map((a) =>
-                                  a.put === app.put
-                                    ? { ...a, potomki: e.target.checked }
-                                    : a,
-                                ),
-                              })
-                            }
-                          />
-                          Включая дочерние процессы
-                        </label>
-                        <button
-                          className="af-link"
+                        <div className="flex justify-end">
+                          <Knopka
+                            rang={remove === app.put ? "opasnaya" : "tekst"}
+                            aktiven={!disabled}
+                            onClick={() => {
+                              if (remove === app.put)
+                                save({ ...trafik, prilozheniya: apps.filter((a) => a.put !== app.put) });
+                              else setRemove(app.put);
+                            }}
+                          >
+                            {remove === app.put ? "Подтвердить" : "Удалить"}
+                          </Knopka>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div>
+                  <div className={`${SETKA_SAYTOV} border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
+                    <span>Домен</span>
+                    <span>Маршрут</span>
+                    <span className="text-right">Действие</span>
+                  </div>
+                  <ul>
+                    {domains.map((d) => (
+                      <li key={d.domen} className={`${SETKA_SAYTOV} border-border hover:bg-surface-hover border-b px-3 py-2.5 transition-colors`}>
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="border-border bg-elevated text-fg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border">
+                            <IkSayt className="h-4 w-4" />
+                          </span>
+                          <span className="flex min-w-0 flex-col gap-0.5">
+                            <span className="text-foreground truncate text-sm font-medium">{d.domen}</span>
+                            <span className="text-fg-muted text-[13px]">Включая поддомены</span>
+                          </span>
+                        </span>
+                        <RouteSelect
+                          label={`Маршрут ${d.domen}`}
+                          value={d.marshrut}
                           disabled={disabled}
-                          type="button"
-                          onClick={() => {
-                            if (remove === app.put)
-                              save({
-                                ...trafik,
-                                prilozheniya: apps.filter(
-                                  (a) => a.put !== app.put,
-                                ),
-                              });
-                            else setRemove(app.put);
-                          }}
-                        >
-                          {remove === app.put
-                            ? "Подтвердить удаление"
-                            : "Удалить"}
-                        </button>
-                      </div>
-                    </article>
-                  ))
-                : domains.map((d) => (
-                    <article className="af-app-rule af-app-head" key={d.domen}>
-                      <div className="af-app-copy">
-                        <b>{d.domen}</b>
-                        <small>Включая поддомены</small>
-                      </div>
-                      <RouteSelect
-                        label={`Маршрут ${d.domen}`}
-                        value={d.marshrut}
-                        disabled={disabled}
-                        onChange={(r) =>
-                          save({
-                            ...trafik,
-                            domeny: domains.map((v) =>
-                              v.domen === d.domen ? { ...v, marshrut: r } : v,
-                            ),
-                          })
-                        }
-                      />
-                      <button
-                        className="af-link"
-                        disabled={disabled}
-                        type="button"
-                        onClick={() => {
-                          if (remove === d.domen)
+                          onChange={(r) =>
                             save({
                               ...trafik,
-                              domeny: domains.filter(
-                                (v) => v.domen !== d.domen,
-                              ),
-                            });
-                          else setRemove(d.domen);
-                        }}
-                      >
-                        {remove === d.domen ? "Подтвердить" : "Удалить"}
-                      </button>
-                    </article>
-                  ))}
+                              domeny: domains.map((v) => (v.domen === d.domen ? { ...v, marshrut: r } : v)),
+                            })
+                          }
+                        />
+                        <div className="flex justify-end">
+                          <Knopka
+                            rang={remove === d.domen ? "opasnaya" : "tekst"}
+                            aktiven={!disabled}
+                            onClick={() => {
+                              if (remove === d.domen)
+                                save({ ...trafik, domeny: domains.filter((v) => v.domen !== d.domen) });
+                              else setRemove(d.domen);
+                            }}
+                          >
+                            {remove === d.domen ? "Подтвердить" : "Удалить"}
+                          </Knopka>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex flex-col">
+                {tab === "apps" && (
+                  <Svorachivaemyy
+                    zagolovok="Что попадает под правило приложения"
+                    deti={
+                      <div className="flex flex-col gap-2">
+                        <p>
+                          Под правило попадает выбранный файл и всё, что он запускает, включая
+                          запущенное уже после включения VPN: лаунчер уводит за собой игру, а
+                          браузер свои вкладки.
+                        </p>
+                        <p>
+                          Связь считается по тому, кто кого запустил: программа, открытая отдельно,
+                          в группу не попадёт. Если запустившая программа закрылась раньше, чем
+                          включили VPN, связь теряется, и приложение надо перезапустить.
+                        </p>
+                        <p>
+                          Пока хотя бы одно приложение отправлено в VPN, адреса сайтов вся система
+                          спрашивает через VPN: Windows не сообщает, какая программа спросила
+                        </p>
+                      </div>
+                    }
+                  />
+                )}
+                <Svorachivaemyy
+                  zagolovok="Дополнительно"
+                  deti={
+                    tab === "apps" ? (
+                      <p>
+                        Правило по пути, а не по имени: две копии одного файла из разных папок это
+                        два разных правила. Переименованный или перенесённый файл под правило
+                        перестаёт попадать, путь придётся указать заново.
+                      </p>
+                    ) : (
+                      <p>
+                        Правило накрывает домен и все его поддомены: example.com действует и на
+                        api.example.com. Программа, которая обращается к адресу без имени, под правило
+                        сайта не попадает, для неё есть вкладка «Приложения».
+                      </p>
+                    )
+                  }
+                />
+              </div>
             </div>
-            {tab === "apps" && (
-              <details className="af-details">
-                <summary>Как работают дочерние процессы</summary>
-                <p className="af-note">
-                  Под правило попадает выбранный файл и всё, что он запускает,
-                  включая запущенное уже после включения VPN. Связь считается
-                  по тому, кто кого запустил: программа, открытая отдельно, в
-                  группу не попадёт. Если запустившая программа закрылась
-                  раньше, чем включили VPN, связь теряется, и приложение надо
-                  перезапустить. Пока хотя бы одно приложение отправлено в VPN,
-                  адреса сайтов вся система спрашивает через VPN: Windows не
-                  сообщает, какая программа спросила
-                </p>
-              </details>
-            )}
-          </>
-        )}
-        <details className="af-details">
-          <summary>Дополнительно</summary>
-          <label className="af-extra-row">
-            <span>Журнал соединений</span>
-            <Tumbler
-              testId="zhurnal"
-              podpis="Журнал соединений"
-              aktiven={!disabled}
-              vkl={status.zhurnal ?? false}
-              naSmenu={(vkl) => naKomandu("setJournal", { vkl })}
+          )}
+
+          {/* Журнал стоит под всеми тремя вкладками, а не внутри одной: он
+              про правила целиком, и человек, включивший его на «Сайтах», не
+              должен искать его заново, перейдя на «Приложения». */}
+          <div className="mt-5 flex flex-col">
+            <Svorachivaemyy
+              testId="razdel-zhurnal"
+              zagolovok="Журнал соединений"
+              poyasnenie={status.zhurnal ? "включён" : "выключен"}
+              deti={
+                <div className="flex flex-col gap-3">
+                  <p>
+                    Служба записывает, какое приложение к какому адресу пошло и каким маршрутом.
+                    Нужен, когда правило не срабатывает и надо увидеть, что происходит на самом деле.
+                  </p>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-fg-secondary text-sm">Вести журнал</span>
+                    <Tumbler
+                      testId="zhurnal"
+                      podpis="Журнал соединений"
+                      aktiven={!disabled}
+                      vkl={status.zhurnal ?? false}
+                      naSmenu={(vkl) => naKomandu("setJournal", { vkl })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-fg-secondary text-sm">Подробный журнал для отладки</span>
+                      <span className="text-fg-muted text-[13px] leading-relaxed">
+                        Раз в секунду: занятые порты, соединения, скорость и задержка. Нужен, когда
+                        связь пропадает без видимой причины
+                      </span>
+                    </span>
+                    <Tumbler
+                      testId="diagnostika"
+                      podpis="Подробный журнал для отладки"
+                      aktiven={!disabled}
+                      vkl={status.diagnostika ?? false}
+                      naSmenu={(vkl) => naKomandu("setDiagnostics", { vkl })}
+                    />
+                  </div>
+                  <div>
+                    <Knopka
+                      rang="vtoraya"
+                      testId="ochistit-zhurnal"
+                      aktiven={!disabled}
+                      onClick={() => naKomandu("clearJournal", {})}
+                    >
+                      Очистить журнал
+                    </Knopka>
+                  </div>
+                </div>
+              }
             />
-          </label>
-          <label className="af-extra-row">
-            <span>
-              Подробный журнал для отладки
-              <small>
-                раз в секунду: дескрипторы, занятые порты, соединения, скорость,
-                задержка ядра; нужен, когда связь пропадает без видимой причины
-              </small>
-            </span>
-            <Tumbler
-              testId="diagnostika"
-              podpis="Подробный журнал для отладки"
-              aktiven={!disabled}
-              vkl={status.diagnostika ?? false}
-              naSmenu={(vkl) => naKomandu("setDiagnostics", { vkl })}
-            />
-          </label>
-          <button
-            type="button"
-            className="af-link"
-            disabled={disabled}
-            onClick={() => naKomandu("clearJournal", {})}
-          >
-            Очистить журнал
-          </button>
-        </details>
+          </div>
+        </div>
       </div>
     </section>
   );
