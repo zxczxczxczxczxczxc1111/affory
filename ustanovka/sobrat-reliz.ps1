@@ -86,7 +86,10 @@ try {
         & $winres make --in winres\winres.json --out rsrc --arch amd64 --file-version $Versiya --product-version $Versiya
         if ($LASTEXITCODE -ne 0) { throw 'ресурсы affory-ui не собрались' }
     } finally { Pop-Location }
-    & go build -trimpath -ldflags "$ld -H windowsgui" -o (Join-Path $sborka 'affory-ui.exe') ./cmd/affory-ui
+    # -tags production: без метки Wails считает сборку отладочной и включает
+    # ПОВЕРХ наших опций родное меню WebView2 (`debugMode || !DefaultContextMenuDisabled`)
+    # и панель разработчика. Выпуски 1.0.0-1.1.3 ушли людям такими.
+    & go build -trimpath -tags production -ldflags "$ld -H windowsgui" -o (Join-Path $sborka 'affory-ui.exe') ./cmd/affory-ui
     if ($LASTEXITCODE -ne 0) { throw 'affory-ui не собрался' }
 } finally { Pop-Location }
 Copy-Item $Yadro (Join-Path $sborka 'sing-box.exe')
