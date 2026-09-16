@@ -257,6 +257,17 @@ describe("российский список", () => {
     expect((screen.getByTestId("ru-spisok") as HTMLInputElement).checked).toBe(false);
   });
 
+  it("под блокировкой сети сказано, что список не действует, а не «включи его»", () => {
+    risovat({
+      status: { ...VYKL, kill_switch: true },
+      otlozheno: {},
+      pravila: sTrafikom({}, { bez_ru_spiska: false }),
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Сайты/ }));
+    expect(screen.getByLabelText("Российские сайты")).toHaveTextContent(/не действует/i);
+    expect(screen.getByLabelText("Российские сайты")).not.toHaveTextContent(/чтобы включить/i);
+  });
+
   it("служба молчит: тумблер неактивен, а не врёт положением", () => {
     risovat({
       status: { ...VYKL, sostoyanie: "sluzhba-molchit" },
