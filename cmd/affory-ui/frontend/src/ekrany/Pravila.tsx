@@ -47,6 +47,9 @@ export interface PravilaProps {
   obnovitProtsessy?: () => void;
   naVyborPrilozheniya?: () => Promise<string>;
   naKomandu: (komanda: string, telo: unknown) => void;
+  /** Команды в полёте, для вертушки на своей кнопке. `zanyato` выше это про
+   *  другое: оно гасит экран целиком на время команды, меняющей туннель. */
+  zanyatyeKomandy?: Record<string, boolean>;
 }
 
 /** "появится в волне N" for a deferred command, or undefined once it exists. */
@@ -76,6 +79,7 @@ function PravilaBezDannyh({
   pravilaOtkaz = null,
   obnovitPravila,
   naKomandu,
+  zanyatyeKomandy = {},
 }: PravilaProps) {
   const molchit = status.sostoyanie === "sluzhba-molchit";
   const zhdyomHello = otlozheno === null;
@@ -143,7 +147,7 @@ function PravilaBezDannyh({
             </div>
           )}
 
-          <RazdelZhurnala status={status} disabled={molchit || zhdyomHello} naKomandu={naKomandu} />
+          <RazdelZhurnala status={status} disabled={molchit || zhdyomHello} naKomandu={naKomandu} zanyatyeKomandy={zanyatyeKomandy} />
         </div>
       </div>
     </section>

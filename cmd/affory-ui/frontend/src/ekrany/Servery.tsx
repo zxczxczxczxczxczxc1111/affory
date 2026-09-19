@@ -84,6 +84,10 @@ export interface ServeryProps {
    *  this tab had one: no list, no button, no form (03.09.2026). */
   obnovitSpisok?: () => void;
   naKomandu: (komanda: string, telo: unknown) => void;
+  /** Команды, которые сейчас в полёте. Кнопка над долгой командой рисует
+   *  вертушку сама: замер задержек и поход за подпиской занимают секунды, и
+   *  неподвижный экран всё это время читается как зависшая программа. */
+  zanyatyeKomandy?: Record<string, boolean>;
   /** Строки последней подписки, которые не разобрались. Пустой список и
    *  отсутствие это одно и то же: разговора нет. */
   otkazyPodpiski?: OtkazStroki[];
@@ -136,8 +140,9 @@ function sovpadaet(s: Server, zapros: string): boolean {
   return s.imya.toLowerCase().includes(z) || s.host.toLowerCase().includes(z);
 }
 
-export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, otkazyPodpiski = [], chitatBufer, naQrSEkrana, zaderzhki = [], podpiski = [] }: ServeryProps) {
+export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, zanyatyeKomandy = {}, otkazyPodpiski = [], chitatBufer, naQrSEkrana, zaderzhki = [], podpiski = [] }: ServeryProps) {
   const aktiven = status.sostoyanie !== "sluzhba-molchit";
+  const zhdyot = (k: string) => zanyatyeKomandy[k] === true;
   const [poisk, zadatPoisk] = useState("");
   // One "Добавить", one question: what is being added. A server link and a
   // subscription address used to live behind two buttons with two verbs
@@ -310,8 +315,11 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
               aktiven={aktiven}
               className="flex-1"
             />
-            <Knopka rang="glavnaya" testId="sohranit-podpisku" aktiven={aktiven && adres.trim() !== ""} onClick={otpravitAdres}>
-              Сохранить
+            {/* Служба идёт за подпиской по сети прямо в этой команде, и
+                ответа ждать секунды. */}
+            <Knopka rang="glavnaya" testId="sohranit-podpisku" zhdyot={zhdyot("addSubscription")}
+                    aktiven={aktiven && adres.trim() !== ""} onClick={otpravitAdres}>
+              {zhdyot("addSubscription") ? "Спрашиваю" : "Сохранить"}
             </Knopka>
             {chitatBufer && (
               <Knopka rang="vtoraya" testId="adres-iz-bufera" aktiven={aktiven} onClick={() => void adresIzBufera()}>
@@ -416,8 +424,11 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                 aktiven={aktiven}
               >
                 {p.aktivnaya ? (
-                  <Knopka rang="vtoraya" testId="obnovit-podpisku" aktiven={aktiven} onClick={() => naKomandu("refreshSubscription", {})}>
-                    <Obnovit />Обновить
+                  <Knopka rang="vtoraya" testId="obnovit-podpisku" zhdyot={zhdyot("refreshSubscription")}
+                          aktiven={aktiven} onClick={() => naKomandu("refreshSubscription", {})}>
+                    {/* Значок «обновить» прячется, пока крутится вертушка:
+                        две крутящиеся вещи подряд на одной кнопке это рябь. */}
+                    {zhdyot("refreshSubscription") ? "Спрашиваю" : <><Obnovit />Обновить</>}
                   </Knopka>
                 ) : (
                   <Knopka rang="vtoraya" testId={`vklyuchit-${p.id}`} aktiven={aktiven} onClick={() => naKomandu("setActiveSubscription", { id: p.id })}>
@@ -504,10 +515,11 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
             <Knopka
               rang="vtoraya"
               testId="zamerit-zaderzhki"
+              zhdyot={zhdyot("measureDelays")}
               aktiven={aktiven}
               onClick={() => naKomandu("measureDelays", {})}
             >
-              Проверить
+              {zhdyot("measureDelays") ? "Меряю" : "Проверить"}
             </Knopka>
           </div>
           <div

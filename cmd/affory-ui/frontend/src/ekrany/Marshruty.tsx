@@ -79,6 +79,7 @@ export function Marshruty({
   naVyborPrilozheniya,
   naKomandu,
   zanyato = false,
+  zanyatyeKomandy = {},
 }: PravilaProps & { trafik: PravilaTrafika }) {
   const [tab, setTab] = useState<"services" | "apps" | "sites">("services");
   const [adding, setAdding] = useState(false);
@@ -744,7 +745,7 @@ export function Marshruty({
           {/* Журнал стоит под всеми тремя вкладками, а не внутри одной: он
               про правила целиком, и человек, включивший его на «Сайтах», не
               должен искать его заново, перейдя на «Приложения». */}
-          <RazdelZhurnala status={status} disabled={disabled} naKomandu={naKomandu} />
+          <RazdelZhurnala status={status} disabled={disabled} naKomandu={naKomandu} zanyatyeKomandy={zanyatyeKomandy} />
         </div>
       </div>
     </section>
@@ -758,10 +759,12 @@ export function RazdelZhurnala({
   status,
   disabled,
   naKomandu,
+  zanyatyeKomandy = {},
 }: {
   status: StatusOtvet;
   disabled: boolean;
   naKomandu: (komanda: string, telo: unknown) => void;
+  zanyatyeKomandy?: Record<string, boolean>;
 }) {
   return (
     <div className="mt-5 flex flex-col">
@@ -805,10 +808,11 @@ export function RazdelZhurnala({
               <Knopka
                 rang="vtoraya"
                 testId="ochistit-zhurnal"
+                zhdyot={zanyatyeKomandy["clearJournal"] === true}
                 aktiven={!disabled}
                 onClick={() => naKomandu("clearJournal", {})}
               >
-                Очистить журнал
+                {zanyatyeKomandy["clearJournal"] === true ? "Стираю" : "Очистить журнал"}
               </Knopka>
             </div>
           </div>

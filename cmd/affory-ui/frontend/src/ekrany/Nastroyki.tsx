@@ -252,7 +252,10 @@ export function Nastroyki({
               Загрузки и звонки оборвутся
             </p>
             <div className="flex gap-2">
-              <Knopka rang="glavnaya" bolshaya testId="podtverdit-rezhim" onClick={() => { naKomandu("setKillSwitch", { vkl: vopros }); zadatVopros(null); }}>
+              {/* За кнопкой стоит расстановка правил брандмауэра, а это
+                  секунды, а не мгновение. */}
+              <Knopka rang="glavnaya" bolshaya testId="podtverdit-rezhim" zhdyot={zhdyot("setKillSwitch")}
+                      onClick={() => { naKomandu("setKillSwitch", { vkl: vopros }); zadatVopros(null); }}>
                 {vopros ? "Включить" : "Выключить"}
               </Knopka>
               <Knopka rang="tekst" bolshaya testId="otmena-rezhima" onClick={() => zadatVopros(null)}>Отмена</Knopka>
@@ -355,6 +358,7 @@ export function Nastroyki({
                     <Knopka
                       rang="vtoraya"
                       testId="sohranit-polosu"
+                      zhdyot={zhdyot("setBandwidth")}
                       aktiven={aktiven && paraGodna}
                       onClick={() => naKomandu("setBandwidth", { vverh: Number(vverh), vniz: Number(vniz) })}
                     >
@@ -364,6 +368,7 @@ export function Nastroyki({
                       <Knopka
                         rang="vtoraya"
                         testId="snyat-polosu"
+                        zhdyot={zhdyot("setBandwidth")}
                         aktiven={aktiven}
                         onClick={() => {
                           zadatVverh("");
@@ -459,6 +464,7 @@ export function Nastroyki({
                       <Knopka
                         rang="vtoraya"
                         testId="obyavit-polosu"
+                        zhdyot={zhdyot("setBandwidth")}
                         aktiven={aktiven && zamerPolosy.sovetVniz !== null && zamerPolosy.sovetVverh !== null}
                         onClick={() => {
                           if (zamerPolosy.sovetVniz === null || zamerPolosy.sovetVverh === null) return;
@@ -608,8 +614,12 @@ export function Nastroyki({
                 отправило бы вторую загрузку службе, которой на шаге подмены
                 уже не существует. */}
             {idyot ? null : nahodka ? (
-              <Knopka rang="glavnaya" testId="ustanovit-obnovlenie" aktiven={mozhnoZvat} onClick={() => naKomandu("downloadUpdate", {})}>
-                Установить
+              // Между нажатием и первым событием хода проходит время: служба
+              // успевает сходить на сервер обновлений. Без вертушки эта пауза
+              // выглядит как нажатие, которое ничего не сделало.
+              <Knopka rang="glavnaya" testId="ustanovit-obnovlenie" zhdyot={zhdyot("downloadUpdate")}
+                      aktiven={mozhnoZvat} onClick={() => naKomandu("downloadUpdate", {})}>
+                {zhdyot("downloadUpdate") ? "Начинаю" : "Установить"}
               </Knopka>
             ) : (
               <Knopka rang="vtoraya" testId="proverit-versiyu" zhdyot={zhdyot("checkUpdate")} aktiven={mozhnoZvat} onClick={() => naKomandu("checkUpdate", {})}>
@@ -625,8 +635,12 @@ export function Nastroyki({
             poyasnenie={pochemuSero(obnovlenie) ?? "Архив с файлом .sha256 рядом; второй путь, когда сервер обновлений недоступен"}
             aktiven={aktiven && !obnovlenie}
           >
-            <Knopka rang="vtoraya" testId="proverit-obnovlenie" aktiven={mozhnoZvat && !obnovlenie} onClick={() => (naObnovlenie ? naObnovlenie() : naKomandu("installUpdate", {}))}>
-              Выбрать архив
+            {/* После выбора файла служба считает sha256 архива, и это не
+                мгновенно. Диалог к тому времени уже закрыт, экран снова
+                неподвижен, и человек ждёт у пустого места. */}
+            <Knopka rang="vtoraya" testId="proverit-obnovlenie" zhdyot={zhdyot("installUpdate")}
+                    aktiven={mozhnoZvat && !obnovlenie} onClick={() => (naObnovlenie ? naObnovlenie() : naKomandu("installUpdate", {}))}>
+              {zhdyot("installUpdate") ? "Проверяю архив" : "Выбрать архив"}
             </Knopka>
           </Ryad>
         </Panel>
@@ -668,10 +682,11 @@ export function Nastroyki({
                       <Knopka
                         rang="vtoraya"
                         testId="vyvesti-profil"
+                        zhdyot={zhdyot("exportProfile")}
                         aktiven={mozhnoZvat && parolProfilya !== ""}
                         onClick={() => vyvestiProfil(parolProfilya)}
                       >
-                        Вывести
+                        {zhdyot("exportProfile") ? "Пишу" : "Вывести"}
                       </Knopka>
                     </Ryad>
                   )}
@@ -684,10 +699,11 @@ export function Nastroyki({
                       <Knopka
                         rang="vtoraya"
                         testId="vvesti-profil"
+                        zhdyot={zhdyot("importProfile")}
                         aktiven={mozhnoZvat && parolProfilya !== ""}
                         onClick={() => vvestiProfil(parolProfilya)}
                       >
-                        Ввести
+                        {zhdyot("importProfile") ? "Читаю" : "Ввести"}
                       </Knopka>
                     </Ryad>
                   )}

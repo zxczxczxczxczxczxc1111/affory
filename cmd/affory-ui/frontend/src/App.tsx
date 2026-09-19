@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./desktop.css";
 import { Glavnyy } from "./ekrany/Glavnyy";
 import { Skorost } from "./ekrany/Skorost";
@@ -6,7 +6,7 @@ import { useSkorost } from "./skorost";
 import { Karkas } from "./ekrany/Karkas";
 import { Nastroyki, type AdresVyhoda, type ZamerPolosy } from "./ekrany/Nastroyki";
 import { Otkaz } from "./ekrany/Otkaz";
-import type { Deystvie } from "./ekrany/otkazy";
+import { KOD_OBOLOCHKI, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
@@ -38,11 +38,10 @@ export type Svyaz = "zhdyom" | "est" | "net";
  *  at the same time. */
 export const PERIOD_OPROSA_MS = 5000;
 
-/** Refusal code for a failure that is the shell's own, not the service's: a
- *  frame that will not parse, a dialog that broke, a clipboard that refused.
- *  It is deliberately absent from otkazy.ts (that table is checked against
- *  spec §9.1 both ways), so Otkaz falls back to showing the text itself. */
-export const KOD_OBOLOCHKI = "oshibka-obolochki";
+/** Код сбоя самой оболочки. Живёт в otkazy.ts рядом со своей фразой для
+ *  экрана, а здесь только пробрасывается дальше: два объявления одной строки
+ *  однажды разойдутся, и разойдутся молча. */
+export { KOD_OBOLOCHKI };
 
 export interface AppProps {
   /** Poll period override. Tests shorten it; nothing else does. */
@@ -161,6 +160,28 @@ const MENYAYUT_PRAVILA = new Set(["setRules"]);
 
 export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
+  // Какие команды сейчас в полёте. Это НЕ то же, что busyCommand: тот гасит
+  // управление целиком и потому держит только пять команд, меняющих состояние
+  // туннеля. Вертушка на кнопке нужна КАЖДОЙ команде, за которой стоит
+  // ожидание, и гасить ради неё весь экран нельзя: замер полосы идёт
+  // полминуты.
+  //
+  // Счётчик, а не флаг: одна и та же команда может уйти дважды (нажали, пока
+  // шла проверка по таймеру), и первый вернувшийся ответ снял бы вертушку у
+  // ещё живого второго вызова.
+  const [iduchshie, zadatIduchshie] = useState<Record<string, number>>({});
+  const otmetit = useCallback((komanda: string, shag: 1 | -1) => {
+    zadatIduchshie((p) => {
+      const stalo = (p[komanda] ?? 0) + shag;
+      if (stalo > 0) return { ...p, [komanda]: stalo };
+      const { [komanda]: _ushla, ...ostalnye } = p;
+      return ostalnye;
+    });
+  }, []);
+  const zanyatyeKomandy = useMemo(
+    () => Object.fromEntries(Object.keys(iduchshie).map((k) => [k, true])),
+    [iduchshie],
+  );
   // null means "no answer yet". The screens still want a whole StatusOtvet,
   // so `naEkrane` below substitutes MOLCHIT once we know the pipe is dead.
   const [status, zadatStatus] = useState<StatusOtvet | null>(null);
@@ -336,6 +357,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const vypolnit = useCallback(async (komanda: string, telo: unknown = {}) => {
     const blocksControls = ["connect", "disconnect", "setRules", "setRouteMode", "setServer"].includes(komanda);
     if (blocksControls) setBusyCommand(komanda);
+    otmetit(komanda, 1);
     try {
       const kadr = await zvat(komanda, telo);
       // A frame came back, refusal or not: the pipe is alive.
@@ -427,8 +449,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       return false;
     } finally {
       if (blocksControls) setBusyCommand(current => current === komanda ? null : current);
+      otmetit(komanda, -1);
     }
-  }, [obnovitSpisok, obnovitPravila]);
+  }, [obnovitSpisok, obnovitPravila, otmetit]);
 
   const naUstanovku = useCallback(() => {
     zadatUstanovku({ sostoyanie: "ustanavlivaetsya" });
@@ -719,9 +742,15 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
    *  banner like any other. */
   const vyvestiProfil = useCallback(async (parol: string) => {
     zadatItogProfilya(null);
+    // Отметка ставится ПОСЛЕ диалога выбора файла: пока он открыт, окно и так
+    // занято своим, а вертушка под ним крутилась бы впустую. Ждать человек
+    // начинает с той секунды, когда файл назван.
+    let otmecheno = false;
     try {
       const put = await vybratKudaSohranit();
       if (!put) return;
+      otmetit("exportProfile", 1);
+      otmecheno = true;
       const kadr = await zvat("exportProfile", { parol });
       if (kadr.oshibka) {
         zadatOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst, komanda: "exportProfile", vkladka: "nastroyki" });
@@ -739,15 +768,20 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       zadatItogProfilya("профиль записан: " + put);
     } catch (e: unknown) {
       zhaloba("exportProfile", e);
+    } finally {
+      if (otmecheno) otmetit("exportProfile", -1);
     }
-  }, [zhaloba]);
+  }, [zhaloba, otmetit]);
 
   /** Import replaces the whole server list, so the list is re-read after. */
   const vvestiProfil = useCallback(async (parol: string) => {
     zadatItogProfilya(null);
+    let otmecheno = false;
     try {
       const put = await vybratOtkuda();
       if (!put) return;
+      otmetit("importProfile", 1);
+      otmecheno = true;
       const profil = await prochitatProfil(put);
       const kadr = await zvat("importProfile", { parol, profil });
       if (kadr.oshibka) {
@@ -760,8 +794,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       void oprosit();
     } catch (e: unknown) {
       zhaloba("importProfile", e);
+    } finally {
+      if (otmecheno) otmetit("importProfile", -1);
     }
-  }, [obnovitSpisok, oprosit, zhaloba]);
+  }, [obnovitSpisok, oprosit, zhaloba, otmetit]);
 
   const naRezhim = useCallback((rezhim: Rezhim) => void vypolnit("setRouteMode", { rezhim }), [vypolnit]);
   const naServery = useCallback(() => zadatVkladku("servery"), []);
@@ -844,7 +880,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         ) : vkladka === "podklyuchenie" ? (
           <Glavnyy
             naProverit={() => void vypolnit("measureDelays", {})}
-            proverkaIdet={busyCommand === "measureDelays"}
+            // measureDelays в пятёрку busyCommand не входит и входить не
+            // должен: замер задержек не трогает туннель. Вертушка ему всё
+            // равно нужна, поэтому берётся из списка идущих.
+            proverkaIdet={zanyatyeKomandy["measureDelays"] === true}
             skorost={<Skorost {...speed} disabled={busyCommand !== null || (naEkrane.sostoyanie !== "vyklyuchen" && naEkrane.sostoyanie !== "podnyat")} />}
             pravila={pravila}
             zaderzhki={zaderzhki}
@@ -871,6 +910,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             spisokOtkaz={spisokOtkaz}
             obnovitSpisok={() => void obnovitSpisok()}
             naKomandu={(komanda, telo) => void vypolnit(komanda, telo)}
+            zanyatyeKomandy={zanyatyeKomandy}
             otkazyPodpiski={otkazyPodpiski}
             podpiski={podpiski}
             zaderzhki={zaderzhki}
@@ -886,6 +926,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         ) : vkladka === "pravila" ? (
           <Pravila
             zanyato={busyCommand !== null}
+            zanyatyeKomandy={zanyatyeKomandy}
             status={naEkrane}
             otlozheno={otlozheno}
             pravila={pravila}
@@ -909,10 +950,15 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             povtorit={() => void sprositVsyo()}
             proverka={proverka}
             proverkaOtkaz={proverkaOtkaz}
-            // Какая именно команда сейчас в полёте. Кнопка, за которой стоит
+            // Какие команды сейчас в полёте. Кнопка, за которой стоит
             // секунда ожидания, обязана сказать об этом сама: молчание после
             // нажатия человек читает как зависшую программу и жмёт второй раз.
-            zanyatyeKomandy={busyCommand ? { [busyCommand]: true } : {}}
+            //
+            // Раньше сюда уходил ОДИН busyCommand, а он держит только пять
+            // команд, гасящих управление. Замер полосы, проверка утечек, адрес
+            // выхода и проверка обновления в те пять не входят, и вертушка на
+            // их кнопках, написанная в этом файле, не загоралась никогда.
+            zanyatyeKomandy={zanyatyeKomandy}
             vyvestiProfil={(parol) => void vyvestiProfil(parol)}
             vvestiProfil={(parol) => void vvestiProfil(parol)}
             itogProfilya={itogProfilya}

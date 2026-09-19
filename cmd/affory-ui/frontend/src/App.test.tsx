@@ -955,6 +955,48 @@ describe("оболочка: обновление", () => {
     await waitFor(() => expect(screen.queryByRole("progressbar", { name: /обновлени/i })).toBeNull(), { timeout: 3000 });
   });
 
+  // Вертушка на кнопке это не украшение, а единственный ответ на нажатие,
+  // пока команда в полёте. Механизм в ui.tsx был написан давно, а список
+  // занятых команд держал только пять, гасящих управление: у замеров и
+  // проверок вертушка не загоралась НИ РАЗУ, хотя код для неё стоял на месте.
+  it("кнопка проверки обновления занята, пока служба отвечает", async () => {
+    const most = mostProby();
+    most.otvechatMedlenno(300);
+    render(<App />);
+    await screen.findByText(/выключено/i);
+    fireEvent.click(screen.getByText("Настройки"));
+    raskrytRazdelyNastroek();
+
+    const knopka = await screen.findByTestId("proverit-versiyu");
+    fireEvent.click(knopka);
+
+    await waitFor(() => expect(screen.getByTestId("proverit-versiyu")).toHaveAttribute("aria-busy", "true"));
+    // Занятая кнопка ещё и не нажимается второй раз: два нажатия это две
+    // команды службе, а человек жмёт второй раз именно тогда, когда первое
+    // ничего не показало.
+    expect(screen.getByTestId("proverit-versiyu")).toBeDisabled();
+    await waitFor(() => expect(screen.getByTestId("proverit-versiyu")).not.toHaveAttribute("aria-busy"));
+  });
+
+  it("кнопка замера задержек занята, пока идёт замер", async () => {
+    const most = mostProby();
+    // Кнопка живёт рядом со списком, а пустой список это экран первого
+    // запуска, где её нет вовсе.
+    most.otvechatTelom("listServers", {
+      servery: [{ id: "a", imya: "vpn-pc-hy2", host: "1.2.3.4", port: 443, transport: "hysteria2", iz_podpiski: false }],
+      vybran: "a", podpiska_zadana: false, podpiska_uzel: "",
+    });
+    most.otvechatMedlenno(300);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Управлять" }));
+
+    const knopka = await screen.findByTestId("zamerit-zaderzhki");
+    fireEvent.click(knopka);
+
+    await waitFor(() => expect(screen.getByTestId("zamerit-zaderzhki")).toHaveAttribute("aria-busy", "true"));
+    await waitFor(() => expect(screen.getByTestId("zamerit-zaderzhki")).not.toHaveAttribute("aria-busy"));
+  });
+
   it("открывает настройки, когда трей зовёт к обновлению", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const most = mostProby();
