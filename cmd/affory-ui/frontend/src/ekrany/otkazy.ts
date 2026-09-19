@@ -81,3 +81,23 @@ export const podpisDeystviya: Record<Deystvie, string | null> = {
 /** Codes whose server-side text replaces ours verbatim (§9.1: the panel's
  *  message, not our wording on top). */
 export const TEKST_SLUZHBY_DOSLOVNO = new Set(["subscription-expired"]);
+
+/** Сбой самой ОБОЛОЧКИ: диалог не открылся, буфер не отдал текст, канал
+ *  оборвался на полуслове. В §9.1 такого кода нет и быть не должно: та
+ *  таблица про отказы СЛУЖБЫ, и ворота сверяют её со спекой в обе стороны,
+ *  поэтому запись здесь живёт отдельно от `tekstOtkaza`.
+ *
+ *  Текст у него всегда технический: «connect: read pipe: The pipe has been
+ *  ended». Крупно такая строка читается как вывод отладчика, поэтому крупно
+ *  идёт наша фраза, а техника уходит в причину мелким. */
+export const KOD_OBOLOCHKI = "oshibka-obolochki";
+export const TEKST_OBOLOCHKI = "не получилось выполнить действие";
+
+/** Что писать крупно, когда сказать нечем: кода нет в таблице и текста к нему
+ *  тоже нет.
+ *
+ *  Раньше на этом месте печатался САМ КОД, строка вида `switch-failed`.
+ *  Человеку её некуда приложить, а выглядит она как сбой программы, а не как
+ *  ответ. Код никуда не девается: он стоит в `data-kod` для того, кто читает
+ *  DOM или снимок экрана. */
+export const TEKST_BEZ_KODA = "что-то пошло не так";

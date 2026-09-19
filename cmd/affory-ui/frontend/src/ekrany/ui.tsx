@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
-import { tekstOtkaza } from "./otkazy";
+import { TEKST_BEZ_KODA, tekstOtkaza } from "./otkazy";
 import { Vertushka } from "./ui-novye";
 
 // Примитивы редизайна лежат рядом и выходят наружу отсюда: для экранов
@@ -136,7 +136,11 @@ export function Neudacha({ kod, zagolovok, tekst, deystvie, podpisDeystviya, tes
       data-kod={kod}
       className="border-danger/40 bg-surface flex flex-col gap-3 rounded-lg border p-5"
     >
-      <p className="text-foreground break-words text-base">{zagolovok ?? poKodu ?? kod}</p>
+      {/* Код на месте заголовка не рисуется: он имя для нас, а не ответ
+          человеку. Остаётся в data-kod выше. Написание с прописной и
+          полужирный те же, что у баннера Otkaz.tsx: один и тот же отказ не
+          должен выглядеть на двух экранах по-разному. */}
+      <p className="text-foreground break-words text-base font-medium first-letter:uppercase">{zagolovok ?? poKodu ?? TEKST_BEZ_KODA}</p>
       {prichina && <p className="text-fg-secondary break-words text-sm">{prichina}</p>}
       {deystvie && podpisDeystviya && (
         <Knopka rang="glavnaya" className="self-start" testId={testId ? `${testId}-deystvie` : undefined} onClick={deystvie}>

@@ -1,4 +1,7 @@
-import { TEKST_SLUZHBY_DOSLOVNO, podpisDeystviya, tekstOtkaza, type Deystvie } from "./otkazy";
+import {
+  KOD_OBOLOCHKI, TEKST_BEZ_KODA, TEKST_OBOLOCHKI, TEKST_SLUZHBY_DOSLOVNO,
+  podpisDeystviya, tekstOtkaza, type Deystvie,
+} from "./otkazy";
 
 // One refusal, one screen. Pure over props: the code names the text and the
 // action, App decides what the action does. An unknown code still renders,
@@ -29,8 +32,18 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
   // message. Printing the bare code as the headline and the reason in small
   // grey under it read as a crash report, not as an answer. The code stays
   // in data-kod for whoever is reading the DOM.
-  const doslovno = (TEKST_SLUZHBY_DOSLOVNO.has(kod) || z === undefined) && tekst;
-  const osnovnoy = doslovno ? tekst : (z?.tekst ?? kod);
+  //
+  // Сбой оболочки из этого правила ВЫНУТ, и ровно по той же причине, по
+  // которой правило написано. Текст службы человеческий («подписка отдала
+  // сообщение вместо серверов»), а текст оболочки технический и часто
+  // английский, потому что приходит из Windows. Крупно он и есть тот самый
+  // отчёт о сбое, которого правило избегает.
+  const nash = kod === KOD_OBOLOCHKI ? TEKST_OBOLOCHKI : z?.tekst;
+  const doslovno = (TEKST_SLUZHBY_DOSLOVNO.has(kod)
+    || (z === undefined && kod !== KOD_OBOLOCHKI)) && tekst;
+  // Нечем сказать вообще: ни строки по коду, ни текста от отправителя. Тогда
+  // общая фраза, но НЕ код: код это имя для нас, а не ответ человеку.
+  const osnovnoy = doslovno ? tekst : (nash ?? TEKST_BEZ_KODA);
   const podpis = podpisDeystviya[deystvie];
   // Служба и окно про одно и то же говорят своими словами, и на экране это
   // читалось как две строки об одном: «эта команда только для администратора
@@ -56,7 +69,14 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
           &#x00D7;
         </button>
       )}
-      <p className="text-foreground pr-8 text-base" data-testid="otkaz-tekst">{osnovnoy}</p>
+      {/* Прописная первая буква и полужирный не косметика: со строчной буквы
+          и обычным начертанием сообщение читалось как системная ошибка,
+          заглянувшая из чужой программы (владелец, 19.09.2026). Остальные
+          заголовки окна начинаются с прописной, и этот теперь тоже.
+          Регистр правится ПОКАЗОМ, а не таблицей §9.1: та сверяется с
+          спекой построчно, и трогать в ней написание значило бы чинить
+          внешний вид в контракте. */}
+      <p className="text-foreground pr-8 text-base font-medium first-letter:uppercase" data-testid="otkaz-tekst">{osnovnoy}</p>
       {!doslovno && tekst && !povtor && (
         <p className="text-fg-secondary text-sm" data-testid="otkaz-prichina">{tekst}</p>
       )}

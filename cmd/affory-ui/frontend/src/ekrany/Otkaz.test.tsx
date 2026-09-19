@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Otkaz } from "./Otkaz";
-import { tekstOtkaza, type Deystvie } from "./otkazy";
+import {
+  KOD_OBOLOCHKI, TEKST_BEZ_KODA, TEKST_OBOLOCHKI, tekstOtkaza, type Deystvie,
+} from "./otkazy";
 
 afterEach(cleanup);
 
@@ -97,5 +99,27 @@ describe("экраны отказов", () => {
   it("печатает причину, когда она добавляет новое", () => {
     render(<Otkaz kod="admin-required" tekst="права не выданы: запрос отклонён" naDeystvie={() => undefined} />);
     expect(screen.getByTestId("otkaz-prichina").textContent).toContain("запрос отклонён");
+  });
+
+  it("незнакомый код без текста не печатается кодом", () => {
+    // Код это имя для нас. Человеку строка `kod-iz-budushchego` не говорит
+    // ничего и выглядит как сбой программы, а не как ответ.
+    render(<Otkaz kod="kod-iz-budushchego" naDeystvie={() => undefined} />);
+    const el = screen.getByTestId("otkaz-tekst");
+    expect(el).toHaveTextContent(TEKST_BEZ_KODA);
+    expect(el.textContent).not.toContain("kod-iz-budushchego");
+    // Но из DOM код не пропадает: по нему разбирают снимок экрана.
+    expect(screen.getByTestId("otkaz")).toHaveAttribute("data-kod", "kod-iz-budushchego");
+  });
+
+  it("сбой оболочки: крупно наша фраза, техника в причине", () => {
+    // Текст приходит из Windows и по-английски. Крупно он читается как вывод
+    // отладчика, а человеку нужно сначала понять, что вообще случилось.
+    render(
+      <Otkaz kod={KOD_OBOLOCHKI} tekst="connect: read pipe: The pipe has been ended."
+             naDeystvie={() => undefined} />,
+    );
+    expect(screen.getByTestId("otkaz-tekst")).toHaveTextContent(TEKST_OBOLOCHKI);
+    expect(screen.getByTestId("otkaz-prichina").textContent).toContain("The pipe has been ended");
   });
 });
