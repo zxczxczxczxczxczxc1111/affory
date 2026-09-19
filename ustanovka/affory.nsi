@@ -82,8 +82,12 @@ Section "Affory" SEC_AFFORY
     MessageBox MB_ICONSTOP "Не удалось подготовить Affory к установке (код $0). Установленные файлы оставлены на месте."
     Abort
   ${EndIf}
-  nsExec::Exec 'taskkill /IM affory-ui.exe /F'
+  ; WebView2 живёт дочерним деревом. После завершения одного родителя его
+  ; процессы ещё могут удерживать ресурсы профиля, а File уже начинает замену.
+  ; Закрываем всё дерево и даём Windows закончить освобождение файла.
+  nsExec::Exec 'taskkill /IM affory-ui.exe /F /T'
   Pop $0
+  Sleep 1000
   File "${SBORKA}\affory-svc.exe"
   File "${SBORKA}\affory-cli.exe"
   File "${SBORKA}\affory-ui.exe"
