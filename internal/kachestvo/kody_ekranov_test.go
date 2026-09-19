@@ -57,7 +57,17 @@ func TestEkranyNePokazyvayutKodovVneSlovarya(t *testing.T) {
 				return err
 			}
 			imya := d.Name()
-			if d.IsDir() || strings.Contains(imya, ".test.") {
+			// src/stend это оснастка, а не экран: подставной мост Wails, по
+			// которому идёт обход интерфейса и съёмка снимков. В выпуск он не
+			// попадает, и его собственный отказ «стенд не знает команду»
+			// словарю продукта не принадлежит - как и фикстура теста рядом.
+			if d.IsDir() {
+				if imya == "stend" {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if strings.Contains(imya, ".test.") {
 				return nil
 			}
 			if !strings.HasSuffix(imya, ".ts") && !strings.HasSuffix(imya, ".tsx") {

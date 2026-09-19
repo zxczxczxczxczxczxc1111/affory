@@ -1,3 +1,7 @@
 dist/
 node_modules/
 .preview/
+# Снимки, трассы и отчёты обхода Playwright: пишутся на каждом красном
+# прогоне и живут ровно до следующего.
+test-results/
+playwright-report/
