@@ -22,11 +22,23 @@ export function Kolonka({ children, "aria-label": podpis }: { children: ReactNod
 
 /** Tab header: title and one-line summary on the left, the primary action
  *  on the right, in the same place on every tab. */
-export function Shapka({ zagolovok, svodka, children }: { zagolovok: string; svodka?: ReactNode; children?: ReactNode }) {
+export function Shapka({ zagolovok, svodka, uZagolovka, children }: {
+  zagolovok: string;
+  svodka?: ReactNode;
+  /** Мелочь ВПЛОТНУЮ к заголовку: значок справки и подобное. Отдельно от
+   *  children, которые уходят к правому краю строки и читаются как действия
+   *  экрана. Значок, уехавший туда, потерял бы связь со словом, к которому
+   *  относится. */
+  uZagolovka?: ReactNode;
+  children?: ReactNode;
+}) {
   return (
     <header className="flex min-h-9 items-center justify-between gap-4">
       <div>
-        <h2 className="text-foreground text-xl font-semibold leading-tight">{zagolovok}</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-foreground text-xl font-semibold leading-tight">{zagolovok}</h2>
+          {uZagolovka}
+        </div>
         {svodka && <div className="text-fg-muted mt-0.5 text-[13px]">{svodka}</div>}
       </div>
       {children && <div className="flex shrink-0 gap-2">{children}</div>}

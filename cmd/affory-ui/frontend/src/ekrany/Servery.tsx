@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { OtkazNaEkrane, OtkazStroki, Server, StatusOtvet } from "../protokol";
 import { slovoPosleChisla } from "../chisla";
 import { IkonkaKorzina, Karta, Knopka, Kolonka, Neudacha, Pole, Razdel, Ryad, Segment, Shapka, Teg } from "./ui";
+import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
 
 // Servers tab (task 4.9). Pure over props like every screen: App fetches
 // listServers and hands the answer down whole; every button sends one named
@@ -148,6 +149,8 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // subscription address used to live behind two buttons with two verbs
   // (owner's remark 02.09.2026), and that was two meanings for one act.
   const [dobavlyayu, zadatDobavlyayu] = useState(false);
+  // Справка о протоколах: список даёт имена, но не даёт выбора между ними.
+  const [spravka, zadatSpravku] = useState(false);
   const [chto, zadatChto] = useState<"server" | "podpiska">("server");
   const [ssylka, zadatSsylku] = useState("");
   // Outcome line under the link field: the clipboard held junk, the screen
@@ -354,7 +357,12 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
 
   return (
     <Kolonka aria-label="Серверы">
-      <Shapka zagolovok="Серверы" svodka={<span data-testid="svodka">{svodka}</span>}>
+      {spravka && <SpravkaProtokolov zakryt={() => zadatSpravku(false)} />}
+      <Shapka
+        zagolovok="Серверы"
+        svodka={<span data-testid="svodka">{svodka}</span>}
+        uZagolovka={<KnopkaSpravki onClick={() => zadatSpravku(true)} />}
+      >
         {!pervyyZapusk && (
           <Knopka rang="glavnaya" testId="dobavit" aktiven={aktiven && !dobavlyayu} onClick={() => zadatDobavlyayu(true)}>
             <Plyus />Добавить
