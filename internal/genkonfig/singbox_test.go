@@ -712,6 +712,11 @@ func TestHy2VyhodNesyotObfsPortyIPin(t *testing.T) {
 	if _, est := o["server_port"]; est {
 		t.Fatal("server_port вместе с server_ports: ядро отвергает такой конфиг")
 	}
+	// Интервал прыжка вилкой, а не умолчанием ядра: ровные тридцать секунд
+	// это ритм, различимый со стороны.
+	if o["hop_interval"] != "30s" || o["hop_interval_max"] != "60s" {
+		t.Fatalf("интервал прыжка не задан вилкой: %v / %v", o["hop_interval"], o["hop_interval_max"])
+	}
 	tls, _ := o["tls"].(map[string]any)
 	pin, _ := tls["certificate_public_key_sha256"].([]any)
 	if len(pin) != 1 || pin[0] != "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" {
@@ -733,6 +738,12 @@ func TestHy2VyhodNesyotObfsPortyIPin(t *testing.T) {
 	}
 	if _, est := o["server_ports"]; est {
 		t.Fatal("пустой server_ports попал в конфиг")
+	}
+	// Без диапазона интервал прыжка бессмыслен, и ядро на него не смотрит.
+	// Писать его всё равно значит держать в конфиге поле, про которое потом
+	// никто не скажет, работает оно здесь или нет.
+	if _, est := o["hop_interval"]; est {
+		t.Fatal("hop_interval без server_ports попал в конфиг")
 	}
 }
 

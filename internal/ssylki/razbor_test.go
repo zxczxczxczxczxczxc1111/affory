@@ -450,6 +450,26 @@ func TestHy2ParametryObfsPortovIPina(t *testing.T) {
 	if chistyy.Obfs != "" || chistyy.ObfsParol != "" || chistyy.Porty != "" || chistyy.Pin != "" {
 		t.Fatalf("поля появились из ниоткуда: %+v", chistyy)
 	}
+	// Хоппинг и обычный профиль это ДВА сервера в списке, а не один.
+	// Идентификатор считается от адреса, порта и транспорта, и у обеих ссылок
+	// они совпадают: 19.09.2026 в госте второй `servers add` вернул тот же
+	// идентификатор и подменил имя первого, то есть запасной профиль исчезал
+	// молча.
+	if srv.Id == chistyy.Id {
+		t.Fatalf("ссылка с mport схлопнулась с обычной: обе %q", srv.Id)
+	}
+	if srv.Id != ssylki.IdHoppinga(srv.Host, srv.Port, srv.Transport) {
+		t.Fatalf("Id хоппинга не от IdHoppinga: %q", srv.Id)
+	}
+	// Сдвиг самих номеров портов это та же дорога: выбранный сервер не должен
+	// от него «исчезать».
+	drugoy, err := ssylki.Razobrat(sParametrom(t, "hy2.txt", "mport=30000-30100"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drugoy.Id != srv.Id {
+		t.Fatalf("смена диапазона сменила сервер: %q против %q", drugoy.Id, srv.Id)
+	}
 	// obfs без пароля это битая ссылка: ядро такой конфиг отвергнет целиком,
 	// а вместе с ним и все остальные серверы.
 	if _, err := ssylki.Razobrat(sParametrom(t, "hy2.txt", "obfs=salamander")); !errors.Is(err, ssylki.ErrSsylkaKrivaya) {

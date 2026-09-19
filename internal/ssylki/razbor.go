@@ -341,6 +341,9 @@ func hysteria(s string) (protokol.Server, error) {
 		return protokol.Server{}, err
 	}
 	srv.Id = Id(srv.Host, srv.Port, srv.Transport)
+	if srv.Porty != "" {
+		srv.Id = IdHoppinga(srv.Host, srv.Port, srv.Transport)
+	}
 	return srv, nil
 }
 
