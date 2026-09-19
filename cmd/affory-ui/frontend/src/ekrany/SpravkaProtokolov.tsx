@@ -28,11 +28,11 @@ export const OPISANIYA: Record<string, { horosho: string; ceny: string }> = {
   },
   hy2: {
     horosho: "Быстрее всех качает большое и мгновенно оживает после паузы.",
-    ceny: "На видеозвонках и трансляциях теряет больше остальных, картинка может сыпаться.",
+    ceny: "На голосовых звонках голос дрожит заметнее, чем на anytls и trojan.",
   },
   tuic: {
     horosho: "Быстро откликается после простоя, хорош на мобильном интернете.",
-    ceny: "Большие файлы тянет медленнее, чем hysteria2, и сильнее греет процессор.",
+    ceny: "На видео и трансляциях спотыкается чаще остальных.",
   },
   httpupgrade: {
     horosho: "Выглядит как самый обычный сайт и пролезает там, где закрыто остальное.",
@@ -60,11 +60,18 @@ export const OPISANIYA: Record<string, { horosho: string; ceny: string }> = {
   },
 };
 
-/** Подпись под заголовком: с чего начать, если выбирать не хочется. */
+/** Подпись под заголовком: с чего начать, если выбирать не хочется.
+ *
+ *  Четвёртая строка про Happ появилась 19.09.2026, когда в нём недосчитались
+ *  двух ключей из восьми. Причина не в наших ссылках: Happ читает только
+ *  шесть видов ссылок, и anytls с tuic в них не входят. Совет «бери anytls»
+ *  без этой оговорки отправлял бы человека искать строку, которой у него на
+ *  телефоне нет и не будет. */
 export const SOVET = [
   "Не знаешь, что взять - бери anytls: он ровнее всех в обычных делах.",
   "Не подключается ни один - пробуй reality, он лучше всех прячется.",
   "Сидишь с телефона и связь скачет - hysteria2 или tuic отвечают быстрее после пауз.",
+  "В приложении Happ видно не всё: anytls и tuic оно читать не умеет, там бери trojan.",
 ];
 
 function Krestik() {
@@ -105,7 +112,7 @@ export function KnopkaSpravki({ onClick }: { onClick: () => void }) {
 }
 
 /** Имена протоколов в том же виде, в каком они стоят в строке сервера. */
-const NAZVANIYA: Record<string, string> = {
+export const NAZVANIYA: Record<string, string> = {
   anytls: "anytls", trojan: "trojan", "reality-tcp": "reality", hy2: "hysteria2",
   tuic: "tuic", httpupgrade: "httpupgrade", ws: "websocket", grpc: "grpc",
   ss: "shadowsocks", vmess: "vmess", xhttp: "xhttp",

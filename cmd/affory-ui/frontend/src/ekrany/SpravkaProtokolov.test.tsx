@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OPISANIYA, SpravkaProtokolov } from "./SpravkaProtokolov";
+import { NAZVANIYA, OPISANIYA, SpravkaProtokolov } from "./SpravkaProtokolov";
 import { Servery, type SpisokServerov } from "./Servery";
 import type { Server, StatusOtvet } from "../protokol";
 
@@ -57,9 +57,17 @@ describe("Справка о протоколах", () => {
       "UDP", "TCP", "QUIC", "MTU", "DNS", "TLS", "шифров", "рукопожат",
       "датаграмм", "мультиплекс", "инкапсул", "обфускац", "джиттер", "трафик",
     ];
-    const tekst = Object.values(OPISANIYA).map((o) => `${o.horosho} ${o.ceny}`).join(" ");
+    // Названия самих ключей вычёркиваются до проверки: человек видит их в
+    // списке серверов, и назвать их в справке можно. Иначе сторож ловит «tls»
+    // внутри «anytls» и запрещает ссылаться на соседний ключ по имени.
+    // Длинные имена вперёд, чтобы короткое не разрезало длинное пополам, и
+    // замена на пробел, чтобы склейка не породила запрещённое слово.
+    const imena = [...Object.keys(NAZVANIYA), ...Object.values(NAZVANIYA)]
+      .sort((a, b) => b.length - a.length);
+    let tekst = Object.values(OPISANIYA).map((o) => `${o.horosho} ${o.ceny}`).join(" ").toLowerCase();
+    for (const imya of imena) tekst = tekst.split(imya.toLowerCase()).join(" ");
     for (const slovo of zapreshcheno) {
-      expect(tekst.toLowerCase().includes(slovo.toLowerCase()), slovo).toBe(false);
+      expect(tekst.includes(slovo.toLowerCase()), slovo).toBe(false);
     }
   });
 
