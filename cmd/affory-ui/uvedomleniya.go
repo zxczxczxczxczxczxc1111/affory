@@ -12,10 +12,22 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
-// Всплывающие уведомления из трея (план «шесть удобств» §4). Смысл ровно в
-// том, что происходит БЕЗ команды человека: ядро в авто-режиме сменило
-// несущего, туннель перестал нести, туннель вернулся. Подъём по кнопке не
-// уведомление: человек смотрит на окно. Отключение человеком тоже.
+// Всплывающее уведомление ровно одно: вышла новая версия. Остальное окно
+// говорит само.
+//
+// Поводов было пять: обновление, смена несущего, срыв, отказ подъёма,
+// восстановление. Четыре сняты 19.09.2026 по решению владельца, и дело не
+// только во внешнем виде всплывашек Windows. Каждый из четырёх повторял то,
+// что УЖЕ нарисовано: состояние туннеля и имя несущего стоят на главном
+// экране постоянно, а отказ приходит в статусе кодом и рисуется баннером с
+// действием («Повторить», «Открыть серверы»). Всплывашка не добавляла к
+// этому ничего, кроме себя самой, и появлялась тем чаще, чем хуже канал:
+// на дрожащем соединении срыв и восстановление идут парами.
+//
+// Что осталось человеку с ЗАКРЫТЫМ окном: подсказка трея, где состояние
+// написано словами и обновляется каждые пять секунд (trey.go), и цвет значка.
+// Отказ, случившийся при закрытом окне, живёт в статусе службы и рисуется
+// сразу, как только окно открыли, а не теряется вместе с всплывашкой.
 
 type Uvedomlenie struct {
 	Zagolovok, Tekst string
@@ -29,33 +41,14 @@ type Uvedomlenie struct {
 // поднимается при каждом входе в Windows: в госте 13.09.2026 накопился 21
 // всплывашка про одно и то же обновление.
 func chtoSoobshchit(pred, nov protokol.StatusOtvet, uzheSkazali string) (Uvedomlenie, bool) {
-	prichina := ""
-	if nov.Oshib != nil {
-		prichina = nov.Oshib.Tekst
-	}
+	// Состояние туннеля не уведомляется вовсе: ни срыв, ни восстановление, ни
+	// смена несущего. Это состояние, а не новость, и оно нарисовано в окне и
+	// написано в подсказке трея.
+	//
 	// Обновление показывается один раз на версию, в любом состоянии туннеля.
 	if nov.Obnovlenie != nil && nov.Obnovlenie.Versiya != uzheSkazali &&
 		(pred.Obnovlenie == nil || pred.Obnovlenie.Versiya != nov.Obnovlenie.Versiya) {
 		return Uvedomlenie{"есть обновление " + nov.Obnovlenie.Versiya, "установить можно в настройках"}, true
-	}
-	bylPodnyat := pred.Sostoyanie == protokol.SostPodnyat
-	bylaAvariya := pred.Sostoyanie == protokol.SostNeNeset || pred.Sostoyanie == protokol.SostVosstanavl || pred.Sostoyanie == protokol.SostOtkaz
-	switch nov.Sostoyanie {
-	case protokol.SostPodnyat:
-		if bylaAvariya {
-			return Uvedomlenie{"VPN восстановлен", "несёт " + nov.NesushchiyImya}, true
-		}
-		if bylPodnyat && pred.NesushchiyId != "" && nov.NesushchiyId != "" && pred.NesushchiyId != nov.NesushchiyId {
-			return Uvedomlenie{"несёт " + nov.NesushchiyImya, "ядро переключило сервер"}, true
-		}
-	case protokol.SostNeNeset:
-		if pred.Sostoyanie != protokol.SostNeNeset {
-			return Uvedomlenie{"VPN не несёт трафик", prichina}, true
-		}
-	case protokol.SostOtkaz:
-		if pred.Sostoyanie != protokol.SostOtkaz {
-			return Uvedomlenie{"подключиться не удалось", prichina}, true
-		}
 	}
 	return Uvedomlenie{}, false
 }

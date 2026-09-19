@@ -134,6 +134,17 @@ func main() {
 		trey.Zapustilos()
 	})
 	uved := novyyUvedomlyatel(uvedomleniya, ikonkaOkna)
+	// Щелчок по всплывашке ведёт туда же, куда пункт трея «Обновить до X»:
+	// окно на «Настройках». Без обработчика щелчок уходил в COM-активацию и
+	// не делал ничего видимого, а всплывашка про обновление теперь
+	// единственная, и промахнуться ей некуда.
+	uvedomleniya.OnNotificationResponse(func(r notifications.NotificationResult) {
+		if r.Error != nil {
+			log.Printf("ответ уведомления: %v", r.Error)
+			return
+		}
+		trey.OtkrytObnovlenieIzvne()
+	})
 	m.naStatus = func(st protokol.StatusOtvet) {
 		trey.Obnovit(st)
 		uved.Prinyat(st)

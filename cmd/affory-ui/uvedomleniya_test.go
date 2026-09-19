@@ -6,10 +6,10 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
-// Что показывать всплывашкой из трея, решает чистая функция от пары
-// состояний (план «шесть удобств» §4). Правила: смена несущего под
-// поднятым туннелем, срыв, восстановление. Подъём по кнопке человека не
-// уведомление: он смотрит на окно.
+// Что показывать всплывашкой, решает чистая функция от пары состояний.
+// Правило с 19.09.2026 ровно одно: новая версия, один раз на версию. Всё про
+// туннель молчит, потому что оно и так нарисовано в окне и написано в
+// подсказке трея; таблица ниже это и стережёт.
 func st(s protokol.Sostoyanie, nesushchiy, imya string, tekst string) protokol.StatusOtvet {
 	o := protokol.StatusOtvet{Sostoyanie: s, NesushchiyId: nesushchiy, NesushchiyImya: imya}
 	if tekst != "" {
@@ -25,14 +25,20 @@ func TestUvedomleniyaPoPerehodam(t *testing.T) {
 		uzheSkazali string
 		zagolovok   string
 	}{
-		{"смена несущего под туннелем", st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), st(protokol.SostPodnyat, "b", "vpn-pc-raw", ""), "", "несёт vpn-pc-raw"},
+		// Четыре повода сняты 19.09.2026. Строки оставлены нарочно: они
+		// стерегут снятие, а удалённая строка ничего не стережёт.
+		{"смена несущего под туннелем молчит", st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), st(protokol.SostPodnyat, "b", "vpn-pc-raw", ""), "", ""},
 		{"первый несущий при подъёме молчит", st(protokol.SostPodnimaetsya, "", "", ""), st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), "", ""},
 		{"тот же несущий молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostPodnyat, "a", "x", ""), "", ""},
-		{"срыв", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostNeNeset, "", "", "VPN перестал нести трафик"), "", "VPN не несёт трафик"},
-		{"отказ подъёма", st(protokol.SostPodnimaetsya, "", "", ""), st(protokol.SostOtkaz, "", "", "серверов нет"), "", "подключиться не удалось"},
-		{"восстановление", st(protokol.SostVosstanavl, "", "", ""), st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), "", "VPN восстановлен"},
+		{"срыв молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostNeNeset, "", "", "VPN перестал нести трафик"), "", ""},
+		{"отказ подъёма молчит", st(protokol.SostPodnimaetsya, "", "", ""), st(protokol.SostOtkaz, "", "", "серверов нет"), "", ""},
+		{"восстановление молчит", st(protokol.SostVosstanavl, "", "", ""), st(protokol.SostPodnyat, "a", "vpn-pc-hy2", ""), "", ""},
 		{"отключение человеком молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostVyklyuchen, "", "", ""), "", ""},
 		{"служба замолчала молчит", st(protokol.SostPodnyat, "a", "x", ""), st(protokol.SostSluzhbaMolchit, "", "", ""), "", ""},
+		// Обновление приходит в любом состоянии, в том числе в аварийном:
+		// иначе единственное оставшееся уведомление терялось бы там, где
+		// человек как раз пойдёт искать причину.
+		{"обновление при срыве говорит", st(protokol.SostPodnyat, "a", "x", ""), sObnovleniem(st(protokol.SostNeNeset, "", "", "VPN перестал нести трафик"), "0.6.5"), "", "есть обновление 0.6.5"},
 		{"новая версия один раз", st(protokol.SostVyklyuchen, "", "", ""), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), "", "есть обновление 0.6.3"},
 		{"та же версия молчит", sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), sObnovleniem(st(protokol.SostVyklyuchen, "", "", ""), "0.6.3"), "", ""},
 		// Окно поднимается при каждом входе в Windows, и память процесса про
@@ -50,8 +56,11 @@ func TestUvedomleniyaPoPerehodam(t *testing.T) {
 		if est && u.Zagolovok != c.zagolovok {
 			t.Errorf("%s: заголовок %q, ждали %q", c.imya, u.Zagolovok, c.zagolovok)
 		}
-		if est && c.nov.Oshib != nil && u.Tekst != c.nov.Oshib.Tekst {
-			t.Errorf("%s: текст %q, ждали причину %q", c.imya, u.Tekst, c.nov.Oshib.Tekst)
+		// Текст у единственного оставшегося повода один и тот же. Проверяется
+		// затем, что причина ошибки туда больше НЕ попадает: раньше текстом
+		// уведомления служила именно она.
+		if est && u.Tekst != "установить можно в настройках" {
+			t.Errorf("%s: текст %q, ждали подпись обновления", c.imya, u.Tekst)
 		}
 	}
 }

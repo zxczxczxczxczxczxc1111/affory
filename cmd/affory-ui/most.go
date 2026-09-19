@@ -211,8 +211,16 @@ func zapustitSluzhbuSPravami(argumenty string) error {
 	// SW_HIDE: the subcommand prints a line and exits; a console flashing on
 	// top of the window would read as an error to anyone watching.
 	if err := windows.ShellExecute(0, verb, fayl, args, nil, windows.SW_HIDE); err != nil {
-		// ERROR_CANCELLED is the human pressing "No" on UAC. Not a crash.
-		return fmt.Errorf("affory-svc %s не запущена: %w", argumenty, err)
+		// ERROR_CANCELLED это человек, нажавший «Нет» в запросе прав, а не
+		// поломка. Текст свой, как и при повышении окна ниже: Windows отвечает
+		// по-английски («The operation was canceled by the user»), и эта строка
+		// уезжала прямо на экран первого запуска, где рядом стоит наша русская
+		// фраза. Имя команды оттуда тоже убрано: «affory-svc install» человеку,
+		// который просто нажал «Установить службу», сказать нечего.
+		if errors.Is(err, windows.ERROR_CANCELLED) {
+			return errors.New("права не выданы: запрос отклонён")
+		}
+		return fmt.Errorf("служба не установилась: %w", err)
 	}
 	return nil
 }

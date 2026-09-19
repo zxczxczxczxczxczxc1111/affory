@@ -369,6 +369,25 @@ func (t *Trey) otkrytObnovlenie() {
 	}
 }
 
+// OtkrytObnovlenieIzvne это тот же путь, но зовут его не из меню.
+//
+// Единственная оставшаяся всплывашка говорит про обновление (uvedomleniya.go),
+// и щелчок по ней обязан вести туда же, куда пункт меню. Приходит он из чужой
+// горутины: служба уведомлений зовёт обработчик из потока COM-активации, а
+// показ окна трогает HWND. Поэтому работа уезжает на главный поток тем же
+// отправителем, что и рисование трея.
+//
+// Прямой вызов при пустом отправителе не запасной путь, а тот же случай, что
+// в vybratPotok: пока главного потока в смысле Wails нет, показывать некуда, и
+// вызов сводится к записи полей.
+func (t *Trey) OtkrytObnovlenieIzvne() {
+	if t.naGlavnom == nil {
+		t.otkrytObnovlenie()
+		return
+	}
+	t.naGlavnom(func() { t.otkrytObnovlenie() })
+}
+
 func (t *Trey) Pokazat() {
 	t.okno.Show()
 	// Wails v3.0.0-beta.16: Show() on a window created Hidden and never run
