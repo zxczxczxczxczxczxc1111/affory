@@ -111,11 +111,14 @@ export function KnopkaSpravki({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Имена протоколов в том же виде, в каком они стоят в строке сервера. */
+/** Второе имя протокола, под которым он попадается в чужих программах.
+ *
+ *  Заголовком идёт САМ транспорт, слово в слово как в строке сервера: 19.09.2026
+ *  осмотр показал, что в списке стоит «hy2», а справка звала его «hysteria2», и
+ *  связать одно с другим человеку было нечем. Второе имя ушло в скобки, где оно
+ *  помогает узнать протокол в чужом клиенте и ничего не подменяет. */
 export const NAZVANIYA: Record<string, string> = {
-  anytls: "anytls", trojan: "trojan", "reality-tcp": "reality", hy2: "hysteria2",
-  tuic: "tuic", httpupgrade: "httpupgrade", ws: "websocket", grpc: "grpc",
-  ss: "shadowsocks", vmess: "vmess", xhttp: "xhttp",
+  "reality-tcp": "reality", hy2: "hysteria2", ws: "websocket", ss: "shadowsocks",
 };
 
 /** Порядок показа: сперва то, что человек встретит в своей подписке, и в том
@@ -123,8 +126,24 @@ export const NAZVANIYA: Record<string, string> = {
 const PORYADOK = ["anytls", "trojan", "reality-tcp", "hy2", "tuic", "httpupgrade",
                   "ws", "grpc", "ss", "vmess", "xhttp"];
 
-export function SpravkaProtokolov({ zakryt }: { zakryt: () => void }) {
+/** Справка. `svoi` это транспорты ключей, которые у человека на руках.
+ *
+ *  Разделение появилось 19.09.2026 при первом осмотре глазами: в окне
+ *  одиннадцать протоколов, а в подписке шесть, и четыре хвостовых блока
+ *  человек листает мимо того, чего у него нет. Без списка (или с пустым)
+ *  показывается всё подряд, как раньше. */
+export function SpravkaProtokolov({ zakryt, svoi }: { zakryt: () => void; svoi?: string[] }) {
   const okno = useRef<HTMLDivElement>(null);
+  // trojan-ws и vmess-ws это те же протоколы поверх соединения с сайтом, и
+  // отдельного описания у них нет: без сведения к основному человек с таким
+  // ключом не нашёл бы в своём разделе ничего.
+  const nabor = new Set((svoi ?? []).map((t) => t.replace(/-ws$/, "")));
+  const est = PORYADOK.filter((t) => OPISANIYA[t] && nabor.has(t));
+  const ostalnye = PORYADOK.filter((t) => OPISANIYA[t] && !nabor.has(t));
+  const razdely: { zagolovok?: string; transporty: string[] }[] = est.length
+    ? [{ transporty: est },
+       { zagolovok: "Остальные - если ключ пришёл со стороны", transporty: ostalnye }]
+    : [{ transporty: ostalnye }];
 
   // Esc закрывает, и фокус уезжает внутрь окна: без этого человек, пришедший
   // с клавиатуры, остаётся стоять на кнопке под затемнением и не понимает,
@@ -178,17 +197,29 @@ export function SpravkaProtokolov({ zakryt }: { zakryt: () => void }) {
           ))}
         </ul>
 
-        <dl className="flex flex-col gap-3">
-          {PORYADOK.filter((t) => OPISANIYA[t]).map((t) => (
-            <div key={t} className="border-border border-t pt-3 first:border-t-0 first:pt-0">
-              <dt className="text-foreground text-[13px] font-medium">{NAZVANIYA[t] ?? t}</dt>
-              <dd className="text-fg-secondary mt-0.5 text-[13px] leading-relaxed">
-                {OPISANIYA[t].horosho}
-                <span className="text-fg-muted"> {OPISANIYA[t].ceny}</span>
-              </dd>
-            </div>
-          ))}
-        </dl>
+        {razdely.filter((r) => r.transporty.length > 0).map((r) => (
+          <section key={r.zagolovok ?? "svoi"} className="flex flex-col gap-3">
+            {r.zagolovok && (
+              <h4 className="text-fg-muted border-border border-t pt-3 text-[12px] uppercase tracking-wide">
+                {r.zagolovok}
+              </h4>
+            )}
+            <dl className="flex flex-col gap-3">
+              {r.transporty.map((t) => (
+                <div key={t} className="border-border border-t pt-3 first:border-t-0 first:pt-0">
+                  <dt className="text-foreground text-[13px] font-medium">
+                    {t}
+                    {NAZVANIYA[t] && <span className="text-fg-muted font-normal"> ({NAZVANIYA[t]})</span>}
+                  </dt>
+                  <dd className="text-fg-secondary mt-0.5 text-[13px] leading-relaxed">
+                    {OPISANIYA[t].horosho}
+                    <span className="text-fg-muted"> {OPISANIYA[t].ceny}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
       </div>
     </div>
   );

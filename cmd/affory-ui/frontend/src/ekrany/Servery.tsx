@@ -357,7 +357,12 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
 
   return (
     <Kolonka aria-label="Серверы">
-      {spravka && <SpravkaProtokolov zakryt={() => zadatSpravku(false)} />}
+      {spravka && (
+        <SpravkaProtokolov
+          zakryt={() => zadatSpravku(false)}
+          svoi={servery.map((s) => s.transport)}
+        />
+      )}
       <Shapka
         zagolovok="Серверы"
         svodka={<span data-testid="svodka">{svodka}</span>}

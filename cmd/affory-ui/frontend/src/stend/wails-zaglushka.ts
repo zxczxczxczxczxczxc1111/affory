@@ -11,10 +11,14 @@ const VERSIYA = "1.2.0";
 
 const servery = [
   { id: "nl", imya: "Нидерланды · Амстердам", transport: "reality-tcp", host: "203.0.113.11", port: 443, iz_podpiski: true },
-  { id: "de", imya: "Германия · Франкфурт", transport: "hysteria2", host: "203.0.113.12", port: 443, iz_podpiski: true, s_pinom: true },
-  { id: "fi", imya: "Финляндия · Хельсинки", transport: "vless-ws", host: "203.0.113.13", port: 443, iz_podpiski: true },
+  // Транспорты пишутся ровно теми словами, какими их называет служба
+  // (`izvestnyeTransporty` в internal/genkonfig/vhod.go). До 19.09.2026 здесь
+  // стояли «hysteria2», «vless-ws» и «vless-tcp», которых служба не отдаёт
+  // никогда, и стенд показывал экран, какого в жизни не бывает.
+  { id: "de", imya: "Германия · Франкфурт", transport: "hy2", host: "203.0.113.12", port: 443, iz_podpiski: true, s_pinom: true },
+  { id: "fi", imya: "Финляндия · Хельсинки", transport: "ws", host: "203.0.113.13", port: 443, iz_podpiski: true },
   { id: "se", imya: "Швеция · Стокгольм", transport: "anytls", host: "203.0.113.14", port: 443, iz_podpiski: true },
-  { id: "svoy", imya: "Свой сервер", transport: "vless-tcp", host: "203.0.113.15", port: 443, iz_podpiski: false },
+  { id: "svoy", imya: "Свой сервер", transport: "trojan", host: "203.0.113.15", port: 443, iz_podpiski: false },
 ];
 
 const status = {

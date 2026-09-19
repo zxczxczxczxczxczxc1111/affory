@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NAZVANIYA, OPISANIYA, SpravkaProtokolov } from "./SpravkaProtokolov";
 import { Servery, type SpisokServerov } from "./Servery";
+import { Glavnyy } from "./Glavnyy";
 import type { Server, StatusOtvet } from "../protokol";
 
 afterEach(cleanup);
@@ -35,6 +36,37 @@ describe("Справка о протоколах", () => {
     expect(screen.queryByTestId("spravka-protokolov")).toBeNull();
   });
 
+  it("открывается с ГЛАВНОГО экрана, а не только с «Управлять»", () => {
+    // Первая редакция 19.09.2026 повесила значок на экран Servery, а список
+    // серверов человек читает на главном: значка он не видел ни разу, и
+    // тесты этого не ловили, потому что проверяли тот экран, куда значок и
+    // поставлен.
+    render(<Glavnyy status={VYKL} servery={[server(1, { transport: "hy2" })]} />);
+    fireEvent.click(screen.getByTestId("spravka-protokolov-otkryt"));
+    expect(screen.getByTestId("spravka-protokolov")).toBeTruthy();
+  });
+
+  it("заголовком идёт сам транспорт, слово в слово как в строке сервера", () => {
+    // «hy2» в списке и «hysteria2» в справке это два разных слова для одного
+    // ключа, и связать их человеку нечем.
+    render(<SpravkaProtokolov zakryt={vi.fn()} />);
+    const zagolovki = [...screen.getByTestId("spravka-protokolov").querySelectorAll("dt")]
+      .map((dt) => (dt.textContent ?? "").split(" (")[0].trim());
+    expect(zagolovki.sort()).toEqual(Object.keys(OPISANIYA).sort());
+  });
+
+  it("свои протоколы идут выше чужих", () => {
+    render(<SpravkaProtokolov zakryt={vi.fn()} svoi={["hy2", "trojan-ws"]} />);
+    const okno = screen.getByTestId("spravka-protokolov");
+    const mesto = (s: string) => okno.textContent?.indexOf(s) ?? -1;
+    const granica = mesto("Остальные");
+    expect(granica).toBeGreaterThan(0);
+    // trojan-ws сведён к trojan: отдельного описания у него нет.
+    expect(mesto("hy2")).toBeLessThan(granica);
+    expect(mesto("trojan")).toBeLessThan(granica);
+    expect(mesto("vmess")).toBeGreaterThan(granica);
+  });
+
   it("закрывается по Escape", () => {
     const zakryt = vi.fn();
     render(<SpravkaProtokolov zakryt={zakryt} />);
@@ -62,7 +94,7 @@ describe("Справка о протоколах", () => {
     // внутри «anytls» и запрещает ссылаться на соседний ключ по имени.
     // Длинные имена вперёд, чтобы короткое не разрезало длинное пополам, и
     // замена на пробел, чтобы склейка не породила запрещённое слово.
-    const imena = [...Object.keys(NAZVANIYA), ...Object.values(NAZVANIYA)]
+    const imena = [...Object.keys(OPISANIYA), ...Object.keys(NAZVANIYA), ...Object.values(NAZVANIYA)]
       .sort((a, b) => b.length - a.length);
     let tekst = Object.values(OPISANIYA).map((o) => `${o.horosho} ${o.ceny}`).join(" ").toLowerCase();
     for (const imya of imena) tekst = tekst.split(imya.toLowerCase()).join(" ");

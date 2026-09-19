@@ -12,6 +12,7 @@ import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
 import sphere from "../assets/affory-sphere.png";
 import { Knopka, Poisk, PROCHERK, Segment } from "./ui";
+import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
 import { IkGalka, IkServer } from "../ikonki";
 import { slovoPosleChisla } from "../chisla";
 import { formatSkorosti, useSkorostTrafika } from "./skorostTrafika";
@@ -146,6 +147,7 @@ export function Glavnyy({
   const loading = spisok === null && servery === undefined && !spisokOtkaz;
   const route = pravila?.trafik?.po_umolchaniyu ?? "vpn";
   const [query, setQuery] = useState("");
+  const [spravka, zadatSpravku] = useState(false);
   const [seychas, zadatSeychas] = useState(() => Date.now());
   useEffect(() => {
     if (!podnyat) return;
@@ -279,7 +281,13 @@ export function Glavnyy({
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 py-6">
             <header className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <h2 className="text-foreground text-[22px] font-semibold leading-tight">Серверы</h2>
+                {/* Значок справки стоит здесь, а не только на экране
+                    «Управлять»: имя протокола человек читает именно в этом
+                    списке, и вопрос «что из этого брать» возникает тут. */}
+                <div className="flex items-center gap-2">
+                  <h2 className="text-foreground text-[22px] font-semibold leading-tight">Серверы</h2>
+                  <KnopkaSpravki onClick={() => zadatSpravku(true)} />
+                </div>
                 <p className="text-fg-muted mt-1 text-[13px]">
                   {spisok
                     ? `${izvestnye.length} ${slovoPosleChisla(izvestnye.length, "сервер", "сервера", "серверов")} в списке`
@@ -426,6 +434,13 @@ export function Glavnyy({
           {status.versiya_programmy && <b className="text-fg-secondary font-medium">{status.versiya_programmy}</b>}
         </span>
       </footer>
+
+      {spravka && (
+        <SpravkaProtokolov
+          zakryt={() => zadatSpravku(false)}
+          svoi={izvestnye.map((s) => s.transport)}
+        />
+      )}
     </section>
   );
 }
