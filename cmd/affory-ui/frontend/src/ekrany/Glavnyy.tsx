@@ -11,9 +11,11 @@ import { Zaderzhka, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
 import sphere from "../assets/affory-sphere.png";
-import { Knopka, Poisk, PROCHERK, Segment, Vertushka } from "./ui";
+import { Knopka, Poisk, PROCHERK, Segment } from "./ui";
 import { IkGalka, IkServer } from "../ikonki";
 import { slovoPosleChisla } from "../chisla";
+import { formatSkorosti, useSkorostTrafika } from "./skorostTrafika";
+import "./Glavnyy.css";
 
 // Pure over props. No subscription, no bridge, no runtime import: App.tsx
 // owns the wiring and hands the whole StatusOtvet down in one piece. Half
@@ -23,8 +25,7 @@ import { slovoPosleChisla } from "../chisla";
 // Перерисован 16.09.2026 по макетам владельца: две колонки, слева состояние
 // туннеля, справа набор серверов, внизу служебная строка на всю ширину.
 // Отдельной кнопки «Отключить» под сферой нет: сфера и есть выключатель.
-// Постоянной анимации у сферы тоже нет, четыре варианта были показаны и
-// отвергнуты все четыре.
+// Свечение меняется только внутри ядра; оболочка остаётся неподвижной.
 
 export interface GlavnyyProps {
   pravila?: PravilaOtvet | null;
@@ -114,18 +115,6 @@ export function vSeti(
   return `${ch} ч ${String(min % 60).padStart(2, "0")} мин`;
 }
 
-/** Цвет точки состояния. Зелёного нет: сиреневый уже значит «поднят», а
- *  второй цвет с тем же смыслом это начало смерти палитры. */
-const TOCHKA: Record<string, string> = {
-  podnyat: "bg-accent-ink",
-  "ne-neset": "bg-warn",
-  podnimaetsya: "bg-warn",
-  vosstanavlivaetsya: "bg-warn",
-  otkaz: "bg-danger",
-  "sluzhba-molchit": "bg-danger",
-  vyklyuchen: "bg-fg-faint",
-};
-
 export function Glavnyy({
   status,
   statistika = null,
@@ -147,6 +136,7 @@ export function Glavnyy({
 }: GlavnyyProps) {
   const izvestnye = servery ?? spisok?.servery ?? [];
   const podnyat = status.sostoyanie === "podnyat";
+  const skorosti = useSkorostTrafika(statistika, podnyat, `${status.podnyat_s ?? ""}:${status.nesushchiy_id ?? ""}`);
   const busy =
     status.sostoyanie === "podnimaetsya" ||
     status.sostoyanie === "vosstanavlivaetsya";
@@ -184,23 +174,11 @@ export function Glavnyy({
     >
       <div className="flex min-h-0 flex-1">
         {/* Левая колонка: состояние туннеля */}
-        <div className="border-border flex w-[42%] min-w-[380px] shrink-0 flex-col items-center overflow-y-auto border-r px-8 py-6">
-          {/* Подпись состояния приходит из podpisi.ts строчными: заглавная
-              делается кромкой, а не второй копией семи строк. */}
-          <div
-            className="border-border bg-elevated text-foreground inline-flex h-9 items-center gap-2.5 rounded-full px-3.5 text-sm font-medium first-letter:uppercase"
-            role="status"
-            data-testid="sostoyanie"
-          >
-            {busy
-              ? <Vertushka className="text-warn h-3.5 w-3.5" />
-              : <span className={`h-2 w-2 shrink-0 rounded-full ${TOCHKA[status.sostoyanie] ?? "bg-fg-faint"}`} aria-hidden />}
-            {podpis[status.sostoyanie]}
-          </div>
-
+        <div className="affory-connection border-border flex w-[42%] min-w-[380px] shrink-0 flex-col items-center overflow-y-auto border-r px-8 py-6">
+          <div className="affory-identity flex w-full flex-1 flex-col items-center justify-center">
           <button
             type="button"
-            className="group relative mt-6 flex aspect-square w-full max-w-[320px] shrink-0 items-center justify-center rounded-full"
+            className="affory-core group relative flex aspect-square w-full max-w-[260px] shrink-0 items-center justify-center rounded-3xl"
             aria-label={action}
             aria-pressed={podnyat}
             disabled={!naDeystvie || (zanyato && !busy)}
@@ -209,35 +187,36 @@ export function Glavnyy({
           >
             <span
               aria-hidden
-              className={`absolute inset-0 rounded-full border transition-all duration-500 ${
-                podnyat ? "border-accent/45" : "border-border"
-              } group-hover:border-accent-ink/60 group-active:scale-[0.985]`}
-            />
-            <span
-              aria-hidden
               className={`absolute inset-[22%] rounded-full blur-2xl transition-colors duration-500 ${
-                podnyat ? "bg-accent/40" : "bg-accent/12"
+                podnyat ? "bg-accent/20" : "bg-accent/8"
               }`}
             />
             <img
               src={sphere}
               alt=""
               draggable={false}
-              className={`relative h-[84%] w-[84%] select-none object-contain transition-all duration-500 ${
-                podnyat ? "opacity-100" : "opacity-45 saturate-0"
+              className={`relative h-full w-full select-none object-contain transition-all duration-500 ${
+                podnyat || busy ? "opacity-100" : "opacity-45 saturate-0"
               }`}
             />
-            {/* Надписи на сфере нет намеренно: состояние стоит строкой выше, и
-                подсказка на наведении повторяла его третий раз. Слово о том,
-                что сделает нажатие, осталось в aria-label для чтения с экрана. */}
+            <span className="affory-core-light" aria-hidden />
           </button>
-
-          <p className="text-foreground mt-5 text-center text-[17px] font-medium" data-testid="nesushchiy">
-            {imya}
-            {transport && <span className="text-fg-muted"> · {transport}</span>}
+          <div className="affory-status mt-2 flex flex-wrap items-baseline justify-center gap-x-2.5 gap-y-1 text-center">
+            <span className="text-foreground text-base font-medium first-letter:uppercase" role="status" data-testid="sostoyanie">
+              {podpis[status.sostoyanie]}
+            </span>
+            <span className={podnyat ? "text-fg-secondary text-sm" : "sr-only"}>
+              <span className="sr-only">В сети </span>
+              <span data-testid="v-seti">{vSeti(podnyat ? status.podnyat_s : undefined, seychas)}</span>
+            </span>
+          </div>
+          <p className="affory-carrier text-foreground mt-2 w-full break-all text-center text-[17px] font-medium" data-testid="nesushchiy">
+            <span className="affory-server-name">{imya}</span>
+            {transport && <span className="affory-protocol text-fg-muted">{transport}</span>}
           </p>
+          </div>
 
-          <div className="mt-5 w-full max-w-[380px]">
+          <div className="affory-routing mt-5 w-full max-w-[380px]">
             <Segment
               aria-label="Куда идёт трафик"
               rastyanut
@@ -272,20 +251,19 @@ export function Glavnyy({
             )}
           </div>
 
-          <dl className="border-border mt-6 grid w-full max-w-[420px] grid-cols-3 border-t pt-5 text-center" data-testid="statistika">
-            <Cifra
-              nazvanie="Задержка"
-              znachenie={podnyat ? chislo(statistika?.zaderzhka_ms, "мс") : PROCHERK}
-            />
-            <Cifra
-              nazvanie="Получено"
-              znachenie={obyom(podnyat ? statistika?.prinyato : undefined)}
-            />
-            <Cifra
-              nazvanie="Отправлено"
-              znachenie={obyom(podnyat ? statistika?.otdano : undefined)}
-            />
-          </dl>
+          <div className="affory-traffic border-border mt-6 w-full max-w-[420px] border-t pt-5" data-testid="statistika">
+            <dl className="grid grid-cols-2">
+              <div className="border-border border-r pr-3">
+                <Cifra nazvanie="↓ Приём" znachenie={formatSkorosti(skorosti.priem)} testId="skorost-priema" />
+                <div className="affory-total text-fg-muted mt-2"><dt>Получено</dt><dd className="text-fg-secondary">{obyom(podnyat ? statistika?.prinyato : undefined)}</dd></div>
+              </div>
+              <div className="pl-4">
+                <Cifra nazvanie="↑ Отдача" znachenie={formatSkorosti(skorosti.otdacha)} testId="skorost-otdachi" />
+                <div className="affory-total text-fg-muted mt-2"><dt>Отправлено</dt><dd className="text-fg-secondary">{obyom(podnyat ? statistika?.otdano : undefined)}</dd></div>
+              </div>
+            </dl>
+            <dl className="affory-latency mt-6 flex justify-center gap-2 text-[13px]"><dt className="text-fg-muted">Задержка</dt><dd className="text-foreground font-medium">{podnyat ? chislo(statistika?.zaderzhka_ms, "мс") : PROCHERK}</dd></dl>
+          </div>
         </div>
 
         {/* Правая колонка: набор серверов и замер полосы */}
@@ -431,12 +409,6 @@ export function Glavnyy({
           Адрес выхода{" "}
           <b className="text-fg-secondary font-medium">{podnyat ? statistika?.adres_vyhoda || PROCHERK : PROCHERK}</b>
         </span>
-        <span>
-          В сети{" "}
-          <b className="text-fg-secondary font-medium" data-testid="v-seti">
-            {vSeti(podnyat ? status.podnyat_s : undefined, seychas)}
-          </b>
-        </span>
         {/* Без номера, а не со словом «dev»: версия приходит от службы, и её
             отсутствие значит «служба молчит», что и так написано выше. Во
             время обновления служба молчит намеренно, и подпись «Affory dev»
@@ -462,8 +434,10 @@ function Cifra({
   return (
     <div className="flex flex-col gap-1">
       <dt className="text-fg-muted text-[13px]">{nazvanie}</dt>
-      <dd className="text-foreground text-[19px] font-semibold leading-none" data-testid={testId}>
-        {znachenie}
+      <dd className="affory-rate text-foreground font-semibold" data-testid={testId}>
+        {znachenie.endsWith(" Мбит/с")
+          ? <>{znachenie.replace(" Мбит/с", "")} <span className="affory-rate-unit">Мбит/с</span></>
+          : znachenie}
       </dd>
     </div>
   );
