@@ -6,11 +6,17 @@
 # отпала причина сидеть на чужом форке, чьи регрессии уже стоили выпуска 0.8.0
 # (DNS через туннель умирал в lx.2, лечился только к lx.34).
 #
-# Версия ПРИБИТА к 1.14.0-rc.5 намеренно, а не взята из стабильной линии.
-# Проверено 06.09.2026 сборкой: 1.13.21 отвергает `dns_mode` у входящего tun
-# (`json: unknown field`), а это ровно то поле, которым туннель перехватывает
-# DNS. Стабильная линия обошлась бы возвратом к утечке DNS, то есть дороже, чем
-# rc той же минорной версии, с которой мы и съезжаем.
+# Версия ПРИБИТА к тегу апстрима, с 19.09.2026 это v1.14.1 (выпущен 15.09.2026).
+#
+# До него ядро стояло на v1.14.0-rc.5, и это была вынужденная мера: стабильной
+# линией тогда была 1.13.21, а она отвергает `dns_mode` у входящего tun
+# (`json: unknown field`), то есть возврат к ней означал возврат к утечке DNS.
+# С выходом стабильной 1.14 причина сидеть на rc отпала.
+#
+# Между rc.5 и 1.14.1 сорок шесть коммитов, и трое из них про наши же болезни:
+# «Fix closed connection errors not recognized on Windows», «Fix crash when
+# interface monitor is unavailable», «Fix selector not interrupting routed
+# connections». Плюс сокращение аллокаций в матчинге правил и в журнале.
 #
 # НАБОР ТЕГОВ УРЕЗАН НАМЕРЕННО, и это стоило 60 МБ памяти. Полный набор форка
 # (LX_TAGS) тянет WireGuard, AmneziaWG, OpenVPN, OpenConnect, naive, DHCP, lxd и
@@ -40,7 +46,7 @@ param(
     # ТЕГ апстрима, а не ветка. Ветка движется, и собранное по ней ядро
     # невоспроизводимо: выпуск 1.14.0-lx.1-affory уже потерян ровно так.
     # Список смотреть `git ls-remote --tags --refs <repo>`.
-    [string]$Teg      = 'v1.14.0-rc.5',
+    [string]$Teg      = 'v1.14.1',
     # Дополнительные теги сборки, через запятую. Пусто значит рабочий набор и
     # ничего больше: умолчание здесь это то, что уезжает в выпуск, и менять его
     # ради одного опыта нельзя. Заведено 05.09.2026 ради задачи 7, где нужна
@@ -197,7 +203,9 @@ try {
         throw "заказан коммит $Kommit, а в дереве $sobrannyy. Чистое место: -Zanovo"
     }
     # This is a pinned extension, not a hopeful patch lottery against tomorrow's upstream.
-    if ($sobrannyy -ne 'c881f561e9304ac7a2662d27d80394b3fec1b96c') { throw 'Process-family patch requires the pinned upstream revision' }
+    # Ревизия v1.14.1. Патч проверен на ней 19.09.2026: накладывается без правок,
+    # пакеты route/rule и common/afforyprocess проходят тесты.
+    if ($sobrannyy -ne '1ac1a339cb1223e9c70eae14c44411c75033c02d') { throw 'Process-family patch requires the pinned upstream revision' }
     $patch = Join-Path $svoyKatalog 'patches\process-family.patch'
     & git apply --check $patch 2>$null
     if ($LASTEXITCODE -eq 0) {

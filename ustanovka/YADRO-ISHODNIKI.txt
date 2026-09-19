@@ -2,7 +2,7 @@
 
 Ядро распространяется под GNU GPL версии 3 или новее, текст в GPL-3.0.txt.
 Upstream: https://github.com/SagerNet/sing-box
-Базовая ревизия: c881f561e9304ac7a2662d27d80394b3fec1b96c (v1.14.0-rc.5).
+Базовая ревизия: 1ac1a339cb1223e9c70eae14c44411c75033c02d (v1.14.1).
 Affory добавляет Windows-правило process_path_tree для процессов и их потомков.
 Изменения: ustanovka/patches/process-family.patch и ustanovka/processfamily/*.go.
 Теги сборки: with_gvisor,with_quic,with_utls,with_clash_api.
