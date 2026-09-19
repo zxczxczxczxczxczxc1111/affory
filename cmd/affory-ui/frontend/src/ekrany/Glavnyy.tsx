@@ -262,7 +262,15 @@ export function Glavnyy({
                 <div className="affory-total text-fg-muted mt-2"><dt>Отправлено</dt><dd className="text-fg-secondary">{obyom(podnyat ? statistika?.otdano : undefined)}</dd></div>
               </div>
             </dl>
-            <dl className="affory-latency mt-6 flex justify-center gap-2 text-[13px]"><dt className="text-fg-muted">Задержка</dt><dd className="text-foreground font-medium">{podnyat ? chislo(statistika?.zaderzhka_ms, "мс") : PROCHERK}</dd></dl>
+            {/* Задержка это итог блока, а не третья колонка: она одна на оба
+                направления. Поэтому строка во всю ширину под своей чертой, в
+                том же ритме, что «Получено» и «Отправлено» внутри колонок.
+                По центру и без черты она читалась как подпись, случайно
+                оставшаяся под таблицей (владелец, 19.09.2026). */}
+            <dl className="affory-latency border-border mt-4 flex items-baseline justify-between border-t pt-3 text-[13px]">
+              <dt className="text-fg-muted">Задержка</dt>
+              <dd className="text-foreground font-medium" data-testid="zaderzhka">{podnyat ? chislo(statistika?.zaderzhka_ms, "мс") : PROCHERK}</dd>
+            </dl>
           </div>
         </div>
 
