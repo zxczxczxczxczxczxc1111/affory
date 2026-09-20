@@ -83,8 +83,10 @@ var dolgie = map[string]time.Duration{
 	// down through a batch of netsh, starting the replacer, and on failure the
 	// rollback repeats the install and waits SrokPodyoma again.
 	"installUpdate": srokObnovleniya,
-	// srokProverki is 20 s per network trip, and posledniyVypusk makes two:
-	// the release description and the .sha256 next to the archive.
+	// posledniyVypuskUporno делает до трёх заходов по srokPopytkiProverki (10 с)
+	// с отступами 1 и 2 секунды, и каждый заход это два похода в сеть: описание
+	// выпуска и .sha256 рядом с архивом. Худшие 33 секунды обязаны помещаться в
+	// срок ответа с запасом, иначе повторы обернутся молчанием службы.
 	"checkUpdate": SrokDolgoy,
 	// Rebuilds the firewall rules through sohranitIPeresobrat, which is exactly
 	// what put addServer and setRouteMode on this list.

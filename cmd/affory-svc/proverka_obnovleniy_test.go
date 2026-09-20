@@ -81,7 +81,118 @@ func sVersiey(t *testing.T, versiya string) *Sluzhba {
 	t.Cleanup(func() { versiyaProgrammy = byla })
 	s := podstavnaya(t, nil)
 	s.adresObnovleniy = adresVypuska
+	// Отступы между попытками сняты: проверяем ЧИСЛО заходов, а не секунды сна.
+	// С настоящими паузами каждый тест отказа сети стоил бы три секунды петли.
+	s.zhdat = func(context.Context, time.Duration) bool { return true }
 	return s
+}
+
+// Повторы проверки обновления, 20.09.2026.
+//
+// Живая машина: `checkUpdate -> отказ update-check-failed`, следом через
+// пятнадцать секунд `-> ok`, и между ними не менялось ничего. Запрос за
+// описанием выпуска идёт мимо туннеля (конфиг ядра уводит affory-svc.exe в
+// direct), то есть по каналу провайдера, и одиночная попытка на нём это
+// лотерея. Повтором до этой правки служил человек, нажимавший кнопку ещё раз.
+
+func TestProverkaPovtoryaetOtkazSeti(t *testing.T) {
+	s := sVersiey(t, "0.6.2")
+	set := vypuskVSeti("0.6.3", hex.EncodeToString(bytes.Repeat([]byte{1}, 32)), nil, nil)
+	zahodov := 0
+	s.skachatFayl = func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
+		if adres == adresVypuska {
+			zahodov++
+			if zahodov == 1 {
+				return nil, errors.New("dial tcp 140.82.121.5:443: i/o timeout")
+			}
+		}
+		return set(ctx, adres, predel, hod)
+	}
+	n, err := s.proveritObnovlenie(context.Background())
+	if err != nil || n == nil || n.Versiya != "0.6.3" {
+		t.Fatalf("одна осечка сети обязана лечиться повтором, а не человеком: %+v %v", n, err)
+	}
+	if zahodov != 2 {
+		t.Fatalf("заходов за описанием %d, ждали 2", zahodov)
+	}
+}
+
+func TestProverkaSdayotsyaPosleVsehPopytok(t *testing.T) {
+	s := sVersiey(t, "0.6.2")
+	zahodov := 0
+	s.skachatFayl = func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
+		zahodov++
+		return nil, errors.New("сети нет")
+	}
+	if _, err := s.proveritObnovlenie(context.Background()); err == nil {
+		t.Fatal("мёртвая сеть прошла как успех")
+	}
+	if zahodov != popytokProverki {
+		t.Fatalf("заходов %d, ждали %d: повторы либо не идут, либо не кончаются", zahodov, popytokProverki)
+	}
+}
+
+// Негодный выпуск это НЕ отказ сети. Повторять его значит трижды получить один
+// и тот же ответ и втрое дольше держать человека у окна.
+func TestNegodnyyVypuskNePovtoryaetsya(t *testing.T) {
+	s := sVersiey(t, "0.6.2")
+	zahodov := 0
+	s.skachatFayl = func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
+		zahodov++
+		return []byte(`{"tag_name":"poslednyaya","assets":[]}`), nil
+	}
+	if _, err := s.proveritObnovlenie(context.Background()); err == nil {
+		t.Fatal("тег не вида X.Y.Z прошёл как успех")
+	}
+	if zahodov != 1 {
+		t.Fatalf("описание спрошено %d раза, ждали один: повтор тут только тянет время", zahodov)
+	}
+}
+
+// Отмена сверху обрывает повторы: ждать уже некому.
+func TestOtmenaObryvaetPovtory(t *testing.T) {
+	s := sVersiey(t, "0.6.2")
+	zahodov := 0
+	s.skachatFayl = func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
+		zahodov++
+		return nil, errors.New("сети нет")
+	}
+	s.zhdat = func(context.Context, time.Duration) bool { return false }
+	if _, err := s.proveritObnovlenie(context.Background()); err == nil {
+		t.Fatal("мёртвая сеть прошла как успех")
+	}
+	if zahodov != 1 {
+		t.Fatalf("заходов %d, ждали один: отмена не оборвала повторы", zahodov)
+	}
+}
+
+// Причина отказа обязана уехать в журнал службы.
+//
+// Журнал команд пишет один код, `update-check-failed`, и по нему видно, что
+// человек жал кнопку трижды, но не видно, обо что он бился. Разбор жалобы
+// 20.09.2026 уткнулся ровно в это.
+func TestPrichinaOtkazaProverkiUezzhaetVZhurnal(t *testing.T) {
+	s := sVersiey(t, "0.6.2")
+	zhurnal := zhurnalProgona(t)
+	s.skachatFayl = func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
+		return nil, errors.New("dial tcp 140.82.121.5:443: i/o timeout")
+	}
+	o := s.Obrabotat(t.Context(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "checkUpdate"})
+	if o.Oshib == nil || o.Oshib.Kod != protokol.KodObnovlenieNeProvereno {
+		t.Fatalf("checkUpdate без сети: %+v", o)
+	}
+	zapis := zhurnal.String()
+	if !strings.Contains(zapis, "i/o timeout") {
+		t.Fatalf("причина отказа не попала в журнал: %q", zapis)
+	}
+	if !strings.Contains(zapis, "попытка 1 из") || !strings.Contains(zapis, "попытка 3 из") {
+		t.Fatalf("в журнале не видно хода попыток: %q", zapis)
+	}
+	// Итог нажатия отдельной строкой: по ней в журнале видно, что причина
+	// пришла человеку, а не осталась внутренним сбоем расписания.
+	if !strings.Contains(zapis, "по команде") {
+		t.Fatalf("итог нажатия не отличим от захода расписания: %q", zapis)
+	}
 }
 
 func TestProverkaNahoditNovuyuVersiyu(t *testing.T) {

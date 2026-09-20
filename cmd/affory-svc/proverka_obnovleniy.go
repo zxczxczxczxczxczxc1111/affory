@@ -29,10 +29,24 @@ import (
 const AdresObnovleniyPoUmolchaniyu = "https://api.github.com/repos/zxczxczxczxczxczxc1111/affory/releases/latest"
 
 const (
-	predelOpisaniya   = 256 << 10
-	predelHesha       = 4 << 10
-	predelArhivaSeti  = 64 << 20
-	srokProverki      = 20 * time.Second
+	predelOpisaniya  = 256 << 10
+	predelHesha      = 4 << 10
+	predelArhivaSeti = 64 << 20
+	// Срок ОДНОЙ попытки, а не всей проверки. Прежние двадцать секунд были
+	// сроком единственной, и повтором служил человек: замерено на живой машине
+	// 19 и 20.09.2026, `checkUpdate` отказывал, а следующее нажатие через
+	// пятнадцать секунд проходило, причём между ними не менялось ничего.
+	//
+	// Запрос за описанием выпуска идёт МИМО туннеля всегда: конфиг ядра уводит
+	// affory-svc.exe в direct, иначе обновиться было бы нельзя при лежащем
+	// туннеле. Значит канал до GitHub тут ровно такой, каким его даёт
+	// провайдер, и одиночная попытка на нём это лотерея.
+	srokPopytkiProverki = 10 * time.Second
+	// Три попытки с отступами 1 и 2 секунды это худшие 33 секунды при сроке
+	// ответа команды 60 (protokol.SrokDolgoy). Больше в срок не влезает, а
+	// нужды в большем нет: канал либо отвечает, либо лежит дольше, чем человек
+	// готов ждать у окна.
+	popytokProverki   = 3
 	srokZagruzki      = 3 * time.Minute
 	pervayaProverka   = time.Minute
 	periodProverki    = 24 * time.Hour
@@ -61,6 +75,18 @@ type svedeniyaVypuska struct {
 }
 
 var errNetVersii = errors.New("сборка без версии обновления не проверяет")
+
+// oshibkaSeti помечает отказ, который имеет смысл повторить: поход наружу не
+// состоялся.
+//
+// Разделение обязательно, иначе повторы стали бы вредом. Негодное описание
+// выпуска (тег не вида X.Y.Z, нет архива по https, .sha256 не шестнадцатеричный)
+// на второй заход придёт ровно таким же, а человек прождёт три срока вместо
+// одного и получит тот же отказ.
+type oshibkaSeti struct{ err error }
+
+func (o oshibkaSeti) Error() string { return o.err.Error() }
+func (o oshibkaSeti) Unwrap() error { return o.err }
 
 // versiyaDlyaEkrana: dev это не версия, экран покажет пустоту, а не «dev».
 func versiyaDlyaEkrana() string {
@@ -171,7 +197,7 @@ func (s *schetchikChteniya) Read(p []byte) (int, error) {
 func (s *Sluzhba) posledniyVypusk(ctx context.Context) (*svedeniyaVypuska, error) {
 	b, err := s.skachatFayl(ctx, s.adresObnovleniy, predelOpisaniya, nil)
 	if err != nil {
-		return nil, fmt.Errorf("описание выпуска не получено: %w", err)
+		return nil, oshibkaSeti{fmt.Errorf("описание выпуска не получено: %w", err)}
 	}
 	var v vypuskGitHub
 	if err := json.Unmarshal(b, &v); err != nil {
@@ -199,7 +225,7 @@ func (s *Sluzhba) posledniyVypusk(ctx context.Context) (*svedeniyaVypuska, error
 	}
 	h, err := s.skachatFayl(ctx, adresHesha, predelHesha, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%s.sha256 не получен: %w", arhiv, err)
+		return nil, oshibkaSeti{fmt.Errorf("%s.sha256 не получен: %w", arhiv, err)}
 	}
 	polya := strings.Fields(string(h))
 	if len(polya) == 0 || len(polya[0]) != 64 {
@@ -212,6 +238,45 @@ func (s *Sluzhba) posledniyVypusk(ctx context.Context) (*svedeniyaVypuska, error
 	return sv, nil
 }
 
+// posledniyVypuskUporno это posledniyVypusk, который не сдаётся с первого раза.
+//
+// Срок вешается на КАЖДУЮ попытку, а не на весь заход: общий срок на три
+// попытки означал бы, что первая, упёршаяся в таймаут, съедает время двух
+// остальных, то есть повторов бы не было вовсе.
+//
+// Повторяются только отказы сети. Негодный выпуск возвращается сразу: см.
+// oshibkaSeti.
+func (s *Sluzhba) posledniyVypuskUporno(ctx context.Context) (*svedeniyaVypuska, error) {
+	var posledn error
+	for i := 0; i < popytokProverki; i++ {
+		do, otm := context.WithTimeout(ctx, srokPopytkiProverki)
+		v, err := s.posledniyVypusk(do)
+		otm()
+		if err == nil {
+			if i > 0 {
+				log.Printf("выпуск прочитан с попытки %d из %d", i+1, popytokProverki)
+			}
+			return v, nil
+		}
+		posledn = err
+		var seti oshibkaSeti
+		if !errors.As(err, &seti) {
+			return nil, err
+		}
+		// Причина КАЖДОЙ попытки в журнал. Журнал команд пишет один код отказа,
+		// а текст жил только в окне и исчезал вместе с ним: разбор жалобы
+		// 20.09.2026 уткнулся ровно в это - отказы в журнале были, а чем они
+		// вызваны, восстановить было нечем.
+		log.Printf("чтение выпуска, попытка %d из %d: %v", i+1, popytokProverki, err)
+		// Отступ удваивается от секунды. Отмена общего контекста (человек
+		// закрыл окно, служба гасится) обрывает повторы: ждать некому.
+		if i < popytokProverki-1 && !s.zhdat(ctx, time.Duration(1<<i)*time.Second) {
+			break
+		}
+	}
+	return nil, posledn
+}
+
 // proveritObnovlenie читает последний выпуск и запоминает находку. Ошибка сети
 // это ошибка, а «новее нет» это nil без ошибки; отметка проверки ставится в
 // обоих удачных случаях.
@@ -219,9 +284,7 @@ func (s *Sluzhba) proveritObnovlenie(ctx context.Context) (*protokol.ObnovlenieO
 	if versiyaProgrammy == "dev" {
 		return nil, errNetVersii
 	}
-	do, otm := context.WithTimeout(ctx, srokProverki)
-	defer otm()
-	v, err := s.posledniyVypusk(do)
+	v, err := s.posledniyVypuskUporno(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +327,10 @@ func (s *Sluzhba) raspisanieObnovleniy(ctx context.Context) {
 
 func (s *Sluzhba) checkUpdate(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	if _, err := s.proveritObnovlenie(ctx); err != nil {
+		// Итог нажатия в журнал службы. Журнал команд хранит только код
+		// `update-check-failed`, и по нему видно, что человек жал кнопку
+		// трижды, но не видно, обо что он бился.
+		log.Printf("проверка обновления по команде не удалась: %v", err)
 		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeProvereno, err.Error())
 	}
 	return otvet(k.Id, k.Imya, s.Status())
@@ -274,8 +341,12 @@ func (s *Sluzhba) checkUpdate(ctx context.Context, k protokol.Kadr) protokol.Kad
 func (s *Sluzhba) downloadUpdate(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	do, otm := context.WithTimeout(ctx, srokZagruzki)
 	defer otm()
-	v, err := s.posledniyVypusk(do)
+	// Описание выпуска читается теми же повторами, что и при проверке: «скачать»
+	// упирается в тот же прямой канал до GitHub, и падать на первой осечке
+	// здесь так же нечестно.
+	v, err := s.posledniyVypuskUporno(do)
 	if err != nil {
+		log.Printf("загрузка обновления не началась, выпуск не прочитан: %v", err)
 		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeProvereno, err.Error())
 	}
 	if !novee(v.Versiya, versiyaProgrammy) {
