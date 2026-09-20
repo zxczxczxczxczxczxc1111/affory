@@ -684,6 +684,11 @@ func (s *Sluzhba) pravitNabor(izmenit func(*Nabor) error) error {
 	// Копия СПИСКА, а не только заголовка структуры: izmenit имеет право
 	// заменить срез целиком, и заслону было бы не с чем сравнивать.
 	staryy := Nabor{Servery: append([]protokol.Server(nil), n.Servery...)}
+	// Состав подписок ДО правки. Сравнение идёт по идентификаторам, а строка в
+	// журнал пишется только при расхождении: набор пишут восемь путей и
+	// расписание, и строка на каждую запись утонула бы в своём же шуме.
+	sostavDo := sostavPodpisok(n)
+	opisanieDo := opisatPodpiski(n)
 	if err := izmenit(&n); err != nil {
 		return err
 	}
@@ -692,6 +697,10 @@ func (s *Sluzhba) pravitNabor(izmenit func(*Nabor) error) error {
 	}
 	if err := s.zapisatNabor(n); err != nil {
 		return err
+	}
+	if !sostavySovpadayut(sostavDo, sostavPodpisok(n)) {
+		log.Printf("состав подписок изменён: было [%s], стало [%s]; %s",
+			opisanieDo, opisatPodpiski(n), sledSekretov())
 	}
 	return s.posleZapisiNabora(n)
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/url"
 	"strings"
@@ -79,13 +80,24 @@ func IdPodpiski(adres string) string {
 // пропавшие идентификаторы и чинит ссылку на активную. Набор без подписок
 // остаётся пустым: запись с пустым адресом означала бы «подписка задана» на
 // первом же запуске.
-func (n *Nabor) PrivestiPodpiski() {
+// Возвращает СПИСОК ПОЧИНОК, по строке на каждую. Пустой список значит «набор
+// уже был в этом виде», и это обычный случай.
+//
+// Отчёт заведён 20.09.2026 разбором жалобы про подписку, которая возвращалась
+// после каждого обновления. Разбор трижды упёрся в одно: все три починки здесь
+// МОЛЧАЛИВЫЕ, то есть состав подписок менялся без единой команды и без единой
+// строки в журнале, и доказать момент появления записи было физически нечем.
+// Чинить вслепую дороже, чем сказать вслух.
+func (n *Nabor) PrivestiPodpiski() []string {
+	var pochinki []string
 	if n.Podpiska != "" {
 		if !n.estAdres(n.Podpiska) {
 			n.Podpiski = append(n.Podpiski, ZapisPodpiski{
 				Id:    IdPodpiski(n.Podpiska),
 				Adres: n.Podpiska,
 			})
+			pochinki = append(pochinki, "старое поле подписки перенесено в список: "+
+				UzelPodpiski(n.Podpiska))
 		}
 		// Гасится сразу: иначе очистка подписки командой воскресала бы записью
 		// при следующем же чтении набора, и удалить подписку стало бы нельзя.
@@ -94,19 +106,32 @@ func (n *Nabor) PrivestiPodpiski() {
 	for i := range n.Podpiski {
 		if n.Podpiski[i].Id == "" {
 			n.Podpiski[i].Id = IdPodpiski(n.Podpiski[i].Adres)
+			pochinki = append(pochinki, "подписке без идентификатора дан свой: "+
+				UzelPodpiski(n.Podpiski[i].Adres))
 		}
 	}
 	if len(n.Podpiski) == 0 {
+		if n.Aktivnaya != "" {
+			pochinki = append(pochinki, "активная снята: подписок не осталось")
+		}
 		n.Aktivnaya = ""
-		return
+		return pochinki
 	}
 	// Активная, указывающая в пустоту, это набор из чужого профиля либо след
 	// удалённой записи. Молча отдавать первую на каждом чтении нельзя: обновление
 	// уходило бы в подписку, которую никто не выбирал, и это было бы невидимо.
 	// Чиним ссылку явно и записываем, чтобы дальше все читали одно и то же.
 	if n.zapisPodpiski(n.Aktivnaya) == nil {
+		prezhnyaya := n.Aktivnaya
 		n.Aktivnaya = n.Podpiski[0].Id
+		// Ключи при этом НЕ перекладываются: рабочий список остаётся от прежней
+		// активной. Сказать об этом обязаны отдельно, потому что на экране такая
+		// подписка выглядит выбранной человеком.
+		pochinki = append(pochinki, fmt.Sprintf(
+			"активная указывала в пустоту (%q), взята первая: %s; ключи НЕ переложены",
+			prezhnyaya, UzelPodpiski(n.Podpiski[0].Adres)))
 	}
+	return pochinki
 }
 
 func (n *Nabor) estAdres(adres string) bool {
