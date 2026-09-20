@@ -345,7 +345,9 @@ func NovayaSluzhba() *Sluzhba {
 	s.dirProgrammy = sostoyanie.KatalogProgrammy()
 	s.zagruzitSnimok = set.ZagruzitSnimok
 	s.adresObnovleniy = AdresObnovleniyPoUmolchaniyu
-	s.skachatFayl = skachatPoSeti
+	// Не голая skachatPoSeti: при поднятом туннеле выпуск берётся через него,
+	// см. skachatVypusk. Прямой поход остаётся откатом.
+	s.skachatFayl = s.skachatVypusk
 	s.zhurnalSoed = sostoyanie.NovyyZhurnalSoedineniy()
 	s.periodDiagnostiki = periodDiagnostikiPoUmolchaniyu
 	// Файл открывается ВСЕГДА, а пишется только при включённой настройке: иначе

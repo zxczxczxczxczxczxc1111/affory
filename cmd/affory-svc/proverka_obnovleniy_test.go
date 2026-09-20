@@ -10,8 +10,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -164,6 +166,122 @@ func TestOtmenaObryvaetPovtory(t *testing.T) {
 	if zahodov != 1 {
 		t.Fatalf("заходов %d, ждали один: отмена не оборвала повторы", zahodov)
 	}
+}
+
+// Дорога за выпуском, 20.09.2026.
+//
+// Конфиг ядра уводит affory-svc.exe в direct, поэтому единственная программа
+// на машине, которая ходит к GitHub по каналу провайдера, это сам VPN-клиент:
+// у соседнего скриншотера, чей трафик перехватывает TUN, то же обновление
+// проходит всегда, а у нас github.com рвал соединение на файле .sha256.
+
+// podnyatSProksi изображает поднятый туннель с локальным входом по адресу
+// сервера-подставы.
+func podnyatSProksi(t *testing.T, s *Sluzhba, adresProksi string) {
+	t.Helper()
+	u, err := url.Parse(adresProksi)
+	if err != nil {
+		t.Fatalf("адрес подставного входа не разобран: %v", err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatalf("порт подставного входа не разобран: %v", err)
+	}
+	s.mu.Lock()
+	s.sost = protokol.SostPodnyat
+	s.portProksiNash = port
+	s.mu.Unlock()
+}
+
+// dvaPuti поднимает «локальный вход» и «настоящий GitHub» и отвечает разными
+// телами: по телу видно, какой дорогой пришёл ответ.
+func dvaPuti(t *testing.T, otvetProksi func(w http.ResponseWriter)) (*httptest.Server, *httptest.Server, *int) {
+	t.Helper()
+	zahodov := 0
+	proksi := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		zahodov++
+		otvetProksi(w)
+	}))
+	t.Cleanup(proksi.Close)
+	pryamoy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("напрямую"))
+	}))
+	t.Cleanup(pryamoy.Close)
+	return proksi, pryamoy, &zahodov
+}
+
+func TestVypuskIdyotCherezTunnelKogdaOnPodnyat(t *testing.T) {
+	proksi, pryamoy, zahodov := dvaPuti(t, func(w http.ResponseWriter) {
+		_, _ = w.Write([]byte("через туннель"))
+	})
+	s := podstavnaya(t, nil)
+	podnyatSProksi(t, s, proksi.URL)
+
+	b, err := s.skachatVypusk(context.Background(), pryamoy.URL+"/latest", predelOpisaniya, nil)
+	if err != nil {
+		t.Fatalf("поход через туннель не удался: %v", err)
+	}
+	if string(b) != "через туннель" {
+		t.Fatalf("ответ %q: при поднятом туннеле выпуск обязан идти через него", b)
+	}
+	if *zahodov != 1 {
+		t.Fatalf("заходов в локальный вход %d, ждали один", *zahodov)
+	}
+}
+
+// Туннель бывает поднят и нездоров. «Обновляться только через VPN» означало бы,
+// что сломанный туннель нельзя починить обновлением.
+func TestPriOtkazeTunnelyaVypuskBerotsyaNapryamuyu(t *testing.T) {
+	proksi, pryamoy, zahodov := dvaPuti(t, func(w http.ResponseWriter) {
+		w.WriteHeader(http.StatusBadGateway)
+	})
+	s := podstavnaya(t, nil)
+	podnyatSProksi(t, s, proksi.URL)
+
+	b, err := s.skachatVypusk(context.Background(), pryamoy.URL+"/latest", predelOpisaniya, nil)
+	if err != nil {
+		t.Fatalf("отката на прямой поход не случилось: %v", err)
+	}
+	if string(b) != "напрямую" {
+		t.Fatalf("ответ %q: молчащий туннель обязан уступать дорогу прямому походу", b)
+	}
+	if *zahodov != 1 {
+		t.Fatalf("заходов в локальный вход %d, ждали один", *zahodov)
+	}
+}
+
+func TestPriOpushchennomTunneleProksiNeSprashivayut(t *testing.T) {
+	proksi, pryamoy, zahodov := dvaPuti(t, func(w http.ResponseWriter) {
+		_, _ = w.Write([]byte("через туннель"))
+	})
+	s := podstavnaya(t, nil)
+	// Порт входа помнится и после отключения: спрашивать его при опущенном
+	// туннеле значит стучаться в закрытую дверь на каждой проверке.
+	s.mu.Lock()
+	s.sost = protokol.SostVyklyuchen
+	s.portProksiNash = portIzURL(t, proksi.URL)
+	s.mu.Unlock()
+
+	b, err := s.skachatVypusk(context.Background(), pryamoy.URL+"/latest", predelOpisaniya, nil)
+	if err != nil {
+		t.Fatalf("прямой поход не удался: %v", err)
+	}
+	if string(b) != "напрямую" || *zahodov != 0 {
+		t.Fatalf("ответ %q, заходов в локальный вход %d: при опущенном туннеле дорога одна", b, *zahodov)
+	}
+}
+
+func portIzURL(t *testing.T, adres string) int {
+	t.Helper()
+	u, err := url.Parse(adres)
+	if err != nil {
+		t.Fatalf("адрес %q не разобран: %v", adres, err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatalf("порт в %q не разобран: %v", adres, err)
+	}
+	return port
 }
 
 // Причина отказа обязана уехать в журнал службы.

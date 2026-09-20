@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -133,13 +135,29 @@ func razobratVersiyu(v string) ([3]int, bool) {
 // hod зовётся по ходу чтения тела и может быть nil: описание выпуска и файл
 // суммы весят килобайты, полосу по ним не рисуют.
 func skachatPoSeti(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
+	return skachatCherez(ctx, "", adres, predel, hod)
+}
+
+// skachatCherez это та же загрузка, но с выбором дороги: пустой proksi значит
+// «наружу как есть», непустой отправляет запрос в локальный вход туннеля.
+func skachatCherez(ctx context.Context, proksi, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
 	z, err := http.NewRequestWithContext(ctx, http.MethodGet, adres, nil)
 	if err != nil {
 		return nil, err
 	}
 	z.Header.Set("Accept", "application/vnd.github+json, application/octet-stream")
 	z.Header.Set("User-Agent", "affory/"+versiyaProgrammy)
-	o, err := (&http.Client{}).Do(z)
+	klient := &http.Client{}
+	if proksi != "" {
+		u, err := url.Parse("http://" + proksi)
+		if err != nil {
+			return nil, fmt.Errorf("адрес локального входа не разобран: %w", err)
+		}
+		// Своя копия транспорта, а не правка общего: DefaultTransport один на
+		// процесс, и прокси в нём увёл бы в туннель заодно подписку и замеры.
+		klient = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(u)}}
+	}
+	o, err := klient.Do(z)
 	if err != nil {
 		return nil, err
 	}
@@ -190,6 +208,66 @@ func (s *schetchikChteniya) Read(p []byte) (int, error) {
 		s.hod(s.bylo, s.vsego)
 	}
 	return n, err
+}
+
+// proksiObnovleniy отвечает, идти ли за выпуском ЧЕРЕЗ СВОЙ ЖЕ туннель.
+//
+// Конфиг ядра уводит affory-svc.exe в direct, и это правильно: обновляться
+// нужно и при лежащем туннеле, а замыкать службу на туннель, которого нет,
+// значит не обновиться никогда. Побочный эффект вскрылся 20.09.2026 на живой
+// машине: единственная программа, которая ходит к GitHub по каналу
+// провайдера, это сам VPN-клиент. У соседнего скриншотера, чей трафик
+// перехватывает TUN, то же обновление проходит всегда, а у нас github.com
+// рвал соединение на файле .sha256.
+//
+// Поэтому при ПОДНЯТОМ туннеле запрос идёт в локальный вход (`proksi-in` в
+// конфиге ядра маршрутизируется в `vybor`), то есть ровно тем путём, что у
+// всех остальных программ машины. Порт ноль это законный случай: прокси
+// надстройка, и туннель поднимают без него, когда 10809 занят чужим клиентом.
+func (s *Sluzhba) proksiObnovleniy() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sost != protokol.SostPodnyat || s.portProksiNash <= 0 {
+		return ""
+	}
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(s.portProksiNash))
+}
+
+// skachatVypusk это шов загрузки с откатом: сначала через туннель, если он
+// поднят, при отказе напрямую.
+//
+// Откат обязателен. Туннель бывает поднят и нездоров, и «обновляться только
+// через VPN» означало бы, что сломанный туннель нельзя починить обновлением.
+// Половина срока каждому: походу через туннель нельзя съедать время прямого,
+// иначе откат существует только на бумаге.
+func (s *Sluzhba) skachatVypusk(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
+	proksi := s.proksiObnovleniy()
+	if proksi == "" {
+		return skachatPoSeti(ctx, adres, predel, hod)
+	}
+	do, otm := polovinaSroka(ctx)
+	b, err := skachatCherez(do, proksi, adres, predel, hod)
+	otm()
+	if err == nil {
+		return b, nil
+	}
+	// Отмена СВЕРХУ это не повод идти второй дорогой: человек закрыл окно или
+	// служба гасится, и прямой поход только задержит уборку.
+	if ctx.Err() != nil {
+		return nil, err
+	}
+	log.Printf("выпуск через туннель не пришёл (%v), иду напрямую", err)
+	return skachatPoSeti(ctx, adres, predel, hod)
+}
+
+// polovinaSroka делит остаток времени пополам. Без дедлайна сверху делить
+// нечего, и первый же поход имеет право занять всё время.
+func polovinaSroka(ctx context.Context) (context.Context, context.CancelFunc) {
+	dl, est := ctx.Deadline()
+	if !est {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, time.Until(dl)/2)
 }
 
 // posledniyVypusk читает описание последнего выпуска и файл .sha256 рядом с
