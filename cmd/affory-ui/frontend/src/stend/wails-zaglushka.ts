@@ -21,7 +21,10 @@
 // Три последних в госте не воспроизводятся без нарочной поломки продукта, и
 // именно поэтому экраны отказов не проверял никто.
 
-const VERSIYA = "1.2.0";
+// Подставляется конфигом стенда из файла VERSIYA в корне дерева. Числом здесь
+// он уже стоял и уже соврал: снимки README показывали 1.2.0 в дни 1.3.2.
+declare const __VERSIYA_STENDA__: string;
+const VERSIYA = typeof __VERSIYA_STENDA__ === "string" ? __VERSIYA_STENDA__ : "dev";
 
 function parametr(imya: string, poumolchaniyu: string): string {
   try {
