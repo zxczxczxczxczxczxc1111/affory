@@ -50,6 +50,13 @@ var razresheno = map[string]string{
 		"internal/kachestvo/transporty_ekrana_test.go сверяет реестр транспортов " +
 		"ядра со словарём имён на экране. Копия списка вместо реестра разошлась бы " +
 		"с ним молча, а цена расхождения это пустая ячейка в списке серверов",
+	pakets + "sostoyanie.PodmenitKatalogDannyh": "шов для TestMain чужого пакета " +
+		"и он ОБЯЗАН молчать в проде: cmd/affory-svc/glavnyy_test.go уводит каталог " +
+		"данных во временный на весь прогон. Без него конструктор службы подключает " +
+		"настоящее хранилище секретов, и фикстура без подменённого шва записи " +
+		"переписывает набор ЖИВОЙ машины. 20.09.2026 так и было: тестовая подписка " +
+		"panel.example появлялась у владельца после каждой сборки выпуска. Вызов " +
+		"из продуктового кода стережёт TestPodmenaKatalogaZovyotsyaTolkoIzTestov",
 }
 
 const pakets = "github.com/zxczxczxczxczxczxc1111/affory/internal/"
