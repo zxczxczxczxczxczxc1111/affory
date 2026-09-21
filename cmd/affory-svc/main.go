@@ -24,7 +24,7 @@ var versiyaProgrammy = "dev"
 
 func main() {
 	if len(os.Args) > 1 {
-		vyvod := nastroitVyvodPodkomandy()
+		vyvod, zakrytZhurnalUstanovki := nastroitVyvodPodkomandy()
 		switch os.Args[1] {
 		case "install":
 			put, err := os.Executable()
@@ -56,6 +56,9 @@ func main() {
 			// Keys go only on the explicit flag the interface sets after the
 			// human answered. Program directory removal is scheduled from
 			// outside: this binary is inside it.
+			// Журнал установки закрывается ДО стирания: он лежит внутри того
+			// самого каталога, а открытый файл Windows удалить не даёт.
+			zakrytZhurnalUstanovki()
 			if err := snyatDannye(sostoyanie.KatalogDannyh(), steretKlyuchiIz(os.Args)); err != nil {
 				upast("данные не удалены: %v", err)
 			}

@@ -24,9 +24,18 @@ import (
 // причину вообще ничем: сообщение звало его в sluzhba.log, а тот заводится
 // только при старте службы от SCM, то есть при неудачной установке его нет.
 //
-// Возвращается поток для обычной печати; жалобы log уходят в оба места.
-func nastroitVyvodPodkomandy() io.Writer {
-	oshibki := io.Writer(vKodirovkeMashiny{os.Stderr})
+// Возвращается поток для обычной печати и закрывалка журнала; жалобы log
+// уходят в оба места.
+//
+// Закрывалка не украшение. Журнал держит файл ВНУТРИ каталога данных, а
+// снятие с ключами этот каталог стирает целиком, и Windows не удаляет открытый
+// файл: `os.RemoveAll` отвечает «файл используется другим процессом», снятие
+// падает на стирании данных, а человек, только что согласившийся стереть
+// ключи, видит отказ. Проверено пробой до выкладки 1.4.1.
+func nastroitVyvodPodkomandy() (io.Writer, func()) {
+	konsol := io.Writer(vKodirovkeMashiny{os.Stderr})
+	oshibki := konsol
+	zakryt := func() {}
 	// Каталог журналов лежит внутри каталога данных, и права ему ставит ровно
 	// один вызов. Завести каталог здесь, а не просто открыть в нём файл: иначе
 	// первая же установка на чистой машине создала бы его наследованием от
@@ -36,11 +45,15 @@ func nastroitVyvodPodkomandy() io.Writer {
 	// каталог, сколько приводит его права к нужным.
 	if err := sostoyanie.ZavestiKatalogDannyh(); err == nil {
 		if zh, err := zhurnaly.Otkryt(sostoyanie.KatalogZhurnalov(), "ustanovka.log"); err == nil {
-			oshibki = io.MultiWriter(oshibki, zh)
+			oshibki = io.MultiWriter(konsol, zh)
+			zakryt = func() {
+				log.SetOutput(konsol)
+				zh.Close()
+			}
 		}
 	}
 	log.SetOutput(oshibki)
-	return vKodirovkeMashiny{os.Stdout}
+	return vKodirovkeMashiny{os.Stdout}, zakryt
 }
 
 // imyaFaylaPrichiny это файл, из которого установщик берёт текст для окна
