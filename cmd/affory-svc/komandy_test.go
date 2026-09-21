@@ -62,6 +62,9 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	s.zamerit = func(ctx context.Context, adres, sekret, teg string) (time.Duration, error) {
 		return 42 * time.Millisecond, zamerOtvet
 	}
+	s.zameritRezerv = func(context.Context, string, string, string) (time.Duration, error) {
+		return 0, errors.New("резервная проба недоступна в фикстуре")
+	}
 	// Подъём дёргает адрес выхода в фоне: в тестах в сеть не ходим.
 	s.sprositVyhod = func(ctx context.Context, endpoint string, port int) (string, error) { return "192.0.2.10", nil }
 	s.ipv6Zaglushen = func() (bool, error) { return true, nil }

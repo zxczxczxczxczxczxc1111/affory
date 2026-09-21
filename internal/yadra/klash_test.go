@@ -39,6 +39,19 @@ func TestZaderzhkaOtdayotChislo(t *testing.T) {
 	}
 }
 
+func TestRezervProveryaetDrugoySaytCherezTotZheIshodyashchiy(t *testing.T) {
+	adres := podstavnoyKlash(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("url") != "https://cp.cloudflare.com/generate_204" ||
+			r.URL.Path != "/proxies/vybor/delay" || r.Header.Get("Authorization") != "Bearer test" {
+			t.Errorf("неверная цель или исходящий резервной проверки: %s", r.URL)
+		}
+		fmt.Fprint(w, `{"delay":12}`)
+	})
+	if _, err := ZaderzhkaRezerv(context.Background(), adres, "test", "vybor"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Тег и секрет обязаны доехать до сервера. Спросить не тот исходящий значит
 // померить чужой путь и объявить своё подключение рабочим по чужому ответу:
 // ровно та ошибка, ради которой этот механизм и заводится.

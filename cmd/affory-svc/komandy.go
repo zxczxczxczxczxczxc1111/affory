@@ -243,7 +243,8 @@ type Sluzhba struct {
 	// Замер идёт у ТОГО ядра, которое ведёт трафик, по ТОМУ исходящему, которым
 	// он пойдёт. Прежняя проба ходила в локальный SOCKS второго ядра, то есть
 	// мимо туннеля, и на сервере, не несущем ничего, отвечала успехом.
-	zamerit func(ctx context.Context, adres, sekret, teg string) (time.Duration, error)
+	zamerit       func(ctx context.Context, adres, sekret, teg string) (time.Duration, error)
+	zameritRezerv func(ctx context.Context, adres, sekret, teg string) (time.Duration, error)
 	// Несущего называет ЯДРО, а не наше намерение. Два имени групп параметрами:
 	// пакет yadra не знает про генератор конфига и знать не должен.
 	nesyot func(ctx context.Context, adres, sekret, gruppa, tegAvto string) (string, error)
@@ -415,6 +416,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.prochitat = sostoyanie.Prochitat
 	s.zagruzitNastroyki()
 	s.zamerit = yadra.Zaderzhka
+	s.zameritRezerv = yadra.ZaderzhkaRezerv
 	s.nesyot = yadra.Nesyot
 	s.postavitVybor = yadra.PostavitVybor
 	s.vyborGruppy = yadra.VyborGruppy
@@ -1492,6 +1494,22 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 			if podryad < s.provalov {
 				continue
 			}
+			// Недоступность gstatic не доказывает отказ туннеля. Перед разрывом
+			// проверяем другую цель через тот же исходящий, не меняя сервер.
+			_, rezervErr := s.zameritRezerv(ctx, adres, sekret, teg)
+			if ctx.Err() != nil {
+				return
+			}
+			if rezervErr == nil || yadra.ResursyMashiny(rezervErr) {
+				podryad = 0
+				if rezervErr == nil {
+					log.Printf("резервная цель исходящего %s доступна, туннель сохраняем", teg)
+				} else {
+					log.Printf("резервная проба: нехватка ресурсов машины, туннель сохраняем: %v", rezervErr)
+				}
+				continue
+			}
+			log.Printf("резервная цель исходящего %s тоже недоступна: %v", teg, rezervErr)
 			s.otmenit()
 			s.opustit()
 			s.postavit(protokol.SostNeNeset, &protokol.Oshibka{

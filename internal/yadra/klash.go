@@ -45,10 +45,19 @@ const (
 // сервере, который не несёт ничего, отвечала успехом. Здесь спрашивается то же
 // ядро, которое ведёт трафик, про тот же исходящий, которым он пойдёт.
 func Zaderzhka(ctx context.Context, adres, sekret, teg string) (time.Duration, error) {
+	return zaderzhkaURL(ctx, adres, sekret, teg, CelZamera)
+}
+
+// ZaderzhkaRezerv проверяет другой сайт перед аварийным разрывом туннеля.
+func ZaderzhkaRezerv(ctx context.Context, adres, sekret, teg string) (time.Duration, error) {
+	return zaderzhkaURL(ctx, adres, sekret, teg, "https://cp.cloudflare.com/generate_204")
+}
+
+func zaderzhkaURL(ctx context.Context, adres, sekret, teg, cel string) (time.Duration, error) {
 	// Тег приезжает из подписки, то есть его пишет чужой человек. Пробел или
 	// слэш в имени без экранирования это запрос по другому адресу.
 	u := fmt.Sprintf("http://%s/proxies/%s/delay?url=%s&timeout=%d",
-		adres, url.PathEscape(teg), url.QueryEscape(CelZamera), SrokZamera.Milliseconds())
+		adres, url.PathEscape(teg), url.QueryEscape(cel), SrokZamera.Milliseconds())
 
 	telo, kod, err := sprositKlash(ctx, u, sekret)
 	if err != nil {
