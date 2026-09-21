@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NAZVANIYA, OPISANIYA, SOVET, SpravkaProtokolov } from "./SpravkaProtokolov";
+import { NAZVANIYA, OPISANIYA, SOVET, SpravkaProtokolov, ZAGOLOVOK_CHUZHIE } from "./SpravkaProtokolov";
 import { Servery, type SpisokServerov } from "./Servery";
 import { Glavnyy } from "./Glavnyy";
 import type { Server, StatusOtvet } from "../protokol";
@@ -59,7 +59,7 @@ describe("Справка о протоколах", () => {
     render(<SpravkaProtokolov zakryt={vi.fn()} svoi={["hy2", "trojan-ws"]} />);
     const okno = screen.getByTestId("spravka-protokolov");
     const mesto = (s: string) => okno.textContent?.indexOf(s) ?? -1;
-    const granica = mesto("Остальные");
+    const granica = mesto(ZAGOLOVOK_CHUZHIE);
     expect(granica).toBeGreaterThan(0);
     // trojan-ws сведён к trojan: отдельного описания у него нет.
     expect(mesto("hy2")).toBeLessThan(granica);

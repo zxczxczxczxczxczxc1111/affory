@@ -153,12 +153,21 @@ export const NAZVANIYA: Record<string, string> = {
 const PORYADOK = ["tuic", "hy2", "reality-tcp", "trojan", "anytls", "httpupgrade",
                   "ws", "grpc", "ss", "vmess", "xhttp"];
 
+/** Заголовки разделов. Константами, потому что по ним ищет границу тест: с
+ *  формулировкой в двух местах он ломался при каждой правке текста. */
+export const ZAGOLOVOK_SVOI = "Протоколы Affory";
+export const ZAGOLOVOK_CHUZHIE = "Протоколы с других подписок";
+
 /** Справка. `svoi` это транспорты ключей, которые у человека на руках.
  *
  *  Разделение появилось 19.09.2026 при первом осмотре глазами: в окне
  *  одиннадцать протоколов, а в подписке шесть, и четыре хвостовых блока
  *  человек листает мимо того, чего у него нет. Без списка (или с пустым)
- *  показывается всё подряд, как раньше. */
+ *  показывается всё подряд, как раньше.
+ *
+ *  Заголовки разделов названы владельцем 21.09.2026. Имя программы вместо
+ *  лица: ключи и правда исходят отсюда, а от «мы» окно не говорит нигде
+ *  (golos.test.ts). */
 export function SpravkaProtokolov({ zakryt, svoi }: { zakryt: () => void; svoi?: string[] }) {
   const okno = useRef<HTMLDivElement>(null);
   // trojan-ws и vmess-ws это те же протоколы поверх соединения с сайтом, и
@@ -168,8 +177,8 @@ export function SpravkaProtokolov({ zakryt, svoi }: { zakryt: () => void; svoi?:
   const est = PORYADOK.filter((t) => OPISANIYA[t] && nabor.has(t));
   const ostalnye = PORYADOK.filter((t) => OPISANIYA[t] && !nabor.has(t));
   const razdely: { zagolovok?: string; transporty: string[] }[] = est.length
-    ? [{ zagolovok: "Твои протоколы", transporty: est },
-       { zagolovok: "Остальные - если ключ не из твоей подписки", transporty: ostalnye }]
+    ? [{ zagolovok: ZAGOLOVOK_SVOI, transporty: est },
+       { zagolovok: ZAGOLOVOK_CHUZHIE, transporty: ostalnye }]
     : [{ transporty: ostalnye }];
 
   // Esc закрывает, и фокус уезжает внутрь окна: без этого человек, пришедший
