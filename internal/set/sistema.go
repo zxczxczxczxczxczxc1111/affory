@@ -9,9 +9,12 @@
 package set
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -29,7 +32,10 @@ var ErrNetAdaptera = errors.New("нет адаптера с маршрутом �
 // маршрут по умолчанию и при этом не объявлять ни одного DNS-сервера. Молча
 // вернуть нулевой адрес значит положить "invalid Addr" в конфиг ядра, а ядро
 // откажется стартовать с сообщением совсем про другое.
-var ErrNetResolvera = errors.New("у активного адаптера нет резолвера")
+//
+// Отдаётся, только когда резолвера нет НИ У ОДНОГО кандидата: один такой
+// адаптер это обычное дело, и он больше никого не заслоняет.
+var ErrNetResolvera = errors.New("ни один адаптер с выходом в сеть не объявил DNS-сервер")
 
 // Adapter это ровно то, что нужно волне 2, и ничего сверх. Полный
 // IpAdapterAddresses сюда не тащится намеренно: он неудобен в тестах и половина
@@ -47,6 +53,13 @@ type Adapter struct {
 	Adresa    []netip.Addr
 	Shlyuzy   []netip.Addr
 	Resolvery []netip.Addr
+	// Umolchanie значит «в таблице маршрутов есть 0.0.0.0/0 через этот
+	// адаптер». Шлюз у адаптера для этого НЕ достаточен: чужой VPN его тоже
+	// объявляет, наружу при этом не ведя (см. marshruty.go).
+	Umolchanie bool
+	// MetrikaMarshruta складывается с метрикой интерфейса при выборе, ровно как
+	// это делает Windows.
+	MetrikaMarshruta uint32
 }
 
 // Шов. Тесты подменяют перечисление и проверяют выбор, не имея сети вовсе.
@@ -55,41 +68,58 @@ var perechislit = perechislitSistemnye
 // Adaptery отдаёт снимок адаптеров системы.
 func Adaptery() ([]Adapter, error) { return perechislit() }
 
-// vybrat выбирает адаптер, который сейчас несёт трафик наружу.
+// kandidaty отдаёт адаптеры, которые могут нести трафик наружу, лучший первым.
 //
-// Правило простое и намеренно тупое: адаптер должен быть поднят, не быть петлёй
-// и объявлять хотя бы один шлюз, а среди таких берётся наименьшая метрика
-// интерфейса. Это та же величина, что печатает Get-NetIPInterface, и та же, по
-// которой Windows разводит два маршрута по умолчанию.
+// Правило простое и намеренно тупое: адаптер должен быть поднят, не быть петлёй,
+// нести маршрут по умолчанию и объявлять шлюз, а порядок задаёт сумма метрики
+// маршрута и метрики интерфейса. Это те же величины, что печатают Get-NetRoute и
+// Get-NetIPInterface, и та же сумма, по которой Windows разводит два умолчания.
+//
+// Шлюз остаётся в условии вместе с маршрутом: без него Shlyuz читал бы пустой
+// список. Один маршрут без шлюза наружу всё равно не ведёт.
 //
 // Функция чистая: весь разговор с системой остался в perechislit. Поэтому её
 // поведение проверяется списком структур, а не сетью, и правило можно менять,
 // не поднимая ничего.
-func vybrat(spisok []Adapter, krome ...uint32) (Adapter, error) {
+func kandidaty(spisok []Adapter, krome ...uint32) []Adapter {
 	propustit := make(map[uint32]bool, len(krome))
 	for _, i := range krome {
 		propustit[i] = true
 	}
 
-	var luchshiy Adapter
-	nashli := false
+	godnye := make([]Adapter, 0, len(spisok))
 	for _, a := range spisok {
 		switch {
 		case propustit[a.Indeks], a.Sostoyanie != sostoyanieVverh,
-			a.Tip == tipPetli, len(a.Shlyuzy) == 0:
+			a.Tip == tipPetli, !a.Umolchanie, len(a.Shlyuzy) == 0:
 			continue
 		}
-		// Равные метрики разводятся индексом, иначе порядок перечисления
-		// системой становится частью поведения, а он не обещан никем.
-		if !nashli || a.Metrika < luchshiy.Metrika ||
-			(a.Metrika == luchshiy.Metrika && a.Indeks < luchshiy.Indeks) {
-			luchshiy, nashli = a, true
-		}
+		godnye = append(godnye, a)
 	}
-	if !nashli {
+	// Равные метрики разводятся индексом, иначе порядок перечисления системой
+	// становится частью поведения, а он не обещан никем.
+	slices.SortStableFunc(godnye, func(a, b Adapter) int {
+		if c := cmp.Compare(vesAdaptera(a), vesAdaptera(b)); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Indeks, b.Indeks)
+	})
+	return godnye
+}
+
+// vesAdaptera считает в uint64: обе метрики бывают по 4 миллиарда у адаптера,
+// который система считает негодным, и их сумма в uint32 переполнилась бы в ноль,
+// то есть негодный адаптер стал бы лучшим.
+func vesAdaptera(a Adapter) uint64 {
+	return uint64(a.MetrikaMarshruta) + uint64(a.Metrika)
+}
+
+func vybrat(spisok []Adapter, krome ...uint32) (Adapter, error) {
+	g := kandidaty(spisok, krome...)
+	if len(g) == 0 {
 		return Adapter{}, ErrNetAdaptera
 	}
-	return luchshiy, nil
+	return g[0], nil
 }
 
 // AktivnyyAdapter отдаёт имя адаптера, несущего трафик наружу ПРЯМО СЕЙЧАС.
@@ -124,15 +154,47 @@ func ShlyuzKrome(krome ...uint32) (netip.Addr, error) {
 
 func LokalnyyResolver() (netip.Addr, error) { return LokalnyyResolverKrome() }
 
+// LokalnyyResolverKrome берёт резолвер ПЕРВОГО кандидата, который его объявил,
+// а не первого кандидата вообще.
+//
+// Адаптер может нести маршрут по умолчанию и не назвать ни одного DNS-сервера.
+// Прежде это был отказ, и отказ уезжал в подъём туннеля целиком: человек с
+// чужим VPN в системе не мог подключиться ни разу, а сообщение называло ему имя
+// чужого адаптера. Резолвер соседнего канала это рабочий ответ, а отказ - нет.
 func LokalnyyResolverKrome(krome ...uint32) (netip.Addr, error) {
-	a, err := aktivnyy(krome...)
+	spisok, err := perechislit()
 	if err != nil {
 		return netip.Addr{}, err
 	}
-	if len(a.Resolvery) == 0 {
-		return netip.Addr{}, fmt.Errorf("%w: %s", ErrNetResolvera, a.Imya)
+	g := kandidaty(spisok, krome...)
+	if len(g) == 0 {
+		return netip.Addr{}, ErrNetAdaptera
 	}
-	return a.Resolvery[0], nil
+	for _, a := range g {
+		if len(a.Resolvery) > 0 {
+			return a.Resolvery[0], nil
+		}
+	}
+	imena := make([]string, 0, len(g))
+	for _, a := range g {
+		imena = append(imena, a.Imya)
+	}
+	return netip.Addr{}, fmt.Errorf("%w: %s", ErrNetResolvera, strings.Join(imena, ", "))
+}
+
+// pometitUmolchanie отмечает адаптер по таблице маршрутов, а при её отказе по
+// прежнему правилу «есть шлюз значит есть выход».
+//
+// Запасной путь оставлен намеренно: без него отказ таблицы означал бы ноль
+// кандидатов и полную неработоспособность продукта, то есть починка одной
+// жалобы завела бы жалобу пострашнее.
+func pometitUmolchanie(a *Adapter, umolchaniya map[uint32]uint32, errTablitsy error) {
+	if errTablitsy != nil {
+		a.Umolchanie = len(a.Shlyuzy) > 0
+		return
+	}
+	m, est := umolchaniya[a.Indeks]
+	a.Umolchanie, a.MetrikaMarshruta = est, m
 }
 
 func aktivnyy(krome ...uint32) (Adapter, error) {
@@ -173,6 +235,12 @@ func perechislitSistemnye() ([]Adapter, error) {
 		}
 	}
 
+	// Маршруты спрашиваются ОДИН раз на перечисление, а не по адаптеру: между
+	// двумя вызовами таблица меняется, и половина адаптеров получила бы вчерашний
+	// ответ. Отказ таблицы не рушит перечисление: продукт откатывается к прежнему
+	// правилу «есть шлюз значит есть выход», и это хуже, но работает.
+	umolchaniya, errMarshrutov := marshrutyUmolchaniya()
+
 	var itog []Adapter
 	for p := (*windows.IpAdapterAddresses)(unsafe.Pointer(&syroy[0])); p != nil; p = p.Next {
 		a := Adapter{
@@ -200,6 +268,7 @@ func perechislitSistemnye() ([]Adapter, error) {
 			}
 			a.Resolvery = append(a.Resolvery, adr.Unmap())
 		}
+		pometitUmolchanie(&a, umolchaniya, errMarshrutov)
 		itog = append(itog, a)
 	}
 	return itog, nil

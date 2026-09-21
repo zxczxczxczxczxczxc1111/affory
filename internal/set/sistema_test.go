@@ -2,8 +2,10 @@ package set
 
 import (
 	"bytes"
+	"errors"
 	"net/netip"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -33,15 +35,24 @@ func adr(s string) netip.Addr {
 func obraztsy() []Adapter {
 	return []Adapter{
 		{Indeks: 1, Imya: "Loopback", Tip: tipPetli, Sostoyanie: sostoyanieVverh,
-			Shlyuzy: []netip.Addr{adr("127.0.0.1")}, Metrika: 0},
+			Shlyuzy: []netip.Addr{adr("127.0.0.1")}, Metrika: 0, Umolchanie: true},
 		{Indeks: 5, Imya: "Ethernet", Sostoyanie: sostoyanieVverh,
-			Shlyuzy: []netip.Addr{adr("10.7.0.1")}, Resolvery: []netip.Addr{adr("10.7.0.1")}, Metrika: 15},
+			Shlyuzy: []netip.Addr{adr("10.7.0.1")}, Resolvery: []netip.Addr{adr("10.7.0.1")},
+			Metrika: 15, Umolchanie: true},
 		{Indeks: 7, Imya: "Wi-Fi", Sostoyanie: sostoyanieVverh, Metrika: 3},
 		{Indeks: 9, Imya: "Ethernet 2", Sostoyanie: 2,
-			Shlyuzy: []netip.Addr{adr("10.9.0.1")}, Metrika: 1},
+			Shlyuzy: []netip.Addr{adr("10.9.0.1")}, Metrika: 1, Umolchanie: true},
 		{Indeks: 10, Imya: "tun0", Opisanie: "sing-tun Tunnel", Sostoyanie: sostoyanieVverh,
-			Shlyuzy: []netip.Addr{adr("172.19.0.2")}, Metrika: 0},
+			Shlyuzy: []netip.Addr{adr("172.19.0.2")}, Metrika: 0, Umolchanie: true},
 	}
+}
+
+// chuzhoyVPN это Radmin VPN из жалобы 21.09.2026: поднят, не петля, шлюз своей
+// частной сети есть, метрика лучше всех, маршрута наружу нет и DNS нет.
+func chuzhoyVPN() Adapter {
+	return Adapter{Indeks: 21, Imya: "Radmin VPN", Opisanie: "Radmin VPN Ethernet Adapter",
+		Sostoyanie: sostoyanieVverh, Adresa: []netip.Addr{adr("26.13.0.7")},
+		Shlyuzy: []netip.Addr{adr("26.0.0.1")}, Metrika: 1}
 }
 
 func TestVybratBeretMenshuyuMetriku(t *testing.T) {
@@ -120,11 +131,117 @@ func TestResolverOtsutstvuetEtoOshibka(t *testing.T) {
 	prezhniy := perechislit
 	perechislit = func() ([]Adapter, error) {
 		return []Adapter{{Indeks: 5, Imya: "Ethernet", Sostoyanie: sostoyanieVverh,
-			Shlyuzy: []netip.Addr{adr("10.7.0.1")}, Metrika: 15}}, nil
+			Shlyuzy: []netip.Addr{adr("10.7.0.1")}, Metrika: 15, Umolchanie: true}}, nil
 	}
 	defer func() { perechislit = prezhniy }()
 
 	if _, err := LokalnyyResolver(); err == nil {
 		t.Fatal("адаптер без резолвера обязан давать ошибку")
+	}
+}
+
+// Жалоба 21.09.2026. Чужой адаптер выигрывал метрикой, не имел ни выхода
+// наружу, ни DNS, и подъём туннеля падал на каждой попытке.
+func TestChuzhoyVPNNeBeryotsyaZaKanal(t *testing.T) {
+	spisok := append(obraztsy(), chuzhoyVPN())
+	a, err := vybrat(spisok, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Imya != "Ethernet" {
+		t.Fatalf("выбран %q, ожидался Ethernet: у чужого VPN нет маршрута по умолчанию", a.Imya)
+	}
+}
+
+func TestResolverBeryotsyaUSleduyushchegoKandidata(t *testing.T) {
+	// Чужой адаптер здесь НЕСЁТ маршрут по умолчанию (так бывает у корпоративных
+	// клиентов) и всё равно не объявляет DNS. Прежде это был отказ на весь
+	// подъём; теперь берётся резолвер следующего кандидата.
+	bez := chuzhoyVPN()
+	bez.Umolchanie = true
+	prezhniy := perechislit
+	perechislit = func() ([]Adapter, error) { return append(obraztsy(), bez), nil }
+	defer func() { perechislit = prezhniy }()
+
+	r, err := LokalnyyResolverKrome(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.String() != "10.7.0.1" {
+		t.Fatalf("резолвер %v, ожидался 10.7.0.1 от Ethernet", r)
+	}
+}
+
+func TestOshibkaResolveraNazyvaetVsehKandidatov(t *testing.T) {
+	bez := chuzhoyVPN()
+	bez.Umolchanie = true
+	prezhniy := perechislit
+	perechislit = func() ([]Adapter, error) { return []Adapter{bez}, nil }
+	defer func() { perechislit = prezhniy }()
+
+	_, err := LokalnyyResolver()
+	if err == nil {
+		t.Fatal("без резолвера у всех кандидатов обязан быть отказ")
+	}
+	if !errors.Is(err, ErrNetResolvera) || !strings.Contains(err.Error(), "Radmin VPN") {
+		t.Fatalf("отказ %v не называет кандидата", err)
+	}
+}
+
+// Windows складывает метрику маршрута с метрикой интерфейса, и продукт обязан
+// складывать их так же: иначе адаптер с лучшей метрикой интерфейса и худшим
+// маршрутом побеждает там, где система выбрала бы другой.
+func TestVybratSkladyvaetMetrikiMarshrutaIIntefeysa(t *testing.T) {
+	spisok := []Adapter{
+		{Indeks: 5, Imya: "Ethernet", Sostoyanie: sostoyanieVverh, Umolchanie: true,
+			Shlyuzy: []netip.Addr{adr("10.7.0.1")}, Metrika: 25, MetrikaMarshruta: 0},
+		{Indeks: 7, Imya: "Wi-Fi", Sostoyanie: sostoyanieVverh, Umolchanie: true,
+			Shlyuzy: []netip.Addr{adr("10.8.0.1")}, Metrika: 20, MetrikaMarshruta: 100},
+	}
+	a, err := vybrat(spisok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Imya != "Ethernet" {
+		t.Fatalf("выбран %q: 25+0 меньше, чем 20+100", a.Imya)
+	}
+}
+
+func TestVesAdapteraNePerepolnyaetsya(t *testing.T) {
+	// Метрика 0xFFFFFFFF у обоих полей это «система считает путь негодным».
+	// В uint32 их сумма равна 4294967294 минус переполнение, то есть почти ноль,
+	// и негодный адаптер становился бы лучшим.
+	plohoy := Adapter{Indeks: 5, Imya: "Негодный", Sostoyanie: sostoyanieVverh, Umolchanie: true,
+		Shlyuzy: []netip.Addr{adr("10.7.0.1")}, Metrika: 0xFFFFFFFF, MetrikaMarshruta: 0xFFFFFFFF}
+	horoshiy := Adapter{Indeks: 7, Imya: "Ethernet", Sostoyanie: sostoyanieVverh, Umolchanie: true,
+		Shlyuzy: []netip.Addr{adr("10.8.0.1")}, Metrika: 35}
+	a, err := vybrat([]Adapter{plohoy, horoshiy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Imya != "Ethernet" {
+		t.Fatalf("выбран %q, ожидался Ethernet", a.Imya)
+	}
+}
+
+func TestPometitUmolchanieOtkatPriOtkazeTablitsy(t *testing.T) {
+	// Без запасного пути отказ таблицы маршрутов означал бы ноль кандидатов,
+	// то есть починку одной жалобы ценой полной неработоспособности.
+	a := Adapter{Indeks: 5, Shlyuzy: []netip.Addr{adr("10.7.0.1")}}
+	pometitUmolchanie(&a, nil, errors.New("таблица недоступна"))
+	if !a.Umolchanie {
+		t.Fatal("при отказе таблицы шлюз обязан снова считаться признаком выхода")
+	}
+
+	b := Adapter{Indeks: 5, Shlyuzy: []netip.Addr{adr("10.7.0.1")}}
+	pometitUmolchanie(&b, map[uint32]uint32{}, nil)
+	if b.Umolchanie {
+		t.Fatal("таблица прочитана и умолчания нет: шлюз не делает адаптер кандидатом")
+	}
+
+	c := Adapter{Indeks: 5, Shlyuzy: []netip.Addr{adr("10.7.0.1")}}
+	pometitUmolchanie(&c, map[uint32]uint32{5: 256}, nil)
+	if !c.Umolchanie || c.MetrikaMarshruta != 256 {
+		t.Fatalf("метрика маршрута не перенесена: %+v", c)
 	}
 }
