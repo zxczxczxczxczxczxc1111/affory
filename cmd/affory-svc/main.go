@@ -37,7 +37,15 @@ func main() {
 			fmt.Fprintln(vyvod, "служба установлена")
 			return
 		case "prepare-install":
-			if err := podgotovitUstanovku(); err != nil {
+			// Каталог установки приходит вторым аргументом и может не прийти
+			// вовсе: установщик прежней версии его не передаёт, а обновляться
+			// он обязан уметь. Тогда освобождать нечего, и это прежнее
+			// поведение, а не отказ.
+			katalog := ""
+			if len(os.Args) > 2 {
+				katalog = os.Args[2]
+			}
+			if err := podgotovitUstanovku(katalog); err != nil {
 				upast("подготовка установки не удалась: %v", err)
 			}
 			return

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
 // Раз в минуту, а не раз в секунду: перехват это не гонка, а состояние, и
@@ -27,27 +28,41 @@ const periodProksiPoUmolchaniyu = time.Minute
 // прокси мимо нашего туннеля, и внешний адрес окажется не тем, который
 // показывает интерфейс. Это самая обидная форма утечки, потому что всё выглядит
 // работающим.
+// Читаются кусты ВОШЕДШИХ ЛЮДЕЙ, а не свой. Служба живёт под LocalSystem, и её
+// HKEY_CURRENT_USER это куст S-1-5-18, где прокси не бывает: до 21.09.2026
+// сторож смотрел именно туда и не сработал ни разу за всё время.
 func (s *Sluzhba) slediZaProksi(ctx context.Context) {
 	soobshchali := ""
 	for {
-		p, err := s.prochitatProksi()
+		lyudi, err := s.prochitatProksi()
 		s.mu.Lock()
 		nash := s.portProksiNash
 		s.mu.Unlock()
+		// Первый чужой по списку. Их бывает несколько (быстрая смена
+		// пользователей, терминальный сервер), но предупреждение про один это
+		// уже повод открыть настройки, а перечисление всех превратило бы
+		// сообщение в простыню.
+		chuzhoy := set.ProksiCheloveka{}
+		for _, p := range lyudi {
+			if p.Chuzhoy(nash) {
+				chuzhoy = p
+				break
+			}
+		}
 		switch {
 		case err != nil:
 			log.Printf("состояние системного прокси не прочитано: %v", err)
-		case p.Chuzhoy(nash) && p.Adres != soobshchali:
+		case chuzhoy.Adres != "" && chuzhoy.Adres != soobshchali:
 			// Повтор при неизменившемся адресе гасится: одно и то же
 			// предупреждение раз в минуту это способ научить человека его не
 			// читать.
-			soobshchali = p.Adres
-			log.Printf("чужой системный прокси %s (%s)", p.Adres, protokol.KodForeignRegistryHijack)
+			soobshchali = chuzhoy.Adres
+			log.Printf("чужой системный прокси %s у %s (%s)", chuzhoy.Adres, chuzhoy.Sid, protokol.KodForeignRegistryHijack)
 			s.izvestit("proxyHijack", protokol.Oshibka{
 				Kod:   protokol.KodForeignRegistryHijack,
-				Tekst: "системный прокси " + p.Adres + " перехватывает трафик мимо VPN",
+				Tekst: "системный прокси " + chuzhoy.Adres + " перехватывает трафик мимо VPN",
 			})
-		case !p.Chuzhoy(nash):
+		case chuzhoy.Adres == "":
 			soobshchali = ""
 		}
 		select {

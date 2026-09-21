@@ -29,14 +29,71 @@ type Proksi struct {
 	Adres     string
 }
 
-// SistemnyyProksi читает состояние прокси текущего пользователя.
+// Чтения «своего» прокси здесь НЕТ, и это не упущение. Единственный, кто им
+// пользовался, была служба под LocalSystem, то есть читала куст S-1-5-18 и не
+// видела ничего. Функция, которую после починки не зовёт никто, это выключенный
+// механизм, и сторож мёртвого кода ловит такие первым же прогоном.
+
+// ProksiCheloveka это настройка прокси одного вошедшего человека.
+type ProksiCheloveka struct {
+	Sid string
+	Proksi
+}
+
+// ProksiLyudey читает прокси у ВОШЕДШИХ ЛЮДЕЙ, а не у самой службы.
 //
-// HKCU, а не HKLM: браузеры и большинство приложений смотрят именно сюда.
-// Служба работает под SYSTEM, и её собственный HKCU это не то, что видит
-// человек, поэтому вызывающему придётся читать куст пользователя отдельно.
-// Волна 2 читает свой, и это честное ограничение, а не недосмотр.
-func SistemnyyProksi() (Proksi, error) {
-	k, err := registry.OpenKey(registry.CURRENT_USER, putProksi, registry.QUERY_VALUE)
+// Заведено 21.09.2026, потому что сторож перехвата не работал никогда. Служба
+// живёт под LocalSystem, и HKEY_CURRENT_USER для неё это куст S-1-5-18: там
+// прокси не бывает по построению, а значит `foreign-proxy-hijack` не срабатывал
+// ни разу, хотя защиту от v2rayN, nekoray и корпоративного PAC продукт обещал.
+//
+// Кусты берутся из HKEY_USERS: там загружены профили всех, кто сейчас в
+// системе. Отбираются только настоящие люди (S-1-5-21-… и S-1-12-1-… у учётных
+// записей Entra ID); служебные кусты и ветки *_Classes пропускаются. Человек,
+// который не вошёл, прокси и не поднимет, поэтому отсутствие куста это не
+// потеря.
+func ProksiLyudey() ([]ProksiCheloveka, error) {
+	kusty, err := registry.OpenKey(registry.USERS, "", registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return nil, fmt.Errorf("HKEY_USERS не открылся: %w", err)
+	}
+	defer kusty.Close()
+	imena, err := kusty.ReadSubKeyNames(-1)
+	if err != nil {
+		return nil, fmt.Errorf("кусты пользователей не перечислены: %w", err)
+	}
+
+	var itog []ProksiCheloveka
+	var otkazy []error
+	for _, sid := range imena {
+		if !sidCheloveka(sid) {
+			continue
+		}
+		p, err := proksiIzKusta(registry.USERS, sid+`\`+putProksi)
+		if err != nil {
+			// Куст может уйти между перечислением и чтением: человек вышел из
+			// системы. Это не отказ всей проверки, поэтому копим и идём дальше.
+			otkazy = append(otkazy, fmt.Errorf("%s: %w", sid, err))
+			continue
+		}
+		itog = append(itog, ProksiCheloveka{Sid: sid, Proksi: p})
+	}
+	if len(itog) == 0 && len(otkazy) > 0 {
+		return nil, errors.Join(otkazy...)
+	}
+	return itog, nil
+}
+
+// sidCheloveka отсеивает служебные кусты (S-1-5-18, -19, -20) и ветки классов.
+func sidCheloveka(sid string) bool {
+	if strings.HasSuffix(sid, "_Classes") {
+		return false
+	}
+	return strings.HasPrefix(sid, "S-1-5-21-") || strings.HasPrefix(sid, "S-1-12-1-")
+}
+
+func proksiIzKusta(kust registry.Key, put string) (Proksi, error) {
+	k, err := registry.OpenKey(kust, put, registry.QUERY_VALUE)
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
 			return Proksi{}, nil // ключа нет: прокси не настраивали никогда

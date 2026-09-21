@@ -187,6 +187,9 @@ func (s *Sluzhba) spisokRazreshyonnogo(tun set.Adapter) (set.Razreshyonnoe, erro
 		AdresTun:  adres,
 		Kandidaty: kandidaty,
 		Protsessy: puti,
+		// Чужие туннели этой машины. Без них режим «весь трафик» убивал Radmin
+		// VPN и Hamachi молча: их сети не частные и в общий список не входят.
+		ChuzhieSeti: set.SetiChuzhihTunneley(tun.Indeks),
 	}
 	// Шлюз и резолвер это удобство, а не обязательность: без них умрут принтер
 	// и локальная сеть, но туннель будет жить. Поэтому их отсутствие не рушит

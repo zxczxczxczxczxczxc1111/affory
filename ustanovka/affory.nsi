@@ -104,19 +104,19 @@ Section "Affory" SEC_AFFORY
   File /oname=$PLUGINSDIR\affory-svc-setup.exe "${SBORKA}\affory-svc.exe"
   DetailPrint "Остановка Affory и восстановление её сетевых настроек"
   Delete "$PLUGINSDIR\${FAYL_PRICHINY}"
-  nsExec::ExecToLog '"$PLUGINSDIR\affory-svc-setup.exe" prepare-install'
+  nsExec::ExecToLog '"$PLUGINSDIR\affory-svc-setup.exe" prepare-install "$INSTDIR"'
   Pop $0
   ${If} $0 != 0
     !insertmacro PRICHINA "$PLUGINSDIR\${FAYL_PRICHINY}" $1
     MessageBox MB_ICONSTOP "Не удалось подготовить Affory к установке (код $0).$\r$\n$\r$\n$1$\r$\n$\r$\nУстановленные файлы оставлены на месте."
     Abort
   ${EndIf}
-  ; WebView2 живёт дочерним деревом. После завершения одного родителя его
-  ; процессы ещё могут удерживать ресурсы профиля, а File уже начинает замену.
-  ; Закрываем всё дерево и даём Windows закончить освобождение файла.
-  nsExec::Exec 'taskkill /IM affory-ui.exe /F /T'
-  Pop $0
-  Sleep 1000
+  ; Окно и дерево WebView2 закрывает сама prepare-install: она ищет процессы ПО
+  ; ПУТИ ОБРАЗА внутри $INSTDIR и дожидается, пока файлы отпустят. Прежде здесь
+  ; стоял `taskkill /IM affory-ui.exe /F /T` плюс `Sleep 1000`: первый убивал
+  ; любой процесс с таким именем, включая чужой и вторую копию Affory из другого
+  ; каталога, а вторая была ставкой на то, что антивирус и индексатор отпустят
+  ; файл за секунду. Проиграв её, установка падала на первом же File.
   File "${SBORKA}\affory-svc.exe"
   File "${SBORKA}\affory-cli.exe"
   File "${SBORKA}\affory-ui.exe"
@@ -165,8 +165,9 @@ Function un.onInit
 FunctionEnd
 
 Section "Uninstall"
-  nsExec::Exec 'taskkill /IM affory-ui.exe /F'
-  Pop $0
+  ; Окно закрывает сама `uninstall`: она ищет процессы по пути образа внутри
+  ; каталога программы. Прежде здесь стоял `taskkill /IM affory-ui.exe /F`,
+  ; который бил по имени и мог снять чужой процесс-однофамильца.
 
   ; Вопрос про ключи задаёт тот, кто снимает, а не служба: в тихом режиме (/S)
   ; ключи остаются, стирание необратимо и по умолчанию не делается.

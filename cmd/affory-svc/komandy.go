@@ -271,7 +271,7 @@ type Sluzhba struct {
 	glushitIPv6     func() error
 	vernutIPv6      func() error
 	vklyuchitVes    func(set.Razreshyonnoe, bool) error
-	prochitatProksi func() (set.Proksi, error)
+	prochitatProksi func() ([]set.ProksiCheloveka, error)
 	vyklyuchitVes   func() error
 	// Узкая пересборка ОДНОГО правила, списка адресов серверов. Отдельный шов
 	// от vklyuchitVes, потому что зовётся ровно там, где тот бессилен: ядро
@@ -381,7 +381,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.glushitIPv6 = set.GlushitIPv6
 	s.vernutIPv6 = set.VernutIPv6
 	s.vklyuchitVes = set.VklyuchitVesTrafik
-	s.prochitatProksi = set.SistemnyyProksi
+	s.prochitatProksi = set.ProksiLyudey
 	s.vyklyuchitVes = set.VyklyuchitVesTrafik
 	s.suzitServery = set.PerezavestiRazreshyonnyeServery
 	// Значение метода берётся после создания: раньше её просто не у чего взять.

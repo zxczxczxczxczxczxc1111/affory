@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -29,11 +30,78 @@ func razreshenAvtopodyom(args []string) bool {
 	return true
 }
 
-func podgotovitUstanovku() error {
+// podgotovitUstanovku останавливает службу, возвращает сеть и освобождает
+// каталог установки.
+//
+// Освобождение живёт ЗДЕСЬ, а не в установщике, и это правка 21.09.2026.
+// Установщик снимал окно командой `taskkill /IM affory-ui.exe`, то есть по
+// ИМЕНИ: под неё попадает любой процесс с таким именем, включая вторую копию
+// Affory из другого каталога и чужую программу-однофамильца. Правило «искать по
+// пути образа, а не по имени» записано в комментарии к osvoboditKatalog и
+// соблюдалось при снятии, но не при установке.
+//
+// Вторая половина той же правки это ожидание вместо `Sleep 1000`. Секунда была
+// ставкой против недетерминированного держателя: дерево WebView2, антивирус со
+// сканированием при закрытии, индексатор. Проиграв её, установщик падал на
+// первом же File с «Невозможно записать», без единого повтора.
+func podgotovitUstanovku(katalog string) error {
 	if err := ostanovitSluzhbu(); err != nil {
 		return err
 	}
+	if katalog != "" {
+		osvoboditKatalog(katalog)
+		if err := zhdatSvobodnyhFaylov(katalog, zhdatOsvobozhdeniya); err != nil {
+			return err
+		}
+	}
 	return errors.Join(set.VyklyuchitVesTrafik(), set.VernutIPv6())
+}
+
+// Сколько ждать, пока файлы отпустят. Держатель бывает не наш (антивирус,
+// индексатор), поэтому срок щедрый: установка и так идёт секунды, а отказ по
+// занятому файлу стоит человеку целого прохода заново.
+const zhdatOsvobozhdeniya = 20 * time.Second
+
+// faylyUstanovki это то, что установщик будет перезаписывать.
+var faylyUstanovki = []string{"affory-svc.exe", "affory-cli.exe", "affory-ui.exe", "sing-box.exe"}
+
+// zhdatSvobodnyhFaylov ждёт, пока файлы можно будет открыть на запись.
+//
+// Проверка именно открытием: «процессов не осталось» это не то же самое, что
+// «файл отпущен». Windows держит образ, пока не закрыт последний дескриптор, и
+// закрывает его асинхронно после смерти процесса.
+func zhdatSvobodnyhFaylov(katalog string, srok time.Duration) error {
+	konec := time.Now().Add(srok)
+	for {
+		zanyat, err := pervyyZanyatyy(katalog)
+		if zanyat == "" {
+			return nil
+		}
+		if time.Now().After(konec) {
+			return fmt.Errorf("файл %s занят другой программой и не освободился за %s: %w",
+				zanyat, srok, err)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+// pervyyZanyatyy отдаёт имя первого файла, который сейчас нельзя открыть на
+// запись, и причину. Отсутствующий файл свободен: на чистой установке его ещё
+// нет вовсе.
+func pervyyZanyatyy(katalog string) (string, error) {
+	for _, imya := range faylyUstanovki {
+		put := filepath.Join(katalog, imya)
+		f, err := os.OpenFile(put, os.O_WRONLY, 0)
+		if err == nil {
+			_ = f.Close()
+			continue
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		return imya, err
+	}
+	return "", nil
 }
 
 // How long we wait for the SCM to actually do what it was asked. Stopping and
@@ -138,14 +206,7 @@ func ustanovit(putBinarya string) error {
 		return fmt.Errorf("сеть после прежней установки не восстановлена: %w", err)
 	}
 
-	s, err := m.CreateService(imyaSluzhby, putBinarya, mgr.Config{
-		DisplayName: "Affory",
-		Description: "Туннель Affory",
-		StartType:   mgr.StartAutomatic,
-		// LocalSystem and nothing else: machine DPAPI requires it, and so does
-		// writing into Program Files during an update.
-		ServiceStartName: "LocalSystem",
-	})
+	s, err := sozdatSluzhbu(m, putBinarya)
 	if err != nil {
 		return fmt.Errorf("не удалось создать службу: %w", err)
 	}
@@ -188,6 +249,12 @@ func ustanovit(putBinarya string) error {
 }
 
 func snyat() error {
+	// Окно закрывается ЗДЕСЬ, по пути образа, а не установщиком по имени
+	// процесса. Прежде это делал `taskkill /IM affory-ui.exe /F` из NSIS, то
+	// есть под раздачу попадал любой процесс с таким именем. Повторный вызов
+	// внутри udalitKatalogProgrammy не мешает: функция идемпотентна.
+	osvoboditKatalog(katalogDlyaUdaleniya())
+
 	m, err := mgr.Connect()
 	if err != nil {
 		return fmt.Errorf("нет доступа к диспетчеру служб: %w", err)
@@ -255,4 +322,43 @@ func zhdatSostoyaniya(s *mgr.Service, hotim svc.State) error {
 		time.Sleep(300 * time.Millisecond)
 	}
 	return fmt.Errorf("служба не пришла в состояние %d за %s", hotim, zhdatSCM)
+}
+
+// sozdatSluzhbu создаёт службу, переживая ERROR_SERVICE_MARKED_FOR_DELETE.
+//
+// DeleteService только ПОМЕЧАЕТ службу к удалению: она исчезает, когда закроется
+// последний открытый на неё дескриптор. Держать его может кто угодно: открытая
+// оснастка services.msc, вкладка «Службы» в диспетчере задач, агент мониторинга,
+// антивирус с контролем служб. До 21.09.2026 создание шло сразу за удалением, и
+// открытый services.msc при переустановке давал отказ «не удалось создать
+// службу», за которым не стояло ничего, кроме окна на втором мониторе.
+//
+// Ждём столько же, сколько отведено SCM на остальные его асинхронные дела.
+func sozdatSluzhbu(m *mgr.Mgr, putBinarya string) (*mgr.Service, error) {
+	konfig := mgr.Config{
+		DisplayName: "Affory",
+		Description: "Туннель Affory",
+		StartType:   mgr.StartAutomatic,
+		// LocalSystem and nothing else: machine DPAPI requires it, and so does
+		// writing into Program Files during an update.
+		ServiceStartName: "LocalSystem",
+	}
+	konec := time.Now().Add(zhdatSCM)
+	for {
+		s, err := m.CreateService(imyaSluzhby, putBinarya, konfig)
+		if err == nil {
+			return s, nil
+		}
+		if !pometkaNaUdalenie(err) || time.Now().After(konec) {
+			return nil, err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// pometkaNaUdalenie узнаёт единственный код, который лечится ожиданием.
+// Прочие отказы создания (нет прав, имя занято живой службой) ожиданием не
+// лечатся, и повторять их значит тянуть установку тридцать секунд впустую.
+func pometkaNaUdalenie(err error) bool {
+	return errors.Is(err, windows.ERROR_SERVICE_MARKED_FOR_DELETE)
 }

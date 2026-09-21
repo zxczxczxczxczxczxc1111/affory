@@ -74,6 +74,12 @@ type Razreshyonnoe struct {
 	// Protsessy это полные пути ядер и самой службы.
 	Protsessy []string
 
+	// ChuzhieSeti это сети чужих туннелей, поднятых на этой машине прямо сейчас
+	// (Radmin VPN, Hamachi, Tailscale). Пустой список это обычный случай:
+	// разрешаются только те, чей адаптер в системе действительно есть, см.
+	// chuzhie_seti.go.
+	ChuzhieSeti []string
+
 	// Служебных адресов отдельным полем здесь НЕТ, и это разобрано 02.09.2026.
 	//
 	// Пункт спеки просил три вещи: адрес подписки, адрес снимка состояния и
@@ -331,6 +337,10 @@ func pravilaRazresheniya(r Razreshyonnoe) [][]string {
 	if r.Shlyuz.IsValid() {
 		mestnye = append(mestnye, r.Shlyuz.String())
 	}
+	// Сети чужих туннелей, которые есть на этой машине. Список собран по живым
+	// адаптерам, а не вбит списком: Radmin и Hamachi заняли настоящие публичные
+	// /8, и постоянная дыра в них была бы дырой мимо туннеля.
+	mestnye = append(mestnye, r.ChuzhieSeti...)
 	dobavit(PravAllowLan, "remoteip="+strings.Join(mestnye, ","))
 
 	// 4. Порт 53 к локальному резолверу: на нём держится повторный резолв по TTL.

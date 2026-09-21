@@ -649,3 +649,29 @@ func TestPerezavestiServeryBezAdresovSnimaetPravilo(t *testing.T) {
 		t.Errorf("единственным вызовом обязано быть снятие, а это: %s", s)
 	}
 }
+
+func TestPraviloMestnyhNesyotSetiChuzhihTunneley(t *testing.T) {
+	// Список собирает вызывающий по живым адаптерам; правило обязано его
+	// донести. Без этого Radmin VPN умирал под блокировкой молча.
+	r := Razreshyonnoe{
+		AdresTun:    netip.MustParseAddr("172.19.0.1"),
+		ChuzhieSeti: []string{"26.0.0.0/8"},
+	}
+	nashli := false
+	for _, k := range pravilaRazresheniya(r) {
+		if k[0] != PravAllowLan {
+			continue
+		}
+		nashli = true
+		stroka := strings.Join(k, " ")
+		if !strings.Contains(stroka, "26.0.0.0/8") {
+			t.Fatalf("сеть чужого туннеля не доехала до правила: %s", stroka)
+		}
+		if !strings.Contains(stroka, "192.168.0.0/16") {
+			t.Fatalf("частные сети потеряны: %s", stroka)
+		}
+	}
+	if !nashli {
+		t.Fatal("правила местных сетей нет вовсе")
+	}
+}

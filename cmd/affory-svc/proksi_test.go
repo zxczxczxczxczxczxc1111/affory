@@ -55,8 +55,11 @@ func TestSvobodnyyPortProksiBeryotsya(t *testing.T) {
 func TestChuzhoyProksiNazyvaetsyaOdinRaz(t *testing.T) {
 	s := podstavnaya(t, nil)
 	s.periodProksi = 2 * time.Millisecond
-	s.prochitatProksi = func() (set.Proksi, error) {
-		return set.Proksi{Vklyuchen: true, Adres: "127.0.0.1:8888"}, nil
+	s.prochitatProksi = func() ([]set.ProksiCheloveka, error) {
+		return []set.ProksiCheloveka{{
+			Sid:    "S-1-5-21-1-2-3-1001",
+			Proksi: set.Proksi{Vklyuchen: true, Adres: "127.0.0.1:8888"},
+		}}, nil
 	}
 
 	id, sob := s.Podpisatsya()

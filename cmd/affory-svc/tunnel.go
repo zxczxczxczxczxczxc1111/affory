@@ -33,6 +33,11 @@ var imyaYadraTun = yadra.ImyaYadra
 // секунд умеет только тест, который через месяц закомментируют.
 var zhdatAdaptera = 20 * time.Second
 
+// Срок ожидания ухода прежнего туннеля. Короткий намеренно: свой адаптер
+// исчезает за доли секунды после смерти ядра, а всё, что живёт дольше, это
+// чужой туннель, ждать которого незачем.
+var zhdatUhodaTun = 3 * time.Second
+
 func putKonfigaTun() string {
 	return sostoyanie.KatalogDannyh() + `\sing-box.json`
 }
@@ -44,6 +49,13 @@ func putKonfigaTun() string {
 // защищает не порядок, а откат: замер идёт по живому туннелю, и его провал
 // туннель опускает.
 func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
+	// Ждём ухода своего туннеля от прошлого подъёма ПЕРЕД сборкой конфига: она
+	// выбирает свободную подсеть, а наш собственный, ещё живой адаптер держит и
+	// адрес, и маршрут на него, то есть выглядел бы занявшим её чужаком.
+	uhod, otmUhod := context.WithTimeout(ctx, zhdatUhodaTun)
+	set.ZhdatIscheznoveniya(uhod, imyaAdapteraTun)
+	otmUhod()
+
 	portClash, sekret, err := s.sobratTunProverennyy(putKonfigaTun())
 	if err != nil {
 		return set.Adapter{}, err
@@ -56,6 +68,16 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 	// Жалобы прошлого подъёма забываются ЗДЕСЬ, до старта ядра: оставленные,
 	// они обвинили бы драйвер в отказе, к которому он отношения не имеет.
 	yadra.ZabytZhalobyYadra()
+
+	// Снимок адаптеров ДО запуска ядра нужен ровно для одного: отличить наш
+	// туннель от чужого. Имя tun0 и адрес 172.19.0.1/30 это умолчания sing-box,
+	// то есть у другого клиента на том же ядре они те же, а "wintun" в описании
+	// несёт всякий туннель на этом драйвере. Отличает только время появления.
+	// Отказ снимка не рушит подъём: ищем как прежде, но вслух.
+	bylo, err := set.SnyatSnimok()
+	if err != nil {
+		log.Printf("снимок адаптеров не снят, чужой туннель может быть принят за наш: %v", err)
+	}
 
 	go func() {
 		// Состояние туннеля ведёт основной путь Connect, поэтому обработчика у
@@ -74,7 +96,7 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 
 	ozhid, otm := context.WithTimeout(ctx, zhdatAdaptera)
 	defer otm()
-	a, err := set.ZhdatAdapterPolno(ozhid, imyaAdapteraTun)
+	a, err := set.ZhdatAdapterPolno(ozhid, imyaAdapteraTun, bylo)
 	if err != nil {
 		return set.Adapter{}, otkazOzhidaniyaAdaptera(err, zhalobaNaDrayver())
 	}
@@ -125,6 +147,13 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool) ([]byte, int, string, e
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("локальный резолвер не определён: %w", err)
 	}
+	// Подсеть туннеля выбирается по живой системе, а не берётся константой:
+	// 172.19.0.1 это адрес посреди пула Docker Desktop, и на машине с парой
+	// созданных сетей он оказывается шлюзом чужой сети (см. set/podset_tun.go).
+	podsetTun, ushli := set.SvobodnayaPodsetTun()
+	if ushli {
+		log.Printf("обычная подсеть туннеля занята, взята %s", podsetTun)
+	}
 	puti, err := s.putiProtsessov()
 	if err != nil {
 		return nil, 0, "", err
@@ -155,9 +184,10 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool) ([]byte, int, string, e
 		trafik = &merged
 	}
 	telo, err := genkonfig.SingBox(genkonfig.Vhod{
-		Trafik: trafik,
-		Server: vybrannyy,
-		Rezhim: rezhimNabora(n),
+		Trafik:   trafik,
+		AdresTun: podsetTun.String(),
+		Server:   vybrannyy,
+		Rezhim:   rezhimNabora(n),
 		// Кандидаты это ВСЕ серверы, а не только выбранный: urltest пробит их
 		// все, и адрес, не попавший в правило петли, это петля на старте.
 		Servery: n.Servery,
