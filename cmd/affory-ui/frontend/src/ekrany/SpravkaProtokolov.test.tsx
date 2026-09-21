@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NAZVANIYA, OPISANIYA, SpravkaProtokolov } from "./SpravkaProtokolov";
+import { NAZVANIYA, OPISANIYA, SOVET, SpravkaProtokolov } from "./SpravkaProtokolov";
 import { Servery, type SpisokServerov } from "./Servery";
 import { Glavnyy } from "./Glavnyy";
 import type { Server, StatusOtvet } from "../protokol";
@@ -65,6 +65,21 @@ describe("Справка о протоколах", () => {
     expect(mesto("hy2")).toBeLessThan(granica);
     expect(mesto("trojan")).toBeLessThan(granica);
     expect(mesto("vmess")).toBeGreaterThan(granica);
+  });
+
+  it("первым предлагает то, что лучше на замере", () => {
+    // 21.09.2026 справка советовала anytls и ставила его первым, а замер смеси
+    // голоса и трансляции от 20.09 показал ровно обратное: 101.5 мс против
+    // 64.4 у tuic и ни одного залипания у последнего за восемь замеров.
+    // Человек, берущий верхнюю строку не глядя, брал худшее из живых ключей.
+    render(<SpravkaProtokolov zakryt={vi.fn()} svoi={["tuic", "anytls", "trojan"]} />);
+    const okno = screen.getByTestId("spravka-protokolov");
+    const mesto = (s: string) => okno.textContent?.indexOf(s) ?? -1;
+
+    expect(mesto("tuic")).toBeGreaterThan(-1);
+    expect(mesto("tuic")).toBeLessThan(mesto("anytls"));
+    // И совет сверху зовёт туда же, куда порядок: разойтись им нельзя.
+    expect(SOVET[0]).toContain("tuic");
   });
 
   it("закрывается по Escape", () => {
