@@ -451,6 +451,14 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 			"type": "anytls", "tag": teg,
 			"server": s.Host, "server_port": s.Port, "password": s.Parol,
 			"tls": tlsSPinom(s, sni),
+			// Три тёплых сессии вместо нуля (умолчание ядра).
+			//
+			// AnyTLS для того и сделан, чтобы не заводить TLS-соединение на
+			// каждый поток, но при min_idle_session=0 проверка раз в 30 секунд
+			// закрывает ВСЕ простаивающие, и следующая вкладка снова платит
+			// рукопожатием. Держать три штуки дешевле и тише: долгоживущее
+			// соединение выглядит обычно, пачка новых рукопожатий нет.
+			"min_idle_session": 3,
 		}
 		dobavitUtls(o, s)
 		dobavitAlpn(o, s)
@@ -473,7 +481,10 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 		if s.RezhimUDP != "" {
 			o["udp_relay_mode"] = s.RezhimUDP
 		}
-		dobavitUtls(o, s)
+		// utls тут НЕ ставится, и это проверено живым подъёмом 21.09.2026:
+		// ядро отвечает «unsupported usage for uTLS» на каждое соединение, а
+		// `sing-box check` такой конфиг принимает молча и с кодом 0. Наружу это
+		// приехало бы как «tuic перестал работать без причины».
 		dobavitAlpn(o, s)
 		return o, nil
 
@@ -582,9 +593,29 @@ func dobavitHost(tr map[string]any, s protokol.Server) {
 	tr["headers"] = map[string]any{"Host": s.HostZagolovka}
 }
 
-// dobavitUtls только по явной просьбе ссылки. Для транспортов без REALITY
-// отпечаток не обязателен, а включённый без спроса utls меняет рукопожатие там,
-// где его никто не просил менять.
+// dobavitUtls ставит браузерное рукопожатие ВСЕГДА, где есть TLS.
+//
+// До 21.09.2026 отпечаток брался только из ссылки, а стоял он лишь у reality.
+// Значит trojan, anytls и httpupgrade ходили с родным рукопожатием Go, и вот
+// что снято в тот день с живого пользователя на входе trojan (tcpdump на
+// сервере, разбор ClientHello):
+//
+//	расширения: ec_point_formats, renegotiation_info, extended_master_secret,
+//	            signed_certificate_timestamp, status_request, supported_groups,
+//	            signature_algorithms, signature_algorithms_cert,
+//	            supported_versions, key_share
+//
+// Ни server_name, ни ALPN, ни одного GREASE. Это подпись crypto/tls, а не
+// браузера: Chrome кладёт GREASE в четыре места и ALPN всегда. По такому
+// ClientHello соединение отличается от браузерного первым же пакетом.
+//
+// Заодно чинится ALPN: пресет chrome в utls перезаписывает NextProtos на
+// h2/http1.1 (u_tls_extensions.go, writeToUConn), то есть расширение появляется
+// само. Сервер его не выбирает, и это безопасно: checkALPN в crypto/tls при
+// пустом ответе сервера возвращает nil для всего, кроме QUIC.
+//
+// К QUIC (hy2, tuic) не относится: там ядро требует STDConfig, которого у
+// utls-конфига нет, и рукопожатие строит quic-go.
 // tlsSPinom это блок TLS для ВСЕХ протоколов, кроме reality. Пин добавляется
 // только когда он есть, и он ПОВЕРХ цепочки, а не вместо неё: insecure остаётся
 // выключенным всегда.
@@ -607,9 +638,6 @@ func tlsSPinom(s protokol.Server, sni string) map[string]any {
 }
 
 func dobavitUtls(o map[string]any, s protokol.Server) {
-	if s.Fp == "" {
-		return
-	}
 	tls, est := o["tls"].(map[string]any)
 	if !est {
 		return

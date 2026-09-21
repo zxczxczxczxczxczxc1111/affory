@@ -116,19 +116,47 @@ func TestZagolovokHostIzSsylkiDoezzhaetDoYadra(t *testing.T) {
 	}
 }
 
-// Без fp в ссылке utls на обычном TLS не появляется.
+// Без fp в ссылке utls на обычном TLS обязан появиться САМ.
 //
-// Включённый без спроса utls меняет рукопожатие там, где менять его никто не
-// просил: транспорт без REALITY этого не требует, а отпечаток чужого браузера
-// на обычном ws это ложь о себе без всякой пользы.
-func TestBezOtpechatkaNaObychnomTlsNetUtls(t *testing.T) {
+// Перевёрнут 21.09.2026. До того дня проверка требовала обратного, и из-за неё
+// trojan, anytls и httpupgrade ходили с рукопожатием Go: отпечаток стоял только
+// в reality-ссылках. Снятый с сервера ClientHello живого пользователя не нёс ни
+// server_name, ни ALPN, ни одного GREASE — то есть отличался от браузерного
+// первым же пакетом.
+func TestBezOtpechatkaNaObychnomTlsUtlsVsyoRavnoEst(t *testing.T) {
 	s := protokol.Server{
 		Id: "p", Transport: "ws", Host: "203.0.113.20", Port: 443,
 		Uuid: "11111111-2222-3333-4444-555555555555", Sni: "a.example",
 	}
 	v := ishodyashchiyProby(t, s)
-	if _, est := v["tls"].(map[string]any)["utls"]; est {
-		t.Fatal("utls включён без спроса: рукопожатие подменено там, где не просили")
+	utls, est := v["tls"].(map[string]any)["utls"].(map[string]any)
+	if !est {
+		t.Fatal("utls не появился: рукопожатие Go узнаётся по отсутствию GREASE и ALPN")
+	}
+	if utls["fingerprint"] != "chrome" {
+		t.Fatalf("отпечаток %v, без просьбы ссылки ожидался chrome", utls["fingerprint"])
+	}
+}
+
+// У QUIC-протоколов utls быть НЕ должно.
+//
+// Ядро отвечает «unsupported usage for uTLS» на каждое соединение, а check
+// принимает такой конфиг молча и с кодом 0 (проверено подъёмом 21.09.2026).
+// Сторож живёт рядом с проверкой выше не случайно: она требует utls везде, где
+// есть TLS, и без этой пары первый же «везде» унёс бы tuic целиком.
+func TestUQuicProtokolovUtlsNet(t *testing.T) {
+	dlya := []protokol.Server{
+		{Id: "t", Transport: "tuic", Host: "203.0.113.20", Port: 443, Sni: "a.example",
+			Uuid: "11111111-2222-3333-4444-555555555555", Parol: "p"},
+		{Id: "h", Transport: "hy2", Host: "203.0.113.20", Port: 443, Sni: "a.example", Parol: "p"},
+	}
+	for _, s := range dlya {
+		t.Run(s.Transport, func(t *testing.T) {
+			v := ishodyashchiyProby(t, s)
+			if _, est := v["tls"].(map[string]any)["utls"]; est {
+				t.Fatal("utls уехал в QUIC: ядро откажет в каждом соединении, а check промолчит")
+			}
+		})
 	}
 }
 
@@ -146,5 +174,27 @@ func TestSOtpechatkomNaObychnomTlsUtlsEst(t *testing.T) {
 	}
 	if utls["fingerprint"] != "chrome" {
 		t.Fatalf("отпечаток %v, в ссылке был chrome", utls["fingerprint"])
+	}
+}
+
+// AnyTLS обязан держать тёплые сессии.
+//
+// Умолчание ядра это ноль: проверка раз в 30 секунд закрывает все простаивающие
+// сессии, и каждая следующая вкладка платит новым TLS-рукопожатием. Смысл
+// протокола ровно обратный, а пачка рукопожатий к одному адресу это то, из-за
+// чего адрес и замораживают.
+func TestAnytlsDerzhitTyoplyeSessii(t *testing.T) {
+	s := protokol.Server{
+		Id: "a", Transport: "anytls", Host: "203.0.113.20", Port: 2087,
+		Parol: "p", Sni: "a.example",
+	}
+	v := ishodyashchiyProby(t, s)
+	n, est := v["min_idle_session"]
+	if !est {
+		t.Fatal("min_idle_session не задан: ядро закроет простаивающие сессии через 30 с")
+	}
+	// float64: число прошло через json.Unmarshal, как и всё остальное здесь.
+	if n != float64(3) {
+		t.Fatalf("min_idle_session = %v, ожидалось 3", n)
 	}
 }

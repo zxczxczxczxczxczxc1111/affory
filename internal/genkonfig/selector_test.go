@@ -101,14 +101,19 @@ func TestChislaUrltestSverenySoSpekoy(t *testing.T) {
 	k := mnogoKandidatov(t)
 	avto := poTegu(t, k, TegAvto)
 	sverit := map[string]any{
-		"url":          "https://www.gstatic.com/generate_204",
-		"interval":     "3m",
+		"url": "https://www.gstatic.com/generate_204",
+		// 10m, а не 3m из спеки. Число поднято 21.09.2026 осознанно и против
+		// спеки: все наши ключи живут на ОДНОМ адресе, а urltest пробует всех
+		// кандидатов разом, то есть каждый цикл бьёт одним залпом из пяти TLS и
+		// трёх QUIC по одному IP. Спека писалась до того, как это стало
+		// поводом заморозить адрес.
+		"interval":     "10m",
 		"tolerance":    float64(50),
 		"idle_timeout": "30m",
 	}
 	for pole, hotim := range sverit {
 		if avto[pole] != hotim {
-			t.Fatalf("urltest.%s = %v, а по спеке §6 должно быть %v", pole, avto[pole], hotim)
+			t.Fatalf("urltest.%s = %v, а должно быть %v", pole, avto[pole], hotim)
 		}
 	}
 }
