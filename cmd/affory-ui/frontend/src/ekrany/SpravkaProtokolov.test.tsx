@@ -121,9 +121,13 @@ describe("Справка о протоколах", () => {
   it("у каждого протокола названа и польза, и цена", () => {
     // Описание из одних достоинств это реклама, а не справка: выбрать по ней
     // нельзя, потому что выбор это всегда обмен одного на другое.
+    //
+    // Порог 15, а не 20: 21.09.2026 владелец сократил тексты вдвое, и цена
+    // tuic «Не работает в Happ.» это целых 19 знаков. Сторож здесь стоит
+    // против ПУСТОЙ цены и отписки вроде «нет», а не против краткости.
     for (const [t, o] of Object.entries(OPISANIYA)) {
-      expect(o.horosho.length, t).toBeGreaterThan(20);
-      expect(o.ceny.length, t).toBeGreaterThan(20);
+      expect(o.horosho.length, t).toBeGreaterThan(15);
+      expect(o.ceny.length, t).toBeGreaterThan(15);
     }
   });
 });
