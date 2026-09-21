@@ -249,18 +249,26 @@ func ustanovit(putBinarya string) error {
 }
 
 func snyat() error {
-	// Окно закрывается ЗДЕСЬ, по пути образа, а не установщиком по имени
-	// процесса. Прежде это делал `taskkill /IM affory-ui.exe /F` из NSIS, то
-	// есть под раздачу попадал любой процесс с таким именем. Повторный вызов
-	// внутри udalitKatalogProgrammy не мешает: функция идемпотентна.
-	osvoboditKatalog(katalogDlyaUdaleniya())
-
 	m, err := mgr.Connect()
 	if err != nil {
 		return fmt.Errorf("нет доступа к диспетчеру служб: %w", err)
 	}
 	defer m.Disconnect()
-	return snyatCherez(m, true)
+	if err := snyatCherez(m, true); err != nil {
+		return err
+	}
+	// Окно закрывается ЗДЕСЬ, по пути образа, а не установщиком по имени
+	// процесса. Прежде это делал `taskkill /IM affory-ui.exe /F` из NSIS, то
+	// есть под раздачу попадал любой процесс с таким именем.
+	//
+	// ПОСЛЕ снятия службы, а не до, и это не вкусовщина. Служба лежит в том же
+	// каталоге, то есть освобождение каталога убивает и её. 21.09.2026 вызов
+	// стоял первой строкой: служба умирала до того, как SCM успевал ответить на
+	// Stop, тот возвращал «The pipe has been ended», снятие падало целиком и не
+	// доходило ни до стирания данных, ни до удаления каталога. Человек нажимал
+	// «удалить и стереть ключи», окно закрывалось, а на машине оставалось всё.
+	osvoboditKatalog(katalogDlyaUdaleniya())
+	return nil
 }
 
 func snyatCherez(m *mgr.Mgr, raspechatat bool) error {
