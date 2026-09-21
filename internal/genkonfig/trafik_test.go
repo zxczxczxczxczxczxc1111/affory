@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
@@ -65,13 +66,40 @@ func TestSelectiveTrafficKeepsExplicitRoutesAndDNS(t *testing.T) {
 	}
 }
 
-func TestTrafficRejectsUnknownServiceAndStrictDirectConflict(t *testing.T) {
+// Неизвестный сервис конфиг НЕ рушит, но и правила из него не делает.
+//
+// Прежде здесь стоял отказ, и он стоил жалобы 21.09.2026: каталог едет внутри
+// программы, WhatsApp ушёл из него 16.09.2026, а правило осталось лежать в
+// наборе человека. Отказ сборки означал, что подключиться нельзя ВООБЩЕ, и
+// снять правило было негде: окно рисует список из каталога. Годность ввода
+// проверяет setRules, набор на диске чинится приведением на чтении, а сборка
+// конфига просто не выдумывает доменов.
+func TestNeizvestnyySeriviNeRushitKonfigINeDayotPravil(t *testing.T) {
 	v := obraztsovyyVhod()
 	v.Trafik = &protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikVPN, Servisy: []protokol.PraviloServisa{{Id: "imaginary", Marshrut: protokol.TrafikVPN}}}
-	if _, err := SingBox(v); err == nil {
-		t.Fatal("unknown bundle silently disappeared")
+	k := sobrat(t, v)
+	telo, err := json.Marshal(k)
+	if err != nil {
+		t.Fatal(err)
 	}
-	v.Trafik.Servisy = nil
+	if strings.Contains(string(telo), "imaginary") {
+		t.Fatalf("правило неизвестного сервиса уехало в конфиг: %s", telo)
+	}
+	// Правила трафика собираются те же, что и без сервиса вовсе.
+	bez := obraztsovyyVhod()
+	bez.Trafik = &protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikVPN}
+	teloBez, err := json.Marshal(sobrat(t, bez))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(telo) != string(teloBez) {
+		t.Fatal("конфиг с осиротевшим правилом отличается от конфига без него")
+	}
+}
+
+func TestStrictDirectConflictOtvergaetsya(t *testing.T) {
+	v := obraztsovyyVhod()
+	v.Trafik = &protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikVPN}
 	v.Trafik.PoUmolchaniyu, v.VesTrafik = protokol.TrafikPryamo, true
 	if _, err := SingBox(v); err == nil {
 		t.Fatal("strict protection accepted direct traffic")

@@ -297,7 +297,7 @@ func TestDobavlenieServeraPriVklyuchennomRezhimePeresobiraetPravila(t *testing.T
 		poslednie = r.Kandidaty
 		return nil
 	}
-	s.prochitatProksi = func() (set.Proksi, error) { return set.Proksi{}, nil }
+	s.prochitatProksi = func() ([]set.ProksiCheloveka, error) { return nil, nil }
 	s.sobratAdresa = func() ([]netip.Addr, error) {
 		n, _ := s.nabor()
 		out := make([]netip.Addr, 0, len(n.Servery))

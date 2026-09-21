@@ -156,8 +156,16 @@ func proveritTrafik(p protokol.PravilaTrafika, bylo protokol.PravilaTrafika) (pr
 		if !marshrutGoden(service.Marshrut) {
 			return bad("неизвестный маршрут сервиса")
 		}
-		if _, err := katalog.Domeny(service.Id); err != nil {
-			return bad(err.Error())
+		if !katalog.Est(service.Id) {
+			// Осиротевшее правило (сервис ушёл из каталога с новой версией) не
+			// делает негодным ВЕСЬ список: окно шлёт правила целиком, и человек,
+			// у которого такое правило лежит, иначе не может сохранить ни одной
+			// правки. Оно просто выбрасывается - его же убирает и приведение
+			// набора на чтении. Жалоба 21.09.2026, сервис whatsapp.
+			if slices.ContainsFunc(bylo.Servisy, func(s protokol.PraviloServisa) bool { return s.Id == service.Id }) {
+				continue
+			}
+			return bad(fmt.Sprintf("неизвестный сервис %q", service.Id))
 		}
 		if prev, exists := services[service.Id]; exists {
 			if prev != service.Marshrut {

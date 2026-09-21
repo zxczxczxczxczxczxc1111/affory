@@ -42,6 +42,16 @@ func Chitat() (Katalog, error) {
 	return k, nil
 }
 
+// Est отвечает, знает ли ТЕКУЩИЙ каталог такой сервис.
+//
+// Вопрос не праздный: каталог едет внутри программы и меняется с её выпусками.
+// WhatsApp и Netflix ушли из него 16.09.2026, и правило, записанное прежней
+// версией, осталось лежать в наборе, указывая в пустоту.
+func Est(id string) bool {
+	_, err := Domeny(id)
+	return err == nil
+}
+
 func Domeny(id string) ([]string, error) {
 	k, err := Chitat()
 	if err != nil {
