@@ -1,11 +1,53 @@
 package sostoyanie
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+)
 
 // Two directories, two owners. Program files are read-only to the user; data is
 // SYSTEM-only with inheritance broken, because it inherits from C:\ProgramData
 // otherwise, and that hands every authenticated user a write bit on new files.
-func KatalogProgrammy() string { return filepath.Join(`C:\Program Files`, "Affory") }
+
+// katalogProgrammy пуст у службы и заполнен у подменщика: см. ниже.
+var katalogProgrammy string
+
+// KatalogProgrammy отдаёт каталог, где лежат наши файлы: ядро, окно, служба.
+//
+// Это каталог СВОЕГО бинаря, а не постоянный путь. До 21.09.2026 здесь стояла
+// константа `C:\Program Files\Affory`, а установщик при этом спрашивал каталог
+// и слушался ответа. Человек, поставивший программу на другой диск, получал
+// отказ на первом же шаге установки («каталог программы не читается»), причём
+// файлы к тому моменту уже лежали там, где он просил. По той же константе
+// ищется ядро, окно для автозапуска и хвосты обновления, то есть установка
+// мимо `C:\Program Files` не работала целиком, просто падала раньше всего
+// остального.
+//
+// Свой путь знают все, кому этот каталог нужен: службу запускает SCM по
+// её ImagePath, подкоманды запускает установщик из каталога установки.
+// Исключение ровно одно, и оно подменяет путь явно (PodmenitKatalogProgrammy).
+func KatalogProgrammy() string {
+	if katalogProgrammy != "" {
+		return katalogProgrammy
+	}
+	put, err := os.Executable()
+	if err != nil {
+		// Последняя опора. GetModuleFileName не отказывает на живой машине, но
+		// пустая строка здесь увела бы службу в корень диска молча, а прежний
+		// постоянный путь верен для всех, кто согласился с каталогом по
+		// умолчанию, то есть для подавляющего большинства.
+		return filepath.Join(`C:\Program Files`, "Affory")
+	}
+	return filepath.Dir(put)
+}
+
+// PodmenitKatalogProgrammy называет каталог программы явно.
+//
+// Зовётся ОДНИМ местом: подменщиком обновления. Он копия службы, работающая из
+// временного каталога, и свой путь ему врёт — каталог программы он получает
+// аргументом. Без этой строки любой будущий вызов KatalogProgrammy внутри
+// подменщика тихо указал бы в `%TEMP%`.
+func PodmenitKatalogProgrammy(put string) { katalogProgrammy = put }
 
 // korenDannyh пуст в проде и означает `C:\ProgramData\Affory`.
 //

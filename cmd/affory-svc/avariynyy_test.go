@@ -76,3 +76,29 @@ func TestAvariynyyFaylNeVydumyvaetPravil(t *testing.T) {
 		}
 	}
 }
+
+// Команды в листе зовут в ТОТ каталог, куда программу поставили.
+//
+// Установщик спрашивает каталог и слушается ответа. Человек без интернета
+// набирает команды с этого листа вслепую, и путь, которого у него нет, отвечает
+// «системе не удаётся найти указанный путь» — то есть выглядит как вторая
+// поломка поверх пропавшей сети.
+func TestAvariynyyFaylZovyotVSvoyKatalog(t *testing.T) {
+	kat := t.TempDir()
+	if err := polozhitAvariynyy(kat); err != nil {
+		t.Fatal(err)
+	}
+	telo, err := os.ReadFile(filepath.Join(kat, imyaAvariynogo))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, imya := range []string{"affory-cli.exe", "affory-svc.exe"} {
+		if !strings.Contains(string(telo), filepath.Join(kat, imya)) {
+			t.Errorf("в листе нет пути %s", filepath.Join(kat, imya))
+		}
+	}
+	if strings.Contains(string(telo), `C:\Program Files\Affory`) {
+		t.Error("в листе остался постоянный путь: у поставившего программу в другое место его нет")
+	}
+}

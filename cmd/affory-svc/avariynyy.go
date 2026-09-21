@@ -39,6 +39,11 @@ func polozhitAvariynyy(kuda string) error {
 	}
 
 	telo := strings.Replace(shablonAvariynogo, "{{ПРАВИЛА}}", b.String(), 1)
+	// Каталог настоящий, а не `C:\Program Files\Affory`: установщик спрашивает,
+	// куда ставить, и человек без интернета набирает команды с этого листа
+	// вслепую. Путь, которого у него нет, отвечает «системе не удаётся найти
+	// указанный путь» и выглядит как ещё одна поломка поверх пропавшей сети.
+	telo = strings.ReplaceAll(telo, "{{КАТАЛОГ}}", kuda)
 	if strings.Contains(telo, "{{") {
 		return fmt.Errorf("в аварийном файле осталась неподставленная метка")
 	}

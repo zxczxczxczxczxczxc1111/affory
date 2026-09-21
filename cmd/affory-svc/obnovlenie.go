@@ -135,6 +135,10 @@ func zapustitPodmenshchikaVTemp(prog, novaya string) error {
 // podmenit это режим swap: тело подменщика. Пишет в log\obnovlenie.log: у
 // отвязанного процесса нет ни консоли, ни родителя, которому жаловаться.
 func podmenit(prog, novaya string) {
+	// Подменщик работает из временного каталога, а каталог программы знает
+	// только из аргумента. Называем его сразу: иначе KatalogProgrammy, который
+	// у всех остальных читается от своего бинаря, указал бы здесь в %TEMP%.
+	sostoyanie.PodmenitKatalogProgrammy(prog)
 	if zh, err := zhurnaly.Otkryt(sostoyanie.KatalogZhurnalov(), "obnovlenie.log"); err == nil {
 		log.SetOutput(zh)
 		defer zh.Close()

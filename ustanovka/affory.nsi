@@ -53,6 +53,33 @@ BrandingText "Affory ${VERSIYA}"
 
 !define KLYUCH_UDALENIYA "Software\Microsoft\Windows\CurrentVersion\Uninstall\Affory"
 
+; Имя обязано совпадать с cmd\affory-svc\vyvod.go (imyaFaylaPrichiny).
+!define FAYL_PRICHINY "ustanovka-prichina.txt"
+
+; Причина отказа приходит ФАЙЛОМ рядом с бинарём, а не только трубой.
+;
+; Трубу nsExec декодирует кодовой страницей ANSI машины. На нерусской Windows
+; (проверено на 1252) кириллица в ней превращается в вопросы ещё до показа, а
+; на русской она читается, но живёт ровно до закрытия окна. Файл пишется в
+; UTF-16LE, и его кодировка не зависит ни от локали, ни от настроек.
+;
+; 21.09.2026 человек увидел «Служба Affory не установилась (код 1)» и ссылку на
+; sluzhba.log, которого при неудачной установке не существует. Причина при этом
+; была названа полностью: программа стояла не в C:\Program Files.
+!macro PRICHINA put vyhod
+  StrCpy ${vyhod} ""
+  ClearErrors
+  FileOpen $R9 "${put}" r
+  ${IfNot} ${Errors}
+    FileReadUTF16LE $R9 ${vyhod}
+    FileClose $R9
+  ${EndIf}
+  Delete "${put}"
+  ${If} ${vyhod} == ""
+    StrCpy ${vyhod} "Подробности в C:\ProgramData\Affory\log\ustanovka.log"
+  ${EndIf}
+!macroend
+
 Function .onInit
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "Affory работает только на 64-разрядной Windows."
@@ -76,10 +103,12 @@ Section "Affory" SEC_AFFORY
   InitPluginsDir
   File /oname=$PLUGINSDIR\affory-svc-setup.exe "${SBORKA}\affory-svc.exe"
   DetailPrint "Остановка Affory и восстановление её сетевых настроек"
+  Delete "$PLUGINSDIR\${FAYL_PRICHINY}"
   nsExec::ExecToLog '"$PLUGINSDIR\affory-svc-setup.exe" prepare-install'
   Pop $0
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Не удалось подготовить Affory к установке (код $0). Установленные файлы оставлены на месте."
+    !insertmacro PRICHINA "$PLUGINSDIR\${FAYL_PRICHINY}" $1
+    MessageBox MB_ICONSTOP "Не удалось подготовить Affory к установке (код $0).$\r$\n$\r$\n$1$\r$\n$\r$\nУстановленные файлы оставлены на месте."
     Abort
   ${EndIf}
   ; WebView2 живёт дочерним деревом. После завершения одного родителя его
@@ -106,10 +135,12 @@ Section "Affory" SEC_AFFORY
   ; Служба ставит себя сама: каталог данных, отпечатки, ключ Run, аварийный
   ; лист, запуск. Ставится поверх существующей (обновление), режим не снимается.
   DetailPrint "Установка службы AfforySvc"
+  Delete "$INSTDIR\${FAYL_PRICHINY}"
   nsExec::ExecToLog '"$INSTDIR\affory-svc.exe" install'
   Pop $0
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Служба Affory не установилась (код $0). Подробности в C:\ProgramData\Affory\log\sluzhba.log"
+    !insertmacro PRICHINA "$INSTDIR\${FAYL_PRICHINY}" $1
+    MessageBox MB_ICONSTOP "Служба Affory не установилась (код $0).$\r$\n$\r$\n$1"
     Abort
   ${EndIf}
 
@@ -145,10 +176,12 @@ Section "Uninstall"
       StrCpy $1 " --steret-klyuchi"
   ${EndIf}
   DetailPrint "Снятие службы AfforySvc"
+  Delete "$INSTDIR\${FAYL_PRICHINY}"
   nsExec::ExecToLog '"$INSTDIR\affory-svc.exe" uninstall$1'
   Pop $0
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Не удалось остановить Affory и восстановить сеть (код $0). Файлы оставлены для повторной попытки."
+    !insertmacro PRICHINA "$INSTDIR\${FAYL_PRICHINY}" $2
+    MessageBox MB_ICONSTOP "Не удалось остановить Affory и восстановить сеть (код $0).$\r$\n$\r$\n$2$\r$\n$\r$\nФайлы оставлены для повторной попытки."
     Abort
   ${EndIf}
 
@@ -166,6 +199,7 @@ Section "Uninstall"
   Delete "$INSTDIR\OFL-Manrope.txt"
   Delete "$INSTDIR\ESLI-NET-INTERNETA.txt"
   Delete "$INSTDIR\*.ubrat"
+  Delete "$INSTDIR\${FAYL_PRICHINY}"
   RMDir /r "$INSTDIR\novaya"
   RMDir /r "$INSTDIR\predydushchaya"
   Delete "$INSTDIR\Uninstall.exe"

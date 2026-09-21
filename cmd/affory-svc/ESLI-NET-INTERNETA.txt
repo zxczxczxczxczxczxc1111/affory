@@ -1,16 +1,16 @@
-ЕСЛИ ПОСЛЕ ОТКЛЮЧЕНИЯ AFFORY НЕ ВЕРНУЛАСЬ СЕТЬ
+﻿ЕСЛИ ПОСЛЕ ОТКЛЮЧЕНИЯ AFFORY НЕ ВЕРНУЛАСЬ СЕТЬ
 ===============================================
 
 Открой командную строку от имени администратора.
 
 1. Отключи туннель и его защиту:
 
-    "C:\Program Files\Affory\affory-cli.exe" disconnect
-    "C:\Program Files\Affory\affory-cli.exe" killswitch off
+    "{{КАТАЛОГ}}\affory-cli.exe" disconnect
+    "{{КАТАЛОГ}}\affory-cli.exe" killswitch off
 
 2. Если служба не отвечает, останови только Affory и восстанови её настройки:
 
-    "C:\Program Files\Affory\affory-svc.exe" prepare-install
+    "{{КАТАЛОГ}}\affory-svc.exe" prepare-install
 
 Эта команда останавливает AfforySvc и возвращает настройки из файла
 C:\ProgramData\Affory\firewall-do-affory.json. Чужие VPN не завершаются.

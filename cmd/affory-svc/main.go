@@ -24,51 +24,52 @@ var versiyaProgrammy = "dev"
 
 func main() {
 	if len(os.Args) > 1 {
+		vyvod := nastroitVyvodPodkomandy()
 		switch os.Args[1] {
 		case "install":
 			put, err := os.Executable()
 			if err != nil {
-				log.Fatalf("не удалось узнать свой путь: %v", err)
+				upast("не удалось узнать свой путь: %v", err)
 			}
 			if err := ustanovit(put); err != nil {
-				log.Fatalf("установка не удалась: %v", err)
+				upast("установка не удалась: %v", err)
 			}
-			fmt.Println("служба установлена")
+			fmt.Fprintln(vyvod, "служба установлена")
 			return
 		case "prepare-install":
 			if err := podgotovitUstanovku(); err != nil {
-				log.Fatalf("подготовка установки не удалась: %v", err)
+				upast("подготовка установки не удалась: %v", err)
 			}
 			return
 		case rezhimPodmeny:
 			// Подменщик: копия новой службы во временном каталоге (задача 6.5).
 			if len(os.Args) < 4 {
-				log.Fatalf("swap: нужны каталог программы и каталог новой сборки")
+				upast("swap: нужны каталог программы и каталог новой сборки")
 			}
 			podmenit(os.Args[2], os.Args[3])
 			return
 		case "uninstall":
 			if err := snyat(); err != nil {
-				log.Fatalf("снятие не удалось: %v", err)
+				upast("снятие не удалось: %v", err)
 			}
-			fmt.Println("служба снята")
+			fmt.Fprintln(vyvod, "служба снята")
 			// Keys go only on the explicit flag the interface sets after the
 			// human answered. Program directory removal is scheduled from
 			// outside: this binary is inside it.
 			if err := snyatDannye(sostoyanie.KatalogDannyh(), steretKlyuchiIz(os.Args)); err != nil {
-				log.Fatalf("данные не удалены: %v", err)
+				upast("данные не удалены: %v", err)
 			}
 			if steretKlyuchiIz(os.Args) {
-				fmt.Println("данные и ключи стёрты")
+				fmt.Fprintln(vyvod, "данные и ключи стёрты")
 			} else {
-				fmt.Println("данные и ключи оставлены")
+				fmt.Fprintln(vyvod, "данные и ключи оставлены")
 			}
 			if err := udalitKatalogProgrammy(); err != nil {
-				log.Fatalf("%v", err)
+				upast("%v", err)
 			}
 			// Про окно сказано вслух: снятие ЗАКРЫВАЕТ его, и человек, у которого
 			// оно было открыто, узнаёт причину до того, как удивится.
-			fmt.Println("каталог программы удаляется, окно закрывается вместе с ним")
+			fmt.Fprintln(vyvod, "каталог программы удаляется, окно закрывается вместе с ним")
 			return
 		}
 	}

@@ -28,7 +28,7 @@ import { lovitOshibki, nichegoNeSlomalos } from "./obshchee";
  *
  *  Строки серверов со экрана не исчезают - человек должен видеть, что у него
  *  есть, - но нажать их, пока подключаться нечем, нельзя. Поэтому судим по
- *  доступности, а не по наличию: счёт по всему DOM даёт пять и там, где окно
+ *  доступности, а не по наличию: счёт по всему DOM полон и там, где окно
  *  ведёт себя правильно. */
 function zhivyeKnopkiPodklyucheniya(page: Page) {
   return page.getByRole("button", { name: /^Подключиться к /, disabled: false }).filter({ visible: true });
@@ -70,7 +70,11 @@ test("молчащая служба объясняет себя и не пред
   // появляется только когда список ПУСТ, и требовать её тут значит требовать
   // другого случая.
   await expect(zhivyeKnopkiPodklyucheniya(page)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Подключиться к / })).toHaveCount(5);
+  // Число нарочно не зашито: состав заглушки меняется вместе с проверками
+  // протоколов, и точная пятёрка уже уронила ворота на добавленном сервере.
+  // Проверяется здесь не состав, а то, что список остался на экране и мёртв
+  // целиком.
+  await expect(page.getByRole("button", { name: /^Подключиться к / }).first()).toBeVisible();
 
   await nichegoNeSlomalos(page, oshibki);
 });
