@@ -196,6 +196,39 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
       ? [{ id: "odna", uzel: spisok.podpiska_uzel, obnovlena: spisok.podpiska_obnovlena, aktivnaya: true }]
       : [];
 
+  // Список серверов полосами, а не сплошным столбцом.
+  //
+  // Две подписки подряд дают полтора десятка одинаковых строк, и понять, какая
+  // из них откуда, нельзя ничем: ключи активной лежат в общем списке, а остатки
+  // прежней остаются в нём же до переподключения. Заголовок полосы отвечает на
+  // это одним словом, а хвост строки («пропал из подписки», «добавлен вручную»)
+  // после него не нужен: он говорил то же самое на каждой строке.
+  //
+  // Порядок полос задан смыслом, а не алфавитом: подписка, её остатки, ручные.
+  // Порядок ВНУТРИ полосы оставлен тот, что прислала служба: его задаёт сама
+  // подписка, и своя сортировка меняла бы список под руками на каждом обходе.
+  const polosy = useMemo(() => {
+    const aktivnaya = stroki.find((p) => p.aktivnaya);
+    const imyaPodpiski = aktivnaya?.imya || aktivnaya?.uzel || "";
+    return [
+      {
+        klyuch: "podpiska",
+        podpis: imyaPodpiski ? `из подписки ${imyaPodpiski}` : "из подписки",
+        servery: vidimye.filter((s) => s.iz_podpiski && !s.uderzhan),
+      },
+      {
+        klyuch: "uderzhannye",
+        podpis: "пропали из подписки, работают до переподключения",
+        servery: vidimye.filter((s) => s.uderzhan),
+      },
+      {
+        klyuch: "ruchnye",
+        podpis: "добавлены вручную",
+        servery: vidimye.filter((s) => !s.iz_podpiski && !s.uderzhan),
+      },
+    ].filter((p) => p.servery.length > 0);
+  }, [vidimye, stroki]);
+
   // The form opens by itself only on the honest empty list (§9.2 first run).
   // A refused list is NOT an empty one, so it gets the header button instead.
   const pervyyZapusk = spisok !== null && servery.length === 0;
@@ -560,7 +593,12 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
             {vidimye.length === 0 && (
               <p className="text-fg-muted px-4 py-3 text-sm">ничего не найдено</p>
             )}
-            {vidimye.map((s) => {
+            {polosy.map((polosa) => (
+            <div key={polosa.klyuch} role="group" aria-label={polosa.podpis} data-testid={`polosa-${polosa.klyuch}`}>
+              <div className="bg-elevated text-fg-muted border-border border-t px-3.5 py-1.5 text-[11px] font-medium tracking-wide">
+                {polosa.podpis}
+              </div>
+              {polosa.servery.map((s) => {
               const on = s.id === vybran;
               const neset = s.id === status.nesushchiy_id;
               return (
@@ -586,9 +624,6 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                     </span>
                     <span className="text-fg-muted truncate text-xs">
                       {s.host}:{s.port} · {TRANSPORT[s.transport] ?? s.transport}
-                      {s.uderzhan
-                        ? " · пропал из подписки, работает до переподключения"
-                        : !s.iz_podpiski && " · добавлен вручную"}
                     </span>
                   </div>
                   <Zaderzhka zamer={poZaderzhkam.get(s.id)} />
@@ -618,7 +653,9 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                   )}
                 </div>
               );
-            })}
+              })}
+            </div>
+            ))}
           </div>
         </Razdel>
       )}

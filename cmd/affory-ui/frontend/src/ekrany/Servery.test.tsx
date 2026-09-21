@@ -69,19 +69,37 @@ describe("серверы: список", () => {
     expect(within(rows[1]).getByText("активен")).toBeTruthy();
   });
 
-  it("пометки строки: добавлен вручную и принудительная проверка сертификата", () => {
+  // Происхождение записи теперь называет ЗАГОЛОВОК ПОЛОСЫ, а не хвост каждой
+  // строки: две подписки подряд давали полтора десятка одинаковых строк, в
+  // которых одно и то же пояснение повторялось построчно.
+  it("ручная запись лежит в своей полосе, пометка сертификата остаётся в строке", () => {
     risovat(spisok([server(1, { iz_podpiski: false }), server(2, { nebezopasnyy_ignorirovan: true })]));
-    const rows = screen.getAllByRole("option");
-    expect(rows[0]).toHaveTextContent(/добавлен вручную/);
-    expect(rows[1]).toHaveTextContent(/проверка сертификата/);
+    const ruchnye = screen.getByRole("group", { name: "добавлены вручную" });
+    expect(within(ruchnye).getAllByRole("option")).toHaveLength(1);
+    expect(within(ruchnye).getByTestId("server-id1")).toBeTruthy();
+    expect(screen.getByTestId("server-id2")).toHaveTextContent(/проверка сертификата/);
   });
 
-  it("удержанная запись говорит про переподключение, а не «добавлен вручную»", () => {
+  it("удержанная запись лежит в полосе про переподключение, а не среди ручных", () => {
     risovat(spisok([server(1, { iz_podpiski: false, uderzhan: true }), server(2, { iz_podpiski: false })]));
-    const rows = screen.getAllByRole("option");
-    expect(rows[0]).toHaveTextContent(/пропал из подписки/);
-    expect(rows[0]).not.toHaveTextContent(/добавлен вручную/);
-    expect(rows[1]).toHaveTextContent(/добавлен вручную/);
+    const uderzhannye = screen.getByRole("group", { name: /пропали из подписки/ });
+    const ruchnye = screen.getByRole("group", { name: "добавлены вручную" });
+    expect(within(uderzhannye).getByTestId("server-id1")).toBeTruthy();
+    expect(within(ruchnye).getByTestId("server-id2")).toBeTruthy();
+    expect(within(uderzhannye).queryByTestId("server-id2")).toBeNull();
+    // Удержанная запись НЕ должна попасть ещё и в ручные: она не ручная, и
+    // строка, показанная дважды, это тот же сплошной столбец, только длиннее.
+    expect(within(ruchnye).queryByTestId("server-id1")).toBeNull();
+    expect(screen.getAllByTestId("server-id1")).toHaveLength(1);
+  });
+
+  it("полоса подписки названа её узлом: две подписки перестают быть сплошным столбцом", () => {
+    risovat(spisok([server(1), server(2, { iz_podpiski: false })]), VYKL, vi.fn(), [
+      { id: "p1", uzel: "hi.affory.space", aktivnaya: true, serverov: 6 },
+      { id: "p2", uzel: "zxc123.affory.space", aktivnaya: false, serverov: 8 },
+    ]);
+    expect(screen.getByRole("group", { name: "из подписки hi.affory.space" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "добавлены вручную" })).toBeTruthy();
   });
 
   it("пометка строки: пин сертификата у hy2 с pinSHA256", () => {
