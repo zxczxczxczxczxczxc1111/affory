@@ -101,11 +101,20 @@ var imenaProfiley = []string{"domainprofile", "privateprofile", "publicprofile"}
 func SostoyanieProfiley() ([]ProfilDo, error) {
 	var itog []ProfilDo
 	for _, p := range imenaProfiley {
+		imya := strings.TrimSuffix(p, "profile")
+		// Сначала реестр: там у состояния нет языка. Разбор вывода netsh
+		// остаётся запасным путём на случай неполной ветки реестра, и на
+		// английской машине оба пути обязаны сходиться — это сверяет
+		// TestReestrISheshNetshSoglasny.
+		if pr, polno := chitatIzReestra(imya); polno {
+			itog = append(itog, pr)
+			continue
+		}
 		vyhod, err := vypolnit([]string{"advfirewall", "show", p})
 		if err != nil {
 			return nil, fmt.Errorf("состояние профиля %s не прочитано: %w", p, err)
 		}
-		pr := ProfilDo{Imya: strings.TrimSuffix(p, "profile")}
+		pr := ProfilDo{Imya: imya}
 		if m := reSostoyanie.FindStringSubmatch(vyhod); m != nil {
 			pr.Vklyuchen = strings.EqualFold(m[1], "ON")
 		} else {
@@ -255,9 +264,8 @@ func VyklyuchitVesTrafik() error {
 		imena = VseImenaPravil()
 	}
 	for _, imya := range imena {
-		vyhod, err := vypolnit([]string{"advfirewall", "firewall", "delete", "rule", "name=" + imya})
-		if err != nil && !netPravil(vyhod) {
-			oshibki = append(oshibki, fmt.Errorf("правило %s не снято: %w", imya, err))
+		if err := SnyatPravilo(imya); err != nil {
+			oshibki = append(oshibki, err)
 		}
 	}
 	if o.Profili != nil {
@@ -447,11 +455,14 @@ func podmesti() (bool, bool, error) {
 	nashli := false
 	var oshibki []error
 	for _, imya := range VseImenaPravil() {
-		vyhod, err := vypolnit([]string{"advfirewall", "firewall", "delete", "rule", "name=" + imya})
-		if err != nil && !netPravil(vyhod) {
-			oshibki = append(oshibki, fmt.Errorf("правило %s не снято: %w", imya, err))
+		// Стояло ли правило, спрашивается ДО снятия и по имени: ответ «сняли»
+		// от netsh это опять фраза на языке системы.
+		est, _ := PraviloEst(imya)
+		if err := SnyatPravilo(imya); err != nil {
+			oshibki = append(oshibki, err)
+			continue
 		}
-		if err == nil && !netPravil(vyhod) {
+		if est {
 			nashli = true
 		}
 	}
@@ -479,12 +490,11 @@ func podmesti() (bool, bool, error) {
 // его снимает, и снятие несуществующего правила при выключении режима ничего
 // не стоит.
 func PerezavestiRazreshyonnyeServery(kandidaty []netip.Addr) error {
-	// Правила могло не быть вовсе: это не отказ. Отличает netPravil по выводу,
-	// и глотать здесь ЛЮБОЙ отказ нельзя: молчащий netsh означал бы, что старый
+	// Правила могло не быть вовсе: это не отказ. Отличает SnyatPravilo, и
+	// глотать здесь ЛЮБОЙ отказ нельзя: молчащий netsh означал бы, что старый
 	// список остался стоять, а мы доложили об успехе.
-	if vyhod, err := vypolnit([]string{"advfirewall", "firewall", "delete", "rule",
-		"name=" + PravAllowSrv}); err != nil && !netPravil(vyhod) {
-		return fmt.Errorf("правило %s не снято: %w", PravAllowSrv, err)
+	if err := SnyatPravilo(PravAllowSrv); err != nil {
+		return err
 	}
 	s := spisokAdresov(kandidaty)
 	if s == "" {

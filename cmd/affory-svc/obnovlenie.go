@@ -18,6 +18,7 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/kodirovki"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/obnovlenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
@@ -151,7 +152,13 @@ func podmenit(prog, novaya string) {
 		Ustanovit: func() error {
 			out, err := exec.Command(filepath.Join(prog, "affory-svc.exe"), "install").CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+				// Свой же бинарь, и всё равно перевод. Подкоманды пишут наружу в
+				// кодовой странице машины: их вывод забирает установщик, который
+				// читает трубу именно так. Прочитанный здесь как UTF-8, русский
+				// текст не просто портится, а гибнет: причину отката мы кладём в
+				// JSON (ZapisatItog), а маршалер заменяет негодные байты на U+FFFD.
+				// Человек получил бы вместо объяснения ряд ромбиков.
+				return fmt.Errorf("%w: %s", err, strings.TrimSpace(kodirovki.Iz(out, kodirovki.Ansi)))
 			}
 			return nil
 		},

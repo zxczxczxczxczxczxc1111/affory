@@ -8,52 +8,8 @@ import (
 	"testing"
 	"unicode/utf16"
 
-	"golang.org/x/sys/windows"
-
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/zhurnaly"
 )
-
-// Латиница и цифры проходят насквозь на любой кодовой странице. Это половина
-// причины отказа: пути и ответы Windows приходят по-английски.
-func TestLatinicaProhoditBaytVBayt(t *testing.T) {
-	ishod := []byte(`open C:\Program Files\Affory: The system cannot find the file specified.`)
-	gotovo, err := vAnsi(ishod)
-	if err != nil {
-		t.Fatalf("перекодировка отказала: %v", err)
-	}
-	if !bytes.Equal(gotovo, ishod) {
-		t.Errorf("латиница изменилась: %q против %q", gotovo, ishod)
-	}
-}
-
-// Кириллица наружу уходит НЕ в UTF-8, иначе установщик снова покажет
-// «СѓСЃС‚Р°РЅРѕРІРєР°».
-func TestKirillicaNeUezzhaetVUtf8(t *testing.T) {
-	ishod := []byte("установка не удалась")
-	gotovo, err := vAnsi(ishod)
-	if err != nil {
-		t.Fatalf("перекодировка отказала: %v", err)
-	}
-	if bytes.Equal(gotovo, ishod) {
-		t.Error("байты не изменились: перекодировки не было")
-	}
-}
-
-// Прочитанное обратно совпадает с исходным. Проверка идёт тем же способом,
-// каким читает установщик: кодовой страницей машины.
-func TestKirillicaChitaetsyaObratno(t *testing.T) {
-	const ishod = "отпечатки не сняты: каталог программы не читается"
-	gotovo, err := vAnsi([]byte(ishod))
-	if err != nil {
-		t.Fatalf("перекодировка отказала: %v", err)
-	}
-	if strings.Contains(string(gotovo), "?") {
-		t.Skip("кодовая страница этой машины не знает кириллицы, читать обратно нечего")
-	}
-	if nazad := izKodirovkiMashiny(t, gotovo); nazad != ishod {
-		t.Errorf("обратно прочиталось %q вместо %q", nazad, ishod)
-	}
-}
 
 // Поток рапортует столько байт, сколько у него взяли.
 //
@@ -85,19 +41,6 @@ func TestPustayaZapisNeRonyaet(t *testing.T) {
 	if n != 0 {
 		t.Errorf("пустая запись насчитала %d байт", n)
 	}
-}
-
-func izKodirovkiMashiny(t *testing.T, b []byte) string {
-	t.Helper()
-	n, err := windows.MultiByteToWideChar(cpAcp, 0, &b[0], int32(len(b)), nil, 0)
-	if err != nil || n <= 0 {
-		t.Fatalf("длина обратного перевода не посчиталась: %v", err)
-	}
-	shiroko := make([]uint16, n)
-	if _, err := windows.MultiByteToWideChar(cpAcp, 0, &b[0], int32(len(b)), &shiroko[0], n); err != nil {
-		t.Fatalf("обратный перевод отказал: %v", err)
-	}
-	return string(utf16.Decode(shiroko))
 }
 
 // Причина ложится рядом со своим бинарём в UTF-16LE и без BOM: ровно то, что

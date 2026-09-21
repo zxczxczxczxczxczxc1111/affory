@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/kodirovki"
 )
 
 // Правило ставится при подъёме туннеля и снимается при опускании, НЕЗАВИСИМО от
@@ -59,13 +61,7 @@ func GlushitIPv6() error {
 
 // VernutIPv6 идемпотентна: снятие несуществующего правила это успех, а не
 // ошибка. Иначе уборка после сбоя падала бы ровно там, где она нужнее всего.
-func VernutIPv6() error {
-	vyhod, err := vypolnit(komandaSnyatiya())
-	if err == nil || netPravil(vyhod) {
-		return nil
-	}
-	return fmt.Errorf("правило %s не снято: %w", ImyaPravilaIPv6, err)
-}
+func VernutIPv6() error { return SnyatPravilo(ImyaPravilaIPv6) }
 
 // PravilaIPv6Est отвечает проверке утечек (6.3): стоит ли правило сейчас.
 func PravilaIPv6Est() (bool, error) { return pravilaIPv6Est() }
@@ -82,22 +78,68 @@ func pravilaIPv6Est() (bool, error) {
 	return strings.Contains(vyhod, ImyaPravilaIPv6), nil
 }
 
-// netsh отвечает по-разному на разных языках системы, но обе фразы содержат
-// код "No rules match" в английской и "Ни одно правило" в русской локали.
-// Опознание идёт по обеим, потому что язык гостя и язык рабочей машины это
-// две разные настройки, и совпадать они не обязаны.
+// netsh отвечает по-разному на разных языках системы: "No rules match" в
+// английской, «Ни одно правило» в русской. Опознание идёт по обеим, потому что
+// язык гостя и язык рабочей машины это две разные настройки.
+//
+// Языков у Windows под сорок, и остальные тридцать восемь сюда не впишешь.
+// Поэтому фраза это только быстрый путь, а решает SnyatPravilo ниже: оно
+// смотрит на ИМЯ правила, которое не переводится ни на одном языке.
 func netPravil(vyhod string) bool {
 	n := strings.ToLower(vyhod)
 	return strings.Contains(n, "no rules match") ||
 		strings.Contains(n, "ни одно правило")
 }
 
+// SnyatPravilo убирает правило брандмауэра и считает его отсутствие успехом.
+//
+// Отсутствие правила netsh называет отказом: код возврата 1 и фраза на языке
+// системы. Читать фразу это ставить работу продукта в зависимость от локали, и
+// 21.09.2026 это уже стоило человеку установки: у него правил в тот момент не
+// было, prepare-install упал на первом же снятии, а причина была написана
+// кодовой страницей консоли, которую мы тогда не переводили.
+//
+// Поэтому при отказе спрашивается ФАКТ: стоит ли правило сейчас. Имя правила
+// это наша строка из ASCII, она одинакова на любом языке.
+func SnyatPravilo(imya string) error {
+	vyhod, err := vypolnit([]string{"advfirewall", "firewall", "delete", "rule", "name=" + imya})
+	if err == nil || netPravil(vyhod) {
+		return nil
+	}
+	if est, _ := PraviloEst(imya); !est {
+		return nil
+	}
+	return fmt.Errorf("правило %s не снято: %w", imya, err)
+}
+
+// PraviloEst отвечает, стоит ли правило с таким именем.
+//
+// Отказ самого показа считается «не знаем, но и снять не смогли»: наружу это
+// уходит как false вместе с ошибкой, и вызывающий решает сам.
+func PraviloEst(imya string) (bool, error) {
+	vyhod, err := vypolnit([]string{"advfirewall", "firewall", "show", "rule", "name=" + imya})
+	if netPravil(vyhod) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("не удалось спросить про правило %s: %w", imya, err)
+	}
+	return strings.Contains(vyhod, imya), nil
+}
+
 func vypolnitNetsh(argumenty []string) (string, error) {
 	cmd := exec.Command("netsh", argumenty...)
-	vyhod, err := cmd.CombinedOutput()
+	syrye, err := cmd.CombinedOutput()
+	// netsh отвечает в кодовой странице КОНСОЛИ, а не в UTF-8. На русской
+	// Windows это 866, и прочитанные как UTF-8 байты дают «ЌЁ ®¤­® Їа ўЁ«®»
+	// вместо «Ни одно правило». Пока перевода не было, netPravil ниже не
+	// совпадал НИКОГДА: снятие несуществующего правила считалось отказом, и
+	// установка поверх прежней падала на подготовке у всех, у кого правил
+	// брандмауэра в этот момент не осталось (жалоба 21.09.2026).
+	vyhod := kodirovki.Iz(syrye, kodirovki.Konsoli)
 	if err != nil {
-		return string(vyhod), fmt.Errorf("netsh %s: %w: %s",
-			strings.Join(argumenty, " "), err, strings.TrimSpace(string(vyhod)))
+		return vyhod, fmt.Errorf("netsh %s: %w: %s",
+			strings.Join(argumenty, " "), err, strings.TrimSpace(vyhod))
 	}
-	return string(vyhod), nil
+	return vyhod, nil
 }

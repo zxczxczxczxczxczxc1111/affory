@@ -41,8 +41,21 @@ func perehvat(t *testing.T, otvet func([]string) (string, error)) *[]zapis {
 		zhurnal = append(zhurnal, zapis{argumenty: append([]string{}, a...)})
 		return otvet(a)
 	}
+	bezReestra(t)
 	t.Cleanup(func() { vypolnit = prezhniy; katalogDannyh = prezhniyKat })
 	return &zhurnal
+}
+
+// bezReestra отключает чтение состояния из реестра.
+//
+// Тест описывает ответы netsh фикстурой, а реестр живой машины прошёл бы мимо
+// неё: судья спорил бы сам с собой и винил код. Реестровый путь проверяется
+// своими судьями, они рядом.
+func bezReestra(t *testing.T) {
+	t.Helper()
+	prezhniy := chitatIzReestra
+	chitatIzReestra = func(string) (ProfilDo, bool) { return ProfilDo{}, false }
+	t.Cleanup(func() { chitatIzReestra = prezhniy })
 }
 
 func otvetProfiley(vyvod string) func([]string) (string, error) {
@@ -435,6 +448,7 @@ func TestRealnoZapertayaMashinaOstayotsyaZapertoy(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	bezReestra(t)
 	staryy := vypolnit
 	defer func() { vypolnit = staryy }()
 	vypolnit = func(a []string) (string, error) {

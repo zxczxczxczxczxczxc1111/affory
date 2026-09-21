@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/kodirovki"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
@@ -305,7 +305,12 @@ func pravilaIzFayla(put string) (pravilaFayla, error) {
 	// UTF8` в PowerShell 5.1, «Блокнот», половина редакторов. Для JSON это
 	// мусор перед первой скобкой, и разбор отвечает «invalid character 'ï'»,
 	// что человек читает как сломанную программу, а не как сломанный файл.
-	b = bytes.TrimPrefix(b, []byte{0xEF, 0xBB, 0xBF})
+	//
+	// Сигнатурой дело не кончается: тот же PowerShell 5.1 без ключа пишет в
+	// ANSI, «Сохранить как» предлагает UTF-16, и в обоих случаях путь с
+	// кириллицей («Игры», «Рабочий стол») превращает файл в нечитаемый ровно
+	// для того человека, который его и набрал.
+	b = kodirovki.FaylOtCheloveka(b)
 	var p pravilaFayla
 	if err := json.Unmarshal(b, &p); err != nil {
 		return pravilaFayla{}, fmt.Errorf("файл правил не разобран: %w", err)
