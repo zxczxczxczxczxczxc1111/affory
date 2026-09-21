@@ -33,7 +33,21 @@ func TestSpisokProtsessovAppData(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(dir)
+			// Уборка С ПОВТОРАМИ, а не одним RemoveAll.
+			//
+			// Внутри лежит exe, который тест только что запускал. Windows
+			// держит образ убитого процесса ещё доли секунды после Wait, и
+			// одиночное удаление тихо возвращало отказ: к 21.09.2026 в
+			// %LOCALAPPDATA% машины разработки накопилось 25 таких каталогов.
+			defer func() {
+				for i := 0; i < 20; i++ {
+					if err := os.RemoveAll(dir); err == nil {
+						return
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				t.Errorf("каталог пробы %s не убран", dir)
+			}()
 			path := filepath.Join(dir, "test application.exe")
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)

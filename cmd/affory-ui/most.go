@@ -71,12 +71,24 @@ func (m *most) UdalitProgrammu(steretKlyuchi bool) error {
 	if steretKlyuchi {
 		args += " --steret-klyuchi"
 	}
-	if err := zapustitSluzhbuSPravami(args); err != nil {
+	// Ждём конца снятия и смотрим код. Прежде тут был запуск без ожидания и
+	// немедленный Quit: упавшее снятие выглядело успешным, человек оставался с
+	// установленной программой и уверенностью, что удалил её.
+	kod, err := zapustitSnyatie(args)
+	if err != nil {
 		return err
 	}
-	// Quit AFTER the launch returned: the service's cleanup waits three
-	// seconds for this process to release its directory.
-	go m.app.Quit()
+	if kod != 0 {
+		if prichina := prochitatPrichinu(); prichina != "" {
+			return errors.New(prichina)
+		}
+		return fmt.Errorf("снятие не удалось, код %d", kod)
+	}
+	// Quit ПОСЛЕ успеха. Обычно до него не доходит: снятие само закрывает окно,
+	// освобождая каталог программы. Но если оно этого не сделало (окно запущено
+	// из другого каталога), закрыться всё равно надо: кнопки ведут к бинарю,
+	// которого больше нет.
+	go zakrytOkno(m)
 	return nil
 }
 
