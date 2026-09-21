@@ -249,10 +249,27 @@ describe("серверы: из буфера и с экрана", () => {
     expect(naKomandu).not.toHaveBeenCalled();
   });
 
-  it("QR с экрана: имя добавленного показано, отказ оболочки показан словами", async () => {
-    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} naQrSEkrana={async () => "vpn-pc-hy2"} />);
+  it("QR с экрана: исход оболочки показан как есть", async () => {
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} naQrSEkrana={async () => "добавлен vpn-pc-hy2"} />);
     fireEvent.click(screen.getByTestId("qr-s-ekrana"));
     expect(await screen.findByTestId("ishod-vvoda")).toHaveTextContent(/добавлен vpn-pc-hy2/);
+  });
+
+  // Панель выдаёт подписку КАРТИНКОЙ, и до 21.09.2026 прочитать её было нечем:
+  // кнопка стояла только у вкладки ссылки. Здесь проверяется, что она есть на
+  // обеих и что исход подписки печатается своими словами.
+  it("QR читается и на вкладке подписки", async () => {
+    render(
+      <Servery
+        status={VYKL}
+        spisok={spisok([])}
+        naKomandu={vi.fn()}
+        naQrSEkrana={async () => "подписка добавлена, серверов: 6"}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
+    fireEvent.click(screen.getByTestId("qr-s-ekrana"));
+    expect(await screen.findByTestId("ishod-vvoda")).toHaveTextContent(/подписка добавлена, серверов: 6/);
   });
 
   // Разбор 03.09.2026: отказ службы на «QR с экрана» показывался серым мелким

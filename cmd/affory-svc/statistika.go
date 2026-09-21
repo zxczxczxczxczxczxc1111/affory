@@ -65,6 +65,9 @@ func (s *Sluzhba) zapustitOprosStat() {
 	ctx, otmena := context.WithCancel(s.fonCtx)
 	s.statOtmena = otmena
 	go s.oprashivatStat(ctx)
+	// Задержка своей горутиной, а не тем же тактом: замер это настоящий запрос
+	// в сеть, и в такте цифр он задерживал бы их на всё своё время.
+	go s.meryatOtklik(ctx)
 }
 
 // Под s.mu. Последний отписавшийся гасит опрос.
@@ -87,7 +90,6 @@ func (s *Sluzhba) oprashivatStat(ctx context.Context) {
 		case <-t.C:
 		}
 		s.mu.Lock()
-		teg := tegSnimka(s.nesushchiyId)
 		adresVyhoda := s.adresVyhoda
 		s.mu.Unlock()
 		// Критерий «ядро живо» это ПУСТОЙ адрес clash_api, а не состояние. Два
@@ -97,7 +99,7 @@ func (s *Sluzhba) oprashivatStat(ctx context.Context) {
 		if adres == "" {
 			continue
 		}
-		sn, err := s.snimokStat(ctx, adres, sekret, teg)
+		sn, err := s.snimokStat(ctx, adres, sekret)
 		if err != nil {
 			// Один раз в журнал, а не раз в секунду: ошибка тут повторяется, пока
 			// не изменится состояние, и забить журнал ею проще простого.
@@ -111,11 +113,77 @@ func (s *Sluzhba) oprashivatStat(ctx context.Context) {
 		st := map[string]any{"otdano": sn.Otdano, "prinyato": sn.Prinyato, "adres_vyhoda": adresVyhoda}
 		// Неизмеренная задержка не присылается вовсе: ноль за неизмеренное на
 		// экране запрещён договором запасного пути.
-		if sn.EstZaderzhka {
-			st["zaderzhka_ms"] = sn.Zaderzhka.Milliseconds()
+		if ms, est := s.posledniyOtklik(); est {
+			st["zaderzhka_ms"] = ms
 		}
 		s.izvestit("stats", st)
 	}
+}
+
+// Как часто мерить круг. Реже цифр на порядок: каждый замер это два запроса в
+// сеть через туннель, и раз в секунду мы стучали бы в чужой сервер с каждой
+// машины. Пятнадцать секунд это шаг, на котором человек видит смену числа при
+// смене сервера и не ждёт её минуту.
+const periodOtklikaPoUmolchaniyu = 15 * time.Second
+
+// meryatOtklik держит задержку экрана свежей, пока кто-то смотрит.
+//
+// Живёт ровно столько же, сколько опрос статистики: отписался последний
+// подписчик - замеры прекращаются вместе с цифрами.
+func (s *Sluzhba) meryatOtklik(ctx context.Context) {
+	t := time.NewTicker(s.periodOtklika)
+	defer t.Stop()
+	for {
+		s.odinZamerOtklika(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// odinZamerOtklika делает один замер и запоминает его.
+//
+// Опущенный туннель это не отказ, а состояние: число снимается с экрана, и
+// молча, потому что в журнале ему взяться неоткуда - туннеля нет.
+func (s *Sluzhba) odinZamerOtklika(ctx context.Context) {
+	// Критерий «туннель есть» тот же, что у всей службы: ПУСТОЙ адрес
+	// clash_api, а не состояние. Состояния otkaz и ne-neset держатся, пока
+	// крутится восстановление, и замер по ним уходил бы в опущенный туннель.
+	zhivo, _ := s.dostupKKlash()
+	s.mu.Lock()
+	port := s.portProksiNash
+	zamer := s.zamerOtklika
+	cel := s.adresOtklika
+	s.mu.Unlock()
+	if zhivo == "" || port <= 0 || zamer == nil {
+		s.zapomnitOtklik(0, false)
+		return
+	}
+	d, err := zamer(ctx, cel, port)
+	if err != nil {
+		// Отказ замера гасит число, а не оставляет прежнее: задержка,
+		// замершая на цифре десятиминутной давности, читается как живая.
+		s.zapomnitOtklik(0, false)
+		return
+	}
+	s.zapomnitOtklik(d, true)
+}
+
+func (s *Sluzhba) zapomnitOtklik(d time.Duration, est bool) {
+	s.mu.Lock()
+	s.otklik, s.otklikEst = d, est
+	s.mu.Unlock()
+}
+
+func (s *Sluzhba) posledniyOtklik() (int64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.otklikEst {
+		return 0, false
+	}
+	return s.otklik.Milliseconds(), true
 }
 
 var _ = yadra.Statistika

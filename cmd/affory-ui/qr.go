@@ -54,9 +54,25 @@ func snyatEkrany() []image.Image {
 	return kadry
 }
 
-// DobavitSEkrana: снимок, разбор, addServer. Возвращает имя добавленного
-// сервера; отказ службы возвращается её текстом, чтобы окно показало его
-// той же строкой, что и всё остальное.
+// podpiskaVQr отличает адрес подписки от ссылки на сервер.
+//
+// Разбирать глубже незачем: ссылка на сервер это всегда своя схема
+// (vless://, hy2:// и прочие), а подписка это http(s) и ничего больше. Ту же
+// границу проводит окно у кнопок буфера (pohozheNaAdres в Servery.tsx).
+func podpiskaVQr(s string) bool {
+	n := strings.ToLower(s)
+	return strings.HasPrefix(n, "http://") || strings.HasPrefix(n, "https://")
+}
+
+// DobavitSEkrana: снимок, разбор и та команда, которой соответствует код.
+//
+// В QR может лежать и то и другое: панель выдаёт подписку картинкой, чужие
+// клиенты раздают отдельные ключи. Раньше сюда жёстко уходил addServer, и QR
+// подписки отвергался словами про неизвестную схему, хотя человек всё сделал
+// правильно.
+//
+// Возвращает ГОТОВУЮ строку исхода, а не имя: у подписки имени нет, а её адрес
+// это секрет того же разряда, что ключ, и в окно он не попадает.
 func (m *most) DobavitSEkrana() (string, error) {
 	// Окно уходит с экрана на время снимка: иначе в кадре его собственная
 	// форма, а не чужое окно с QR. Возврат через defer при любом исходе.
@@ -75,23 +91,63 @@ func (m *most) DobavitSEkrana() (string, error) {
 	if ssylka == "" {
 		return "", errQrNeNayden
 	}
+	if podpiskaVQr(ssylka) {
+		return m.podpiskaSEkrana(ssylka)
+	}
+	return m.serverSEkrana(ssylka)
+}
+
+func (m *most) serverSEkrana(ssylka string) (string, error) {
 	telo, _ := json.Marshal(map[string]string{"ssylka": ssylka})
-	otvet, err := m.Zvat("addServer", string(telo))
+	k, err := m.komandaQr("addServer", telo)
 	if err != nil {
 		return "", err
-	}
-	var k protokol.Kadr
-	if err := json.Unmarshal([]byte(otvet), &k); err != nil {
-		return "", fmt.Errorf("ответ службы не разобран: %w", err)
-	}
-	if k.Oshib != nil {
-		return "", errors.New(k.Oshib.Tekst)
 	}
 	var dobavlen struct {
 		Server protokol.Server `json:"server"`
 	}
 	if err := json.Unmarshal(k.Telo, &dobavlen); err != nil || dobavlen.Server.Imya == "" {
-		return "сервер", nil
+		return "добавлен сервер", nil
 	}
-	return dobavlen.Server.Imya, nil
+	return "добавлен " + dobavlen.Server.Imya, nil
+}
+
+func (m *most) podpiskaSEkrana(adres string) (string, error) {
+	telo, _ := json.Marshal(map[string]string{"adres": adres})
+	k, err := m.komandaQr("addSubscription", telo)
+	if err != nil {
+		return "", err
+	}
+	// Запасная подписка ложится адресом и списка не тянет, активная приносит
+	// серверы сразу. Человеку важна именно эта разница: после первой список на
+	// экране не изменится, и молчание выглядело бы отказом.
+	var dobavlena struct {
+		Aktivnaya bool `json:"aktivnaya"`
+		Serverov  int  `json:"serverov"`
+	}
+	if err := json.Unmarshal(k.Telo, &dobavlena); err != nil {
+		return "подписка добавлена", nil
+	}
+	if !dobavlena.Aktivnaya {
+		return "подписка добавлена про запас", nil
+	}
+	return fmt.Sprintf("подписка добавлена, серверов: %d", dobavlena.Serverov), nil
+}
+
+// komandaQr шлёт команду службе и разворачивает её кадр. Отказ службы
+// возвращается её же текстом, чтобы окно показало его той строкой, что и всё
+// остальное.
+func (m *most) komandaQr(imya string, telo []byte) (protokol.Kadr, error) {
+	var k protokol.Kadr
+	otvet, err := m.Zvat(imya, string(telo))
+	if err != nil {
+		return k, err
+	}
+	if err := json.Unmarshal([]byte(otvet), &k); err != nil {
+		return k, fmt.Errorf("ответ службы не разобран: %w", err)
+	}
+	if k.Oshib != nil {
+		return k, errors.New(k.Oshib.Tekst)
+	}
+	return k, nil
 }

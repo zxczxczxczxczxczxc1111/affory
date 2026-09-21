@@ -50,3 +50,31 @@ func TestRaspoznatQrBezQrOtkazyvaetSlovami(t *testing.T) {
 		t.Fatalf("ждали «не найден», получили %v", err)
 	}
 }
+
+// В QR приезжает и ключ, и подписка: панель выдаёт подписку картинкой. До
+// 21.09.2026 сюда жёстко уходил addServer, и QR подписки отвергался словами
+// про неизвестную схему при том, что человек всё сделал правильно.
+func TestPodpiskaVQrOtlichaetsyaOtSsylkiNaServer(t *testing.T) {
+	podpiski := []string{
+		"https://panel.example/sub/abc",
+		"http://panel.example/sub/abc",
+		"HTTPS://PANEL.EXAMPLE/sub",
+	}
+	for _, a := range podpiski {
+		if !podpiskaVQr(a) {
+			t.Errorf("адрес подписки %q принят за ссылку на сервер", a)
+		}
+	}
+	klyuchi := []string{
+		"vless://11111111-2222-3333-4444-555555555555@203.0.113.9:8443?type=tcp",
+		"hy2://parol@203.0.113.9:443",
+		"ss://YWVzOnBhc3M@203.0.113.9:8388",
+		"trojan://parol@203.0.113.9:443",
+		"",
+	}
+	for _, k := range klyuchi {
+		if podpiskaVQr(k) {
+			t.Errorf("ссылка на сервер %q принята за подписку", k)
+		}
+	}
+}

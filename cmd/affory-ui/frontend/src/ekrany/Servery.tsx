@@ -94,7 +94,10 @@ export interface ServeryProps {
   otkazyPodpiski?: OtkazStroki[];
   /** Reads the clipboard through the shell; absent in tests that do not care. */
   chitatBufer?: () => Promise<string>;
-  /** Shell-side screen QR: resolves with the added server name, rejects with the reason. */
+  /** Shell-side screen QR: resolves with the ready outcome line ("добавлен
+   *  Германия", "подписка добавлена про запас"), rejects with the reason. The
+   *  line is ready because the code may hold either a key or a subscription
+   *  address, and only the shell knows which one went through. */
   naQrSEkrana?: () => Promise<string>;
   /** Подписки списком: активная одна, остальные про запас. Пустой список это
    *  «подписок нет», и тогда раздела нет вовсе. */
@@ -243,8 +246,11 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
     if (!naQrSEkrana) return;
     zadatOtkazQr(null);
     try {
-      const imya = await naQrSEkrana();
-      zadatIshodVvoda(imya ? "добавлен " + imya : null);
+      // Строка исхода приходит готовой: в коде может лежать и ключ, и адрес
+      // подписки, и собрать фразу здесь значило бы гадать, что из двух
+      // добавилось.
+      const itog = await naQrSEkrana();
+      zadatIshodVvoda(itog || null);
     } catch (e: unknown) {
       zadatIshodVvoda(null);
       zadatOtkazQr(e instanceof Error ? e.message : String(e));
@@ -270,6 +276,20 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   const zakrytFormu = () => { zadatDobavlyayu(false); zadatSsylku(""); zadatAdres(""); };
 
   const otmena = !pervyyZapusk && <Knopka rang="tekst" onClick={zakrytFormu}>Отмена</Knopka>;
+  // Одна кнопка на обе вкладки: в коде лежит либо ключ, либо адрес подписки, и
+  // читается он одинаково. Пока кнопка стояла только у ссылки, QR подписки -
+  // а именно им её и выдают - прочитать было нечем.
+  const knopkaQr = naQrSEkrana && (
+    <Knopka
+      rang="vtoraya"
+      testId="qr-s-ekrana"
+      aktiven={aktiven}
+      onClick={() => void sEkrana()}
+      title="Окно спрячется, снимет экраны и найдёт на них QR. Годится и ключ, и адрес подписки: что в коде, то и добавится. В окно ссылка не попадает, она уходит прямо в службу."
+    >
+      QR с экрана
+    </Knopka>
+  );
   const forma = (
     <Karta testId="forma">
       <div className="flex flex-col gap-3 px-4 py-3">
@@ -299,11 +319,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                 из буфера
               </Knopka>
             )}
-            {naQrSEkrana && (
-              <Knopka rang="vtoraya" testId="qr-s-ekrana" aktiven={aktiven} onClick={() => void sEkrana()}>
-                QR с экрана
-              </Knopka>
-            )}
+            {knopkaQr}
             {otmena}
           </div>
         ) : (
@@ -329,13 +345,14 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                 из буфера
               </Knopka>
             )}
+            {knopkaQr}
             {otmena}
           </div>
         )}
         {ishodVvoda && (
           <p className="text-fg-secondary text-xs" data-testid="ishod-vvoda">{ishodVvoda}</p>
         )}
-        {otkazQr && chto === "server" && (
+        {otkazQr && (
           <Neudacha
             testId="otkaz-qr"
             zagolovok="QR с экрана не прочитался"
@@ -633,7 +650,11 @@ export function Zaderzhka({ zamer, compact = false }: { zamer?: ZamerZaderzhki; 
     <span
       data-testid={`zaderzhka-${zamer.id}`}
       className={compact ? "min-w-0 truncate" : "text-fg-muted shrink-0 text-xs"}
-      title={`${uzel} · ${tunnel}`}
+      /* Число «VPN» здесь БОЛЬШЕ «Задержки» на главном экране, и это не
+         расхождение: там один круг по готовому соединению, здесь весь запрос
+         вместе с рукопожатием протокола. Без этой строки одно из двух чисел
+         выглядит враньём. */
+      title={`${uzel} · ${tunnel}\nузел: дорога до сервера мимо VPN\nVPN: весь запрос через него, вместе с рукопожатием, поэтому больше «Задержки» на главном экране`}
     >
       {/* Сжатый вид это ОДНА строка. Двумя строками он стоял в строке
           сервера высотой 52px рядом с названием, не помещался и наезжал на

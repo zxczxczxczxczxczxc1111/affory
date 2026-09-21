@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,10 +21,15 @@ func sluzhbaSoStatistikoy(t *testing.T) (*Sluzhba, *atomic.Int32) {
 	s := podstavnaya(t, nil)
 	var oprosov atomic.Int32
 	s.periodStat = 5 * time.Millisecond
-	s.snimokStat = func(ctx context.Context, adres, sekret, teg string) (yadra.Snimok, error) {
+	s.snimokStat = func(ctx context.Context, adres, sekret string) (yadra.Snimok, error) {
 		oprosov.Add(1)
-		return yadra.Snimok{Zaderzhka: 87 * time.Millisecond, EstZaderzhka: true, Otdano: 10, Prinyato: 20}, nil
+		return yadra.Snimok{Otdano: 10, Prinyato: 20}, nil
 	}
+	// Задержка приходит своим замером, а не от ядра: подставляем его тем же
+	// швом, каким тесты подставляют всё остальное.
+	s.periodOtklika = 5 * time.Millisecond
+	s.zamerOtklika = func(context.Context, string, int) (time.Duration, error) { return 87 * time.Millisecond, nil }
+	s.portProksiNash = 10809
 	// Туннель «поднят» напрямую: подъём тут не предмет проверки.
 	s.mu.Lock()
 	s.sost = protokol.SostPodnyat
@@ -119,8 +125,11 @@ func TestNeizmerennayaZaderzhkaNeNol(t *testing.T) {
 	// Договор запасного пути: ноль за неизмеренное на экране запрещён, значит
 	// служба обязана не присылать поле вовсе, а не присылать ноль.
 	s, _ := sluzhbaSoStatistikoy(t)
-	s.snimokStat = func(ctx context.Context, adres, sekret, teg string) (yadra.Snimok, error) {
+	s.snimokStat = func(ctx context.Context, adres, sekret string) (yadra.Snimok, error) {
 		return yadra.Snimok{Otdano: 1, Prinyato: 2}, nil
+	}
+	s.zamerOtklika = func(context.Context, string, int) (time.Duration, error) {
+		return 0, errors.New("цель замера не ответила")
 	}
 	id, sob := s.Podpisatsya()
 	defer s.Otpisatsya(id)

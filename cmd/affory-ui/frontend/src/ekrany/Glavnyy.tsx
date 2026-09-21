@@ -269,7 +269,13 @@ export function Glavnyy({
                 том же ритме, что «Получено» и «Отправлено» внутри колонок.
                 По центру и без черты она читалась как подпись, случайно
                 оставшаяся под таблицей (владелец, 19.09.2026). */}
-            <dl className="affory-latency border-border mt-4 flex items-baseline justify-between border-t pt-3 text-[13px]">
+            <dl
+              className="affory-latency border-border mt-4 flex items-baseline justify-between border-t pt-3 text-[13px]"
+              /* Пояснение нужно, потому что число сравнивают с чужими: с пингом
+                 в игре и в Discord. Оно и правда про то же - один круг, а не
+                 весь запрос с рукопожатием (21.09.2026). */
+              title="Сколько идёт один круг до интернета через VPN. То же, что пинг в играх и в Discord."
+            >
               <dt className="text-fg-muted">Задержка</dt>
               <dd className="text-foreground font-medium" data-testid="zaderzhka">{podnyat ? chislo(statistika?.zaderzhka_ms, "мс") : PROCHERK}</dd>
             </dl>

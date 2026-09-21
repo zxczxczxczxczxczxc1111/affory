@@ -92,8 +92,16 @@ type Sluzhba struct {
 	statPodp    map[uint64]bool
 	statOtmena  context.CancelFunc
 	periodStat  time.Duration
-	snimokStat  func(ctx context.Context, adres, sekret, teg string) (yadra.Snimok, error)
+	snimokStat  func(ctx context.Context, adres, sekret string) (yadra.Snimok, error)
 	adresVyhoda string
+	// Задержка экрана (6.1): свой замер круга через локальный прокси, а не
+	// число ядра. Меряется реже цифр, потому что это настоящий запрос в сеть,
+	// и держится между замерами.
+	periodOtklika time.Duration
+	adresOtklika  string
+	zamerOtklika  func(ctx context.Context, cel string, portProksi int) (time.Duration, error)
+	otklik        time.Duration
+	otklikEst     bool
 	// Проверки 6.3: эндпоинт и два шва для сети и брандмауэра.
 	adresProverki string
 	sprositVyhod  func(ctx context.Context, endpoint string, portProksi int) (string, error)
@@ -337,6 +345,9 @@ func NovayaSluzhba() *Sluzhba {
 	s.shagDosprosa = shagDosprosaPoUmolchaniyu
 	s.periodStat = periodStatPoUmolchaniyu
 	s.snimokStat = yadra.Statistika
+	s.periodOtklika = periodOtklikaPoUmolchaniyu
+	s.adresOtklika = set.CelOtklikaPoUmolchaniyu
+	s.zamerOtklika = set.Otklik
 	s.adresProverki = set.AdresProverkiPoUmolchaniyu
 	s.sprositVyhod = set.AdresVyhoda
 	s.ipv6Zaglushen = set.PravilaIPv6Est
@@ -620,24 +631,6 @@ func (s *Sluzhba) StatusS(oshib *protokol.Oshibka) protokol.StatusOtvet {
 //
 // Функция, а не константа на месте вызова: так подмена аргумента видна мутацией.
 func tegDlyaZamera() string { return genkonfig.TegSelector }
-
-// tegSnimka выбирает, кого спрашивать о цифрах экрана и подробного журнала.
-//
-// Пока группа не назвала выбор, спрашивается ГРУППА, а не кандидат. Тег
-// кандидата из пустого идентификатора это строка "srv-", исходящего с таким
-// именем у ядра нет, и снимок не снимается вовсе. Приёмка 13.09.2026 поймала
-// это как молчание статистики первые четыре секунды после подключения: группа
-// avto называет выбор около 5.6 с, и всё это время экран стоял без цифр.
-//
-// Счётчики трафика от тега не зависят, они из /connections. Зависит только
-// задержка, а её отсутствие договор экрана допускает: он не рисует ноль за
-// неизмеренное.
-func tegSnimka(nesushchiyId string) string {
-	if nesushchiyId == "" {
-		return genkonfig.TegSelector
-	}
-	return genkonfig.TegKandidata(nesushchiyId)
-}
 
 func (s *Sluzhba) Connect(ctx context.Context) error {
 	return s.connect(ctx, nil)

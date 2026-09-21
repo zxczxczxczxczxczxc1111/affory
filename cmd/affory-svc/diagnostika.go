@@ -135,11 +135,8 @@ func (s *Sluzhba) nastoyashchieIstochniki() diagnostika.Istochniki {
 			}
 			ctx, otmena := context.WithTimeout(context.Background(), 3*time.Second)
 			defer otmena()
-			s.mu.Lock()
-			teg := tegSnimka(s.nesushchiyId)
-			s.mu.Unlock()
 			nachalo := time.Now()
-			sn, err := s.snimokStat(ctx, adres, sekret, teg)
+			sn, err := s.snimokStat(ctx, adres, sekret)
 			if err != nil {
 				return diagnostika.Yadro{}, err
 			}

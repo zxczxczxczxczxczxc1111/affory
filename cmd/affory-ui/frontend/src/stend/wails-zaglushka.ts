@@ -45,6 +45,10 @@ const servery = [
   { id: "de", imya: "Германия · Франкфурт", transport: "hy2", host: "203.0.113.12", port: 443, iz_podpiski: true, s_pinom: true },
   { id: "fi", imya: "Финляндия · Хельсинки", transport: "ws", host: "203.0.113.13", port: 443, iz_podpiski: true },
   { id: "se", imya: "Швеция · Стокгольм", transport: "anytls", host: "203.0.113.14", port: 443, iz_podpiski: true },
+  // tuic стоит в подписке первым и первым же советует справка, поэтому он
+  // обязан быть и здесь: без него снимок справки советовал бы протокол,
+  // которого на соседнем снимке нет (21.09.2026).
+  { id: "pl", imya: "Польша · Варшава", transport: "tuic", host: "203.0.113.16", port: 10443, iz_podpiski: true },
   { id: "svoy", imya: "Свой сервер", transport: "trojan", host: "203.0.113.15", port: 443, iz_podpiski: false },
 ];
 
@@ -125,7 +129,7 @@ const pravila = {
     ],
     domeny: [
       { domen: "gosuslugi.ru", marshrut: "direct" },
-      { domen: "rutracker.org", marshrut: "vpn" },
+      { domen: "reddit.com", marshrut: "vpn" },
     ],
     // Явные маршруты сервисов: два ведут мимо туннеля, счётчик вкладки
     // показывает шесть из восьми.
@@ -156,9 +160,13 @@ const pravila = {
 // серверы»: съёмка нажимает её сама. Два числа про разное, см. ZamerZaderzhki.
 const zamery = {
   zamery: [
-    { id: "nl", realping_ms: 38, tcping_ms: 28 },
-    { id: "de", realping_ms: 57, tcping_ms: 41 },
-    { id: "fi", realping_ms: 49, tcping_ms: 36 },
+    // realping БОЛЬШЕ задержки главного экрана, и это не описка: там один круг
+    // по готовому соединению, здесь весь запрос вместе с рукопожатием. Числа
+    // взяты того же порядка, что живые замеры 12.09.2026.
+    { id: "nl", realping_ms: 231, tcping_ms: 28 },
+    { id: "de", realping_ms: 104, tcping_ms: 41 },
+    { id: "fi", realping_ms: 382, tcping_ms: 36 },
+    { id: "pl", realping_ms: 96, tcping_ms: 30 },
   ],
 };
 

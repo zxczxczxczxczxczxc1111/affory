@@ -915,12 +915,13 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             podpiski={podpiski}
             zaderzhki={zaderzhki}
             chitatBufer={chitatBufer}
-            // The shell adds the server itself, so the list is reloaded here:
-            // vypolnit never saw an addServer for it.
+            // The shell adds the server or the subscription itself, so both
+            // lists are reloaded here: vypolnit never saw that command.
             naQrSEkrana={async () => {
-              const imya = await dobavitSEkrana();
+              const itog = await dobavitSEkrana();
               void obnovitSpisok();
-              return imya;
+              void obnovitPodpiski();
+              return itog;
             }}
           />
         ) : vkladka === "pravila" ? (
