@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/udaleniye"
 )
 
 func TestSpisokProtsessovAppData(t *testing.T) {
@@ -39,14 +41,26 @@ func TestSpisokProtsessovAppData(t *testing.T) {
 			// держит образ убитого процесса ещё доли секунды после Wait, и
 			// одиночное удаление тихо возвращало отказ: к 21.09.2026 в
 			// %LOCALAPPDATA% машины разработки накопилось 25 таких каталогов.
+			//
+			// Окно 15 с, а не 2 с: первая редакция ждала 20 раз по 100 мс и в
+			// тот же день уронила ворота приёмки на обеих ветках. В госте файл
+			// держит не только образ процесса, но и Defender, которому свежий
+			// .exe в профиле пользователя интересен отдельно. На машине
+			// разработки уборка укладывается в первый круг, так что цена этого
+			// окна ноль ровно до того дня, когда оно понадобится.
 			defer func() {
-				for i := 0; i < 20; i++ {
-					if err := os.RemoveAll(dir); err == nil {
+				var posledniy error
+				for i := 0; i < 60; i++ {
+					posledniy = udaleniye.Katalog(dir)
+					if posledniy == nil {
 						return
 					}
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(250 * time.Millisecond)
 				}
-				t.Errorf("каталог пробы %s не убран", dir)
+				// Причина В ТЕКСТЕ. Первая редакция сторожа говорила только
+				// «не убран», и по такому вердикту нельзя отличить занятый
+				// файл от непустого каталога или отказа прав.
+				t.Errorf("каталог пробы %s не убран: %v", dir, posledniy)
 			}()
 			path := filepath.Join(dir, "test application.exe")
 			if err := os.WriteFile(path, data, 0600); err != nil {

@@ -3,10 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/udaleniye"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -39,8 +39,9 @@ const (
 
 // Швы для тестов: настоящие функции ходят в реестр и меню Пуск живой машины.
 var (
-	papkaYarlykov = papkaYarlykovSistemnaya
-	profiliLyudey = profiliLyudeySistemnye
+	papkaYarlykov        = papkaYarlykovSistemnaya
+	profiliLyudey        = profiliLyudeySistemnye
+	udalitReestrovyySled = udalitKlyuchSPotomkami
 )
 
 func papkaYarlykovSistemnaya() (string, error) {
@@ -104,11 +105,11 @@ func snyatSledy() []string {
 
 	if put, err := papkaYarlykov(); err != nil {
 		zhaloby = append(zhaloby, err.Error())
-	} else if err := os.RemoveAll(put); err != nil {
+	} else if err := udaleniye.Katalog(put); err != nil {
 		zhaloby = append(zhaloby, fmt.Sprintf("ярлыки %s не удалены: %v", put, err))
 	}
 
-	if err := udalitKlyuchSPotomkami(registry.LOCAL_MACHINE, klyuchUdaleniya); err != nil {
+	if err := udalitReestrovyySled(registry.LOCAL_MACHINE, klyuchUdaleniya); err != nil {
 		zhaloby = append(zhaloby, fmt.Sprintf("запись в «Программах и компонентах» не снята: %v", err))
 	}
 
@@ -133,7 +134,7 @@ func snyatSledyLyudey() []string {
 
 	for sid, profil := range profili {
 		katalog := filepath.Join(profil, katalogVProfile)
-		if err := os.RemoveAll(katalog); err != nil {
+		if err := udaleniye.Katalog(katalog); err != nil {
 			zhaloby = append(zhaloby, fmt.Sprintf("каталог %s не удалён: %v", katalog, err))
 		}
 
@@ -142,7 +143,7 @@ func snyatSledyLyudey() []string {
 			sid + `\` + klyuchIkonkiVKuste,
 			sid + `_Classes\` + klyuchIkonkiVKlassah,
 		} {
-			if err := udalitKlyuchSPotomkami(registry.USERS, put); err != nil {
+			if err := udalitReestrovyySled(registry.USERS, put); err != nil {
 				zhaloby = append(zhaloby, fmt.Sprintf("ключ %s не снят: %v", put, err))
 			}
 		}

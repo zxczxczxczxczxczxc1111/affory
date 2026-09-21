@@ -14,9 +14,15 @@ import (
 func podstavnyeSledy(t *testing.T, yarlyki string, profili map[string]string) {
 	t.Helper()
 	prezhnyayaPapka, prezhnieProfili := papkaYarlykov, profiliLyudey
+	prezhneeUdalenie := udalitReestrovyySled
+	// Файловая проверка не должна снимать регистрацию установленного клиента.
+	udalitReestrovyySled = func(registry.Key, string) error { return nil }
 	papkaYarlykov = func() (string, error) { return yarlyki, nil }
 	profiliLyudey = func() (map[string]string, error) { return profili, nil }
-	t.Cleanup(func() { papkaYarlykov, profiliLyudey = prezhnyayaPapka, prezhnieProfili })
+	t.Cleanup(func() {
+		papkaYarlykov, profiliLyudey = prezhnyayaPapka, prezhnieProfili
+		udalitReestrovyySled = prezhneeUdalenie
+	})
 }
 
 func TestSnyatSledyUbiraetYarlykiIKatalogiProfiley(t *testing.T) {
@@ -49,11 +55,7 @@ func TestSnyatSledyUbiraetYarlykiIKatalogiProfiley(t *testing.T) {
 
 	zhaloby := snyatSledy()
 	for _, z := range zhaloby {
-		// Реестровые жалобы тут возможны: подставного куста у нас нет, ключи
-		// живой машины трогать нельзя. Файловых быть не должно.
-		if strings.Contains(z, "не удалены") || strings.Contains(z, "каталог") {
-			t.Fatalf("файловый след не убран: %s", z)
-		}
+		t.Fatalf("след не убран: %s", z)
 	}
 
 	if _, err := os.Stat(yarlyki); !os.IsNotExist(err) {
