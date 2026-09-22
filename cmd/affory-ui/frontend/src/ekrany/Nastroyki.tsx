@@ -9,6 +9,7 @@ import {
 } from "../ikonki";
 import { obyom } from "./Glavnyy";
 import { Zhurnaly } from "./Zhurnaly";
+import { prichinaPryamogoTrafika, type PravilaTrafika } from "../trafik";
 
 // Settings tab. 4.8 brought the two launch switches, 4.7 the uninstall, 4.11
 // the rest: the §9.2 defaults shown rather than implied, the "all traffic"
@@ -19,6 +20,10 @@ import { Zhurnaly } from "./Zhurnaly";
 // пользуются.
 
 export interface NastroykiProps {
+  trafik?: PravilaTrafika | null;
+  estChernovikPravil?: boolean;
+  naPravila?: () => void;
+  obnovitPravila?: () => void;
   naPapkuZhurnalov?: () => Promise<void>;
   status: StatusOtvet;
   /** Deferred commands with wave numbers, from hello. `null` until it answers. */
@@ -117,6 +122,7 @@ const ITOG: Record<string, string> = {
 type Razdel = "hysteria" | "diagnostika" | "profil";
 
 export function Nastroyki({
+  trafik, estChernovikPravil=false, naPravila, obnovitPravila,
   status, otlozheno, svyaz, povtorit, naKomandu, naUdalenie,
   proverka = null, proverkaOtkaz = null, naObnovlenie, adresVyhoda = null, zamerPolosy = null,
   vyvestiProfil, vvestiProfil, itogProfilya = null, zanyatyeKomandy = {},
@@ -171,9 +177,10 @@ export function Nastroyki({
   const podnyat = status.sostoyanie === "podnyat";
   const killSwitch = status.kill_switch ?? false;
   const nahodka = status.obnovlenie ?? null;
-  // The service accepts the mode only over a raised tunnel (killswitch.go);
-  // switching it off is allowed in any state.
-  const mozhnoRezhim = aktiven;
+  const pochemuNelzyaVklyuchit=estChernovikPravil?"Сначала примени или отмени черновик правил.":!trafik?"Правила ещё не прочитаны. Обнови их перед включением блокировки.":prichinaPryamogoTrafika(trafik);
+  // Disabling protection stays available even when rule inspection failed.
+  const rezhimZanyat=zanyatyeKomandy.setKillSwitch===true || zanyatyeKomandy.setRules===true;
+  const mozhnoRezhim = mozhnoZvat && !rezhimZanyat && (killSwitch || !pochemuNelzyaVklyuchit);
   // The screen remembers WHICH tunnel state produced the answer it shows: a
   // leak report taken over a raised tunnel says nothing about a dropped one.
   const [snyato, zadatSnyato] = useState<{ sostoyanie: Sostoyanie; vremya: string } | null>(null);
@@ -253,11 +260,13 @@ export function Nastroyki({
               VPN переподключится под новый режим, все соединения разорвутся и поднимутся заново.
               Загрузки и звонки оборвутся
             </p>
+            {vopros && pochemuNelzyaVklyuchit && <p role="alert" className="text-warn text-[13px]">{pochemuNelzyaVklyuchit} Включение блокировки недоступно.</p>}
             <div className="flex gap-2">
               {/* За кнопкой стоит расстановка правил брандмауэра, а это
                   секунды, а не мгновение. */}
               <Knopka rang="glavnaya" bolshaya testId="podtverdit-rezhim" zhdyot={zhdyot("setKillSwitch")}
-                      onClick={() => { naKomandu("setKillSwitch", { vkl: vopros }); zadatVopros(null); }}>
+                      aktiven={mozhnoZvat && !rezhimZanyat && !(vopros && !!pochemuNelzyaVklyuchit)}
+                      onClick={() => { if(!mozhnoZvat || rezhimZanyat || (vopros && pochemuNelzyaVklyuchit))return; naKomandu("setKillSwitch", { vkl: vopros }); zadatVopros(null); }}>
                 {vopros ? "Включить" : "Выключить"}
               </Knopka>
               <Knopka rang="tekst" bolshaya testId="otmena-rezhima" onClick={() => zadatVopros(null)}>Отмена</Knopka>
@@ -270,9 +279,7 @@ export function Nastroyki({
               testId="ves-trafik-ryad"
               nazvanie="Блокировать сеть при обрыве VPN"
               poyasnenie={
-                mozhnoRezhim || !aktiven
-                  ? "Действует во время подключения, после отключения сеть освобождается"
-                  : "Защита включится вместе с VPN"
+                !killSwitch && pochemuNelzyaVklyuchit ? pochemuNelzyaVklyuchit : "Действует во время подключения, после отключения сеть освобождается"
               }
               aktiven={mozhnoRezhim}
             >
@@ -281,7 +288,7 @@ export function Nastroyki({
                 podpis="весь трафик только через VPN"
                 vkl={killSwitch}
                 aktiven={mozhnoRezhim}
-                naSmenu={(vkl) => { if (podnyat) zadatVopros(vkl); else naKomandu("setKillSwitch", { vkl }); }}
+                naSmenu={(vkl) => { if(!mozhnoZvat || rezhimZanyat || (vkl && pochemuNelzyaVklyuchit))return; if (podnyat) zadatVopros(vkl); else naKomandu("setKillSwitch", { vkl }); }}
               />
             </Ryad>
             <Ryad
@@ -305,6 +312,13 @@ export function Nastroyki({
             </Ryad>
           </Panel>
         )}
+        {!killSwitch && pochemuNelzyaVklyuchit && <div className="flex flex-col gap-2 text-[13px]">
+          {trafik && !estChernovikPravil && <p className="text-warn">Блокировка несовместима с прямыми маршрутами. В правилах выбери для них VPN или удали их. Автоматически правила не меняются.</p>}
+          <div className="flex flex-wrap gap-2">
+            {naPravila && <Knopka rang="tekst" onClick={naPravila}>Открыть правила</Knopka>}
+            {!trafik && obnovitPravila && <Knopka rang="vtoraya" aktiven={mozhnoZvat} onClick={obnovitPravila}>Обновить правила</Knopka>}
+          </div>
+        </div>}
 
         <div className="mt-1 flex flex-col">
           {/* Полоса канала. Нужна ровно одному протоколу, hysteria2, у которого

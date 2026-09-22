@@ -250,7 +250,7 @@ export function ZnachokServisa({ src, className = "" }: { src: string; className
  *  колонке: две подписи в строку там не помещаются, а обрезать их значит
  *  спрятать разницу между режимами ровно в том месте, где её и выбирают. */
 export function SegmentStolbik<T extends string>({ znacheniya, vybrano, naVybor, aktiven = true, "aria-label": podpis }: {
-  znacheniya: { z: T; podpis: string }[];
+  znacheniya: { z: T; podpis: string; disabled?: boolean }[];
   vybrano: T;
   naVybor: (z: T) => void;
   aktiven?: boolean;
@@ -258,7 +258,7 @@ export function SegmentStolbik<T extends string>({ znacheniya, vybrano, naVybor,
 }) {
   return (
     <div role="radiogroup" aria-label={podpis} className="bg-elevated border-border flex flex-col rounded-lg border p-1">
-      {znacheniya.map(({ z, podpis: p }) => {
+      {znacheniya.map(({ z, podpis: p, disabled }) => {
         const on = z === vybrano;
         return (
           <button
@@ -266,7 +266,7 @@ export function SegmentStolbik<T extends string>({ znacheniya, vybrano, naVybor,
             type="button"
             role="radio"
             aria-checked={on}
-            disabled={!aktiven}
+            disabled={!aktiven || disabled}
             onClick={() => naVybor(z)}
             className={`h-10 rounded-md px-3 text-left text-sm font-medium transition-colors disabled:opacity-40 ${
               on ? "bg-accent/45 text-foreground" : "text-fg-secondary hover:bg-fill-subtle hover:text-foreground"

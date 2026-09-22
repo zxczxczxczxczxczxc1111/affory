@@ -223,6 +223,7 @@ describe("российский список", () => {
     });
     fireEvent.click(screen.getByRole("tab", { name: /Сайты/ }));
     expect(screen.getByLabelText("Российские сайты")).toHaveTextContent(/не действует/i);
+    expect(screen.queryByTestId("vklyucheno-sites")).toBeNull();
     expect(screen.getByLabelText("Российские сайты")).not.toHaveTextContent(/чтобы включить/i);
   });
 

@@ -45,3 +45,15 @@ export function zadatMarshrutServisa(trafik:PravilaTrafika,id:string,value:Vybor
   const exists=trafik.servisy.some(s=>s.id===id);
   return {...trafik,servisy:exists?trafik.servisy.map(s=>s.id===id?{...s,marshrut:value}:s):[...trafik.servisy,{id,marshrut:value}]};
 }
+
+export function prichinaPryamogoTrafika(trafik:PravilaTrafika):string|null {
+  const parts:string[]=[];
+  if(trafik.po_umolchaniyu==="direct")parts.push("общий режим «Только выбранное»");
+  const apps=trafik.prilozheniya.filter(r=>r.marshrut==="direct").length;
+  const sites=trafik.domeny.filter(r=>r.marshrut==="direct").length;
+  const services=trafik.servisy.filter(r=>r.marshrut==="direct").length;
+  if(apps)parts.push(`приложения: ${apps}`);
+  if(sites)parts.push(`сайты: ${sites}`);
+  if(services)parts.push(`сервисы: ${services}`);
+  return parts.length?`Напрямую настроены: ${parts.join("; ")}.`:null;
+}

@@ -245,7 +245,7 @@ export function Teg({ ton = "obychnyy", testId, children }: { ton?: TonTega; tes
 
 /** Segmented control: a radio group drawn as one pill. */
 export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktiven = true, rastyanut = false, ton = "yarkiy", "aria-label": podpis }: {
-  znacheniya: { z: T; podpis: string }[];
+  znacheniya: { z: T; podpis: string; disabled?: boolean }[];
   vybrano: T;
   naVybor: (z: T) => void;
   aktiven?: boolean;
@@ -258,7 +258,7 @@ export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktive
 }) {
   return (
     <div role="radiogroup" aria-label={podpis} className={`bg-elevated border-border inline-flex rounded-lg border p-1 text-[13px] ${rastyanut ? "w-full" : ""}`}>
-      {znacheniya.map(({ z, podpis: p }) => {
+      {znacheniya.map(({ z, podpis: p, disabled }) => {
         const on = z === vybrano;
         return (
           <button
@@ -266,7 +266,7 @@ export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktive
             type="button"
             role="radio"
             aria-checked={on}
-            disabled={!aktiven}
+            disabled={!aktiven || disabled}
             onClick={() => naVybor(z)}
             className={`h-8 rounded-md px-4 font-medium transition-colors ${rastyanut ? "flex-1" : ""} ${
               on

@@ -233,11 +233,11 @@ export function Glavnyy({
               naVybor={(r) => naTrafik?.(r as Marshrut)}
               znacheniya={[
                 { z: "vpn", podpis: "Всё через VPN" },
-                { z: "direct", podpis: "Только выбранное" },
+                { z: "direct", podpis: "Только выбранное",disabled:status.kill_switch },
               ]}
             />
             <p className="text-fg-muted mt-2.5 text-center text-[13px]">
-              {route === "vpn"
+              {status.kill_switch ? "Включена блокировка сети вне VPN. Режим «Только выбранное» недоступен." : route === "vpn"
                 ? "Через VPN, кроме прямых маршрутов"
                 : "Через VPN только то, что в правилах"}
             </p>

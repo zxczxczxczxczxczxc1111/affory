@@ -703,6 +703,19 @@ it("кнопка папки журналов вызывает нативный �
   expect(most.skolkoRaz("clearJournal")).toBe(0);
 });
 
+it("настройки получают сохранённые прямые маршруты и не отправляют включение блокировки",async()=>{
+  const most=mostProby();
+  most.otvechatTelom("listRules",{protsessy:[],domeny:[],trafik:{po_umolchaniyu:"vpn",servisy:[{id:"youtube",marshrut:"direct"}],domeny:[],prilozheniya:[]}});
+  render(<App/>);
+  fireEvent.click(await screen.findByRole("tab",{name:"Настройки"}));
+  await screen.findByText("Напрямую настроены: сервисы: 1.");
+  expect(screen.getByTestId("ves-trafik")).toBeDisabled();
+  fireEvent.click(screen.getByTestId("ves-trafik"));
+  expect(most.skolkoRaz("setKillSwitch")).toBe(0);
+  fireEvent.click(screen.getByRole("button",{name:"Открыть правила"}));
+  expect(screen.getByRole("tab",{name:"Правила"})).toHaveAttribute("aria-selected","true");
+});
+
 describe("баннер отказа", () => {
   it("баннер отказа закрывается крестиком", async () => {
     const most = mostProby();

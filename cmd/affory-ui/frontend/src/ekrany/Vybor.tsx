@@ -8,7 +8,7 @@ export function CheckIcon() {
 export function Vybor<T extends string>({ value, label, options, disabled = false, onChange }: {
   value: T;
   label: string;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; disabled?: boolean }[];
   disabled?: boolean;
   onChange: (value: T) => void;
 }) {
@@ -20,12 +20,13 @@ export function Vybor<T extends string>({ value, label, options, disabled = fals
   const [expanded, setExpanded] = useState(false);
   const [active, setActive] = useState(selected);
   const [position, setPosition] = useState<CSSProperties>({ visibility: "hidden" });
-  const open = expanded && !disabled && options.length > 0;
+  const enabled=options.map((option,index)=>option.disabled?-1:index).filter(index=>index>=0);
+  const open = expanded && !disabled && enabled.length > 0;
   const current = Math.min(active, options.length - 1);
-  const show = () => { setActive(selected); setExpanded(true); search.current.text = ""; };
+  const show = () => { setActive(options[selected]?.disabled?(enabled[0] ?? 0):selected); setExpanded(true); search.current.text = ""; };
   const choose = (index: number) => {
     const option = options[index];
-    if (disabled || !option) return;
+    if (disabled || !option || option.disabled) return;
     setExpanded(false);
     onChange(option.value);
     trigger.current?.focus();
@@ -64,7 +65,7 @@ export function Vybor<T extends string>({ value, label, options, disabled = fals
     if (open) menu.current?.children[current]?.scrollIntoView?.({ block: "nearest" });
   }, [open, current]);
   const keyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (disabled || !options.length) return;
+    if (disabled || !enabled.length) return;
     const { key } = event;
     if (key === "Tab") { setExpanded(false); return; }
     if (key === "Escape") { if (open) { event.preventDefault(); event.stopPropagation(); setExpanded(false); } return; }
@@ -72,9 +73,9 @@ export function Vybor<T extends string>({ value, label, options, disabled = fals
     if (["ArrowDown", "ArrowUp", "Home", "End"].includes(key)) {
       event.preventDefault();
       if (!open) show();
-      if (key === "Home") setActive(0);
-      else if (key === "End") setActive(options.length - 1);
-      else if (open) setActive((current + (key === "ArrowDown" ? 1 : -1) + options.length) % options.length);
+      if (key === "Home") setActive(enabled[0]);
+      else if (key === "End") setActive(enabled[enabled.length-1]);
+      else if (open) setActive(enabled[(Math.max(0,enabled.indexOf(current)) + (key === "ArrowDown" ? 1 : -1) + enabled.length) % enabled.length]);
       return;
     }
     if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -86,14 +87,14 @@ export function Vybor<T extends string>({ value, label, options, disabled = fals
       search.current = { text, time: now };
       if (!open) setExpanded(true);
       const indices = options.map((_, index) => (current + index + 1) % options.length);
-      const next = indices.find(index => options[index].label.toLocaleLowerCase("ru-RU").startsWith(text));
+      const next = indices.find(index => !options[index].disabled && options[index].label.toLocaleLowerCase("ru-RU").startsWith(text));
       if (next !== undefined) setActive(next);
     }
   };
   return <span className="af-picker">
     <button ref={trigger} type="button" role="combobox" className="af-select" aria-label={label}
       aria-haspopup="listbox" aria-controls={open ? id : undefined} aria-expanded={open}
-      aria-activedescendant={open ? `${id}-${current}` : undefined} disabled={disabled || !options.length}
+      aria-activedescendant={open ? `${id}-${current}` : undefined} disabled={disabled || !enabled.length}
       onClick={() => open ? setExpanded(false) : show()} onKeyDown={keyDown}
       onBlur={() => setExpanded(false)}>
       <span>{options.find(option => option.value === value)?.label ?? "Выбери…"}</span>
@@ -102,8 +103,8 @@ export function Vybor<T extends string>({ value, label, options, disabled = fals
     {open && createPortal(<div className="affory-desktop af-picker-layer">
       <div ref={menu} id={id} role="listbox" aria-label={label} className="af-select-menu" style={position}>
         {options.map((option, index) => <div key={option.value} id={`${id}-${index}`} role="option"
-          aria-selected={option.value === value} data-active={index === current}
-          className="af-select-option" onPointerMove={() => setActive(index)}
+          aria-selected={option.value === value} aria-disabled={option.disabled || undefined} data-active={index === current && !option.disabled}
+          className={`af-select-option ${option.disabled?"opacity-40":""}`} onPointerMove={() => {if(!option.disabled)setActive(index);}}
           onMouseDown={event => event.preventDefault()} onClick={() => choose(index)}>
           <span>{option.label}</span>{option.value === value && <CheckIcon />}
         </div>)}

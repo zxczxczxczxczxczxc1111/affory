@@ -231,6 +231,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const [otlozheno, zadatOtlozheno] = useState<Record<string, number> | null>(null);
   const [pravila, zadatPravila] = useState<PravilaOtvet | null>(null);
   const [pravilaOtkaz, zadatPravilaOtkaz] = useState<Otkazano | null>(null);
+  const [pravilaChitayutsya,zadatPravilaChitayutsya]=useState(false);
+  const nomerPravil=useRef(0);
   // setRules answered trebuet_podyoma: the change waits for the next connect,
   // and the rules tab says so until then.
   const [pravilaZhdut, zadatPravilaZhdut] = useState(false);
@@ -353,16 +355,24 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   }, [zhaloba]);
 
   const obnovitPravila = useCallback(async () => {
+    const nomer=++nomerPravil.current;
+    zadatPravilaChitayutsya(true);
     try {
       const kadr = await zvat("listRules");
+      if(nomer!==nomerPravil.current)return;
       if (kadr.oshibka) {
         zadatPravilaOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst });
         return;
       }
       zadatPravilaOtkaz(null);
       if (kadr.telo && typeof kadr.telo === "object") zadatPravila(kadr.telo as PravilaOtvet);
+      else throw new Error("Служба не вернула правила");
     } catch (e: unknown) {
+      if(nomer!==nomerPravil.current)return;
+      zadatPravilaOtkaz({kod:KOD_OBOLOCHKI,tekst:`Не удалось прочитать правила: ${e instanceof Error?e.message:String(e)}`});
       zhaloba("listRules", e);
+    } finally {
+      if(nomer===nomerPravil.current)zadatPravilaChitayutsya(false);
     }
   }, [zhaloba]);
 
@@ -718,7 +728,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // listRules is fetched only once the service says it exists: asking a
   // deferred command for data would turn its refusal into a banner.
   useEffect(() => {
-    if ((vkladka === "pravila" || vkladka === "podklyuchenie") && otlozheno !== null && !("listRules" in otlozheno)) void obnovitPravila();
+    if ((vkladka === "pravila" || vkladka === "podklyuchenie" || vkladka === "nastroyki") && otlozheno !== null && !("listRules" in otlozheno)) void obnovitPravila();
   }, [vkladka, otlozheno, obnovitPravila]);
 
   // Refresh after returning from another app; yesterday's snapshot is not clairvoyant.
@@ -980,6 +990,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           />
         ) : vkladka === "nastroyki" ? (
           <Nastroyki
+            trafik={pravilaOtkaz || pravilaChitayutsya?null:pravila?.trafik}
+            estChernovikPravil={!!chernovikPravil}
+            naPravila={()=>zadatVkladku("pravila")}
+            obnovitPravila={()=>void obnovitPravila()}
             naPapkuZhurnalov={otkrytPapkuZhurnalov}
             hodObnovleniya={hodObnovleniya}
             vestiKObnovleniyu={vestiKObnovleniyu}

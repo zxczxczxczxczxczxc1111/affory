@@ -70,6 +70,7 @@ function polnyy(pere: Partial<StatusOtvet> = {}) {
   render(
     <Nastroyki
       status={{ sostoyanie: "podnyat", avtozapusk: true, podklyuchat_pri_starte: false, kill_switch: false, port_proksi: 10809, ...pere }}
+      trafik={{po_umolchaniyu:"vpn",prilozheniya:[],domeny:[],servisy:[]}}
       otlozheno={OTLOZHENO}
       naKomandu={naKomandu}
       naUdalenie={vi.fn()}

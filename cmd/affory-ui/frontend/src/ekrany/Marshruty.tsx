@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PravilaProps } from "./Pravila";
-import { imyaMarshruta, snimokPravil, zadatMarshrutServisa, type VyborServisa, type ChernovikPravil, type Marshrut, type PravilaTrafika } from "../trafik";
+import { imyaMarshruta, prichinaPryamogoTrafika, snimokPravil, zadatMarshrutServisa, type VyborServisa, type ChernovikPravil, type Marshrut, type PravilaTrafika } from "../trafik";
 import { perekrytiyaServisa } from "../ohvat";
 import { Flazhok, Knopka, Poisk, Pole, SegmentStolbik, Svorachivaemyy, Tumbler } from "./ui";
 import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
@@ -16,10 +16,12 @@ import { OhvatPravil } from "./OhvatPravil";
 export function VyborTrafika({
   value,
   disabled,
+  killSwitch=false,
   onChange,
 }: {
   value: Marshrut;
   disabled?: boolean;
+  killSwitch?: boolean;
   onChange: (r: Marshrut) => void;
 }) {
   return (
@@ -30,7 +32,7 @@ export function VyborTrafika({
       naVybor={onChange}
       znacheniya={[
         { z: "vpn", podpis: "Всё через VPN" },
-        { z: "direct", podpis: "Только выбранное" },
+        { z: "direct", podpis: "Только выбранное", disabled:killSwitch },
       ]}
     />
   );
@@ -40,11 +42,13 @@ function RouteSelect({
   value,
   label,
   disabled,
+  killSwitch=false,
   onChange,
 }: {
   value: Marshrut;
   label: string;
   disabled?: boolean;
+  killSwitch?: boolean;
   onChange: (v: Marshrut) => void;
 }) {
   return (
@@ -52,7 +56,7 @@ function RouteSelect({
       label={label}
       value={value}
       disabled={disabled}
-      options={[{ value: "vpn", label: "Через VPN" }, { value: "direct", label: "Напрямую" }]}
+      options={[{ value: "vpn", label: "Через VPN" }, { value: "direct", label: "Напрямую",disabled:killSwitch }]}
       onChange={onChange}
     />
   );
@@ -93,6 +97,7 @@ export function Marshruty({
   const base = snimokPravil(sohranennyyTrafik, pravila?.bez_ru_spiska === true);
   const dirty = snimokPravil(trafik, bezRu) !== base;
   const conflict = !!draft && dirty && draft.baza !== base;
+  const protectionConflict=status.kill_switch?prichinaPryamogoTrafika(trafik):null;
   const [applying, setApplying] = useState(false);
   const inFlight = useRef(false);
   const [notice, setNotice] = useState("");
@@ -111,7 +116,7 @@ export function Marshruty({
   const [domain, setDomain] = useState("");
   const [descendants, setDescendants] = useState(true);
   const [route, setRoute] = useState<Marshrut>(
-    trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn",
+    !status.kill_switch && trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn",
   );
   const [remove, setRemove] = useState<string | null>(null);
   const [raskryto, setRaskryto] = useState<Record<string, boolean>>({});
@@ -131,7 +136,7 @@ export function Marshruty({
     return true;
   };
   const apply = async () => {
-    if (disabled || inFlight.current || !dirty || conflict) return;
+    if (disabled || inFlight.current || !dirty || conflict || protectionConflict) return;
     inFlight.current = true;
     setApplying(true); setApplyError(""); setNotice("");
     try {
@@ -179,7 +184,7 @@ export function Marshruty({
     }
   };
   const add = () => {
-    if (disabled) return;
+    if (disabled || (status.kill_switch && route==="direct")) return;
     let changed = false;
     if (tab === "apps") {
       const app = {
@@ -210,7 +215,7 @@ export function Marshruty({
   // Что включено на вкладке, видно НЕ ЗАХОДЯ на неё. Прежде счёт был только у
   // приложений и сайтов, а «российские сайты напрямую» не показывал вообще
   // никто: чтобы узнать про них, надо было догадаться открыть «Сайты».
-  const ruSpisokVkl = !bezRu;
+  const ruSpisokVkl = !bezRu && !status.kill_switch;
   // Tabs count visible entries; the service summary separately counts configured
   // routes and explicit overrides. Neither counter claims a live network result.
   const servisovCherezVPN = katalog.filter(
@@ -246,10 +251,11 @@ export function Marshruty({
         <VyborTrafika
           value={trafik.po_umolchaniyu}
           disabled={disabled}
+          killSwitch={status.kill_switch}
           onChange={(value) => save({ ...trafik, po_umolchaniyu: value })}
         />
         <p className="text-fg-muted text-sm leading-relaxed">
-          {trafik.po_umolchaniyu === "vpn"
+          {status.kill_switch?"Включена блокировка сети вне VPN. Выбор «Напрямую» и режима «Только выбранное» недоступен. Изменить защиту можно в настройках.":trafik.po_umolchaniyu === "vpn"
             ? "VPN для всего интернета. Добавь приложения и сайты, которые должны работать напрямую"
             : "Прямой интернет. Через VPN идёт только то, что добавлено в правила"}
         </p>
@@ -277,19 +283,15 @@ export function Marshruty({
           <p className="text-fg-secondary text-sm">Есть неприменённые изменения</p>
           {conflict ? <p role="alert" className="text-warn text-[13px]">Сохранённые правила изменились. Отмени черновик и проверь актуальный набор перед редактированием.</p>
             : <p className="text-fg-muted text-[13px]">{status.sostoyanie === "vyklyuchen" ? "Весь набор сохранится одним действием." : "Применение всего набора вызовет одно короткое переподключение VPN."}</p>}
-          <Knopka rang="glavnaya" aktiven={!disabled && !conflict} zhdyot={applying} onClick={() => void apply()}>Применить изменения</Knopka>
+          <Knopka rang="glavnaya" aktiven={!disabled && !conflict && !protectionConflict} zhdyot={applying} onClick={() => void apply()}>Применить изменения</Knopka>
           <Knopka rang="vtoraya" aktiven={!disabled} onClick={() => {setDraft(null);setPath("");setDomain("");setAdding(false);setApplyError("");setNotice("Черновик отменён");}}>Отменить изменения</Knopka>
         </div>}
+        {protectionConflict && <p role="alert" className="text-warn text-[13px]">{protectionConflict} Эти правила несовместимы с блокировкой сети вне VPN. Выбери VPN для них или удали их, затем примени изменения.</p>}
         {notice && <p role="status" className="text-fg-secondary text-[13px]">{notice}</p>}
         {applyError && <p role="alert" className="text-danger text-[13px]">{applyError}</p>}
         {pravila?.trebuet_podyoma && (
           <p role="status" className="text-warn text-[13px] leading-relaxed">
             Сохранено. Нужен повторный запуск подключения
-          </p>
-        )}
-        {status.kill_switch && (
-          <p className="text-fg-muted text-[13px] leading-relaxed">
-            Прямые маршруты не работают с блокировкой сети вне VPN, выключи её в настройках защиты
           </p>
         )}
       </aside>
@@ -385,7 +387,7 @@ export function Marshruty({
                           </span>
                         </span>
                         <Vybor<VyborServisa> label={`Маршрут сервиса ${service.imya}`} value={explicit?.marshrut ?? "inherit"} disabled={disabled}
-                          options={[{value:"inherit",label:"По общему режиму"},{value:"vpn",label:"Через VPN"},{value:"direct",label:"Напрямую"}]}
+                          options={[{value:"inherit",label:"По общему режиму",disabled:status.kill_switch && trafik.po_umolchaniyu==="direct"},{value:"vpn",label:"Через VPN"},{value:"direct",label:"Напрямую",disabled:status.kill_switch}]}
                           onChange={value=>save(zadatMarshrutServisa(trafik,service.id,value))}/>
                       </div>
                       {(pereopredeleniya.get(service.id)?.length ?? 0)>0 && <p className="text-warn px-4 pb-2 text-[12px]">Есть другой маршрут в правилах сайтов</p>}
@@ -517,7 +519,7 @@ export function Marshruty({
                     pickerEpoch.current++;
                     setPickerError("");
                     setPicking(false);
-                    if (!adding) setRoute(trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn");
+                    if (!adding) setRoute(!status.kill_switch && trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn");
                     setAdding(!adding);
                   }}
                 >
@@ -600,6 +602,7 @@ export function Marshruty({
                       <RouteSelect
                         label="Маршрут нового правила"
                         value={route}
+                        killSwitch={status.kill_switch}
                         onChange={setRoute}
                       />
                     </div>
@@ -607,7 +610,7 @@ export function Marshruty({
                       rang="glavnaya"
                       bolshaya
                       aktiven={
-                        !disabled &&
+                        !disabled && !(status.kill_switch && route==="direct") &&
                         (tab === "apps" ? path.trim() !== "" : domain.trim() !== "")
                       }
                       onClick={add}
@@ -615,6 +618,7 @@ export function Marshruty({
                       Добавить в черновик
                     </Knopka>
                   </div>
+                  {status.kill_switch && route==="direct" && <p className="text-warn text-[13px]">Блокировка сети вне VPN включена. Выбери «Через VPN», чтобы добавить правило.</p>}
                 </div>
               )}
 
@@ -657,6 +661,7 @@ export function Marshruty({
                         />
                         <RouteSelect
                           label={`Маршрут ${app.imya}`}
+                          killSwitch={status.kill_switch}
                           value={app.marshrut}
                           disabled={disabled}
                           onChange={(r) =>
@@ -706,6 +711,7 @@ export function Marshruty({
                         </span>
                         <RouteSelect
                           label={`Маршрут ${d.domen}`}
+                          killSwitch={status.kill_switch}
                           value={d.marshrut}
                           disabled={disabled}
                           onChange={(r) =>
