@@ -245,6 +245,7 @@ func (n *Nabor) OtmetitObnovlenie(id string, kogda time.Time) {
 	if z := n.zapisPodpiski(id); z != nil {
 		kopiya := kogda
 		z.Obnovlena = &kopiya
+		z.Otkaz = ""
 	}
 }
 
