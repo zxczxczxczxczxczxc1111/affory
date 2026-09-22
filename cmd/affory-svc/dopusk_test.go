@@ -43,7 +43,9 @@ var resheniyeOPravah = map[string]bool{
 	// чужая программа с этим доступом, это испорченный замер собственной
 	// скорости, тогда как setKillSwitch выше меняет маршрут всего трафика.
 	"setBandwidth": false,
-	"addServer":    false, "removeServer": false,
+	// Разовый снимок локального ядра не меняет маршруты и не включает журнал.
+	"listConnections": false,
+	"addServer":       false, "removeServer": false,
 	"setSubscription": false, "refreshSubscription": false, "setRules": false,
 	// Подписки это тот же класс, что и setSubscription: адрес панели, а не
 	// маршрут всей машины. UAC ради переключения между своими панелями

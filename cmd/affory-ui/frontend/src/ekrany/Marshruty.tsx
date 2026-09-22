@@ -6,6 +6,7 @@ import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
 import { IkonkaServisa } from "./IkonkaServisa";
 import { Vybor } from "./Vybor";
 import { slovoPosleChisla } from "../chisla";
+import { OhvatPravil } from "./OhvatPravil";
 
 // Раздел правил: слева режим по умолчанию и счёт правил, справа три вкладки.
 // Боковая область и вкладки стоят на одном месте во всех трёх видах, поэтому
@@ -70,6 +71,7 @@ const SETKA_PRILOZHENIY = "grid grid-cols-[minmax(0,1fr)_150px_80px] min-[1100px
 const SETKA_SAYTOV = "grid grid-cols-[minmax(0,1fr)_150px_110px] items-center gap-x-4";
 
 export function Marshruty({
+  proveritSoedineniya,
   status,
   pravila,
   trafik: sohranennyyTrafik,
@@ -519,7 +521,7 @@ export function Marshruty({
                   </h3>
                   <p className="text-fg-muted mt-1 text-[13px]">
                     {tab === "apps"
-                      ? "Приложение вместе с дочерними процессами"
+                      ? "Приложение и программы, которые оно запускает"
                       : "Домен и все его поддомены"}
                   </p>
                 </div>
@@ -597,7 +599,7 @@ export function Marshruty({
                         </p>
                       )}
                       <Flazhok
-                        podpis="Включая дочерние процессы"
+                        podpis="И запущенные им программы"
                         vkl={descendants}
                         naSmenu={setDescendants}
                       />
@@ -645,7 +647,7 @@ export function Marshruty({
                 <div>
                   <div className={`${SETKA_PRILOZHENIY} max-[1099px]:hidden border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
                     <span>Приложение</span>
-                    <span>Дочерние процессы</span>
+                    <span>Запущенные программы</span>
                     <span>Маршрут</span>
                     <span className="text-right">Действие</span>
                   </div>
@@ -660,7 +662,7 @@ export function Marshruty({
                           <span className="text-fg-muted truncate text-[13px]" title={app.put}>{sokratitPut(app.put)}</span>
                         </span>
                         <Flazhok
-                          podpis="Включая дочерние процессы"
+                          podpis="И запущенные им программы"
                           aktiven={!disabled}
                           vkl={app.potomki}
                           naSmenu={(v) =>
@@ -749,6 +751,7 @@ export function Marshruty({
                 </div>
               )}
 
+              <OhvatPravil key={tab} vid={tab} trafik={trafik} katalog={pravila?.katalog} chernovik={dirty} ozhidayut={pravila?.trebuet_podyoma} disabled={disabled} proverit={proveritSoedineniya} naSbros={()=>save(tab==="apps"?{...trafik,prilozheniya:[]}:{...trafik,domeny:[]})}/>
               <div className="flex flex-col">
                 {tab === "apps" && (
                   <Svorachivaemyy

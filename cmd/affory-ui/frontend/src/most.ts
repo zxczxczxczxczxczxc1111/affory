@@ -1,4 +1,11 @@
 import { Browser, Call, Clipboard, Events, Window } from "@wailsio/runtime";
+import { razobratSnimok, type ProveritSoedineniya } from "./ohvat";
+
+export const prochitatSoedineniya:ProveritSoedineniya = async (filter) => {
+  const response=await zvat("listConnections",filter);
+  if (response.oshibka) throw new Error(response.oshibka.tekst);
+  return razobratSnimok(response.telo);
+};
 
 /** Window controls. The title bar is ours (frameless window), so minimise and
  *  close are bridge calls too; Karkas asks App, App asks here. */

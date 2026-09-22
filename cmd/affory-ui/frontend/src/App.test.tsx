@@ -152,6 +152,7 @@ vi.mock("./most", () => ({
     return [...stend.s.protsessy];
   },
   otkrytPapkuZhurnalov: async () => { stend.s.sled.push({chto:"otkrytPapkuZhurnalov",args:[]}); },
+  prochitatSoedineniya: async (filter:unknown) => { stend.s.sled.push({chto:"prochitatSoedineniya",args:[filter]}); return {yadro:false,vremya:new Date().toISOString(),ogranichen:false,soedineniya:[]}; },
   tekstBufera: async () => {
     if (stend.s.buferLomaetsya) throw new Error("буфер обмена не прочитался");
     return stend.s.bufer ?? "";
@@ -663,6 +664,18 @@ it("черновик правил переживает переход в нас�
   await waitFor(()=>expect(most.skolkoRaz("setRules")).toBe(1));
   await screen.findByText("Правила сохранены");
   expect(screen.getByRole("radio",{name:"Только выбранное"})).toBeChecked();
+});
+
+it("проверка домена соединена с мостом и не включает журнал",async()=>{
+  const most=mostProby();
+  render(<App/>);
+  fireEvent.click(await screen.findByRole("tab",{name:"Правила"}));
+  fireEvent.click(await screen.findByRole("tab",{name:/Сайты/}));
+  fireEvent.change(screen.getByLabelText("Домен для проверки"),{target:{value:"api.example.org"}});
+  fireEvent.click(screen.getByRole("button",{name:"Проверить соединения"}));
+  await screen.findByText(/Подключение не запущено/);
+  expect(stend.s.sled).toContainEqual({chto:"prochitatSoedineniya",args:[{domen:"api.example.org"}]});
+  expect(most.skolkoRaz("setJournal")).toBe(0);
 });
 
 it("кнопка папки журналов вызывает нативный мост без команды службы", async () => {

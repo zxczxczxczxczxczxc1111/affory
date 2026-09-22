@@ -260,6 +260,7 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
   addServer: () => ({ server: servery[servery.length - 1] }),
   removeServer: () => ({ ostalos: servery.length }),
   listRules: () => pravila,
+  listConnections: () => ({yadro:status.sostoyanie==="podnyat",vremya:new Date().toISOString(),ogranichen:false,soedineniya:[]}),
   setRules: (v) => {
     if (v.trafik && typeof v.trafik === "object") {
       pravila.trafik = { ...pravila.trafik, ...(v.trafik as Record<string, unknown>) } as typeof pravila.trafik;

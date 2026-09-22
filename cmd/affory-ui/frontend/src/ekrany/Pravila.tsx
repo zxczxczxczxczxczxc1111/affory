@@ -3,6 +3,7 @@ import { Marshruty } from "./Marshruty";
 import type { OtkazNaEkrane, StatusOtvet } from "../protokol";
 import type { Zapushchennyy } from "../most";
 import { Knopka, Neudacha } from "./ui";
+import type { ProveritSoedineniya } from "../ohvat";
 
 // Раздел правил. Сам экран живёт в Marshruty; здесь только разбор случая,
 // когда правил на руках НЕТ, и честный вид для него.
@@ -28,6 +29,7 @@ export interface PravilaOtvet {
 }
 
 export interface PravilaProps {
+  proveritSoedineniya?: ProveritSoedineniya;
   chernovik?: ChernovikPravil | null;
   naChernovik?: (value: ChernovikPravil | null) => void;
   zanyato?: boolean;

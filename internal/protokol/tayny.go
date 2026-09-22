@@ -11,6 +11,7 @@ package protokol
 // Список живёт ЗДЕСЬ, рядом с проверкой, а не в голове того, кто будет добавлять
 // печать.
 var telaNeLogiruem = map[string]bool{
+	"listConnections": true, // снимок посещений не должен включать историю через отладочный журнал
 	"exportProfile":   true,
 	"importProfile":   true,
 	"setSubscription": true, // адрес подписки это секрет класса ключа
