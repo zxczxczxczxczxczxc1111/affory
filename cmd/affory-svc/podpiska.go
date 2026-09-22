@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
@@ -37,50 +36,54 @@ func (o oshibkaSohraneniya) Unwrap() error { return o.err }
 // был бы тихим: список наполнялся бы одним путём и не наполнялся другим, ровно
 // как в находке 35.
 func (s *Sluzhba) obnovitPodpisku(ctx context.Context) (ssylki.Razbor, int, error) {
-	// Адрес читается ВНЕ замка набора: следом идёт поход в сеть, и держать
-	// набор запертым всё время загрузки значит подвесить любую команду
-	// человека на время, которое задаёт чужая панель.
 	n, err := s.nabor()
 	if err != nil {
 		return ssylki.Razbor{}, 0, oshibkaNabora{err}
 	}
-	adres := n.AdresAktivnoy()
-	if adres == "" {
+	return s.obnovitPodpiskuPoId(ctx, n.Aktivnaya)
+}
+
+// Ответ сети принадлежит исходной подписке, даже если за время загрузки
+// человек переключился на другую. Удалённую запись ответ не воскрешает.
+func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Razbor, int, error) {
+	n, err := s.nabor()
+	if err != nil {
+		return ssylki.Razbor{}, 0, oshibkaNabora{err}
+	}
+	z := n.zapisPodpiski(id)
+	if z == nil {
 		return ssylki.Razbor{}, 0, errPodpiskaNeZadana
 	}
+	adres := z.Adres
 	r, err := s.zagruzitPodpisku(ctx, adres)
 	if err != nil {
+		s.otmetitOtkazPodpiski(id, err)
 		return r, 0, err
 	}
-	// Слияние идёт по СВЕЖЕМУ набору, прочитанному под замком: пока панель
-	// отвечала, человек успевает добавить сервер руками, и слияние по набору
-	// из первой строки стёрло бы его добавление.
-	var uderzhany []string
 	serverov := 0
+	aktivnaya := false
+	teper := s.seychas()
 	if err := s.pravitNabor(func(n *Nabor) error {
-		prezhnie := n.Servery
-		n.Servery = ssylki.Slit(prezhnie, r.Servery)
-		// Пропавшие из публикации удерживаются, пока ядро их держит. Отказ здесь
-		// остановил бы обновление подписки на всё время подключения, а новые узлы из
-		// публикации при этом не доехали бы вовсе.
-		uderzhany = s.uderzhatZhivyh(prezhnie, n)
-		serverov = len(n.Servery)
-		// Отметка свежести кладётся в ЗАПИСЬ, а не только в состояние службы:
-		// общая одна на всех и после переключения активной говорит про свежесть
-		// чужой подписки. Строкой ниже, внутри той же правки набора: отдельная
-		// запись означала бы второй поход в хранилище ради одного поля.
-		n.OtmetitObnovlenie(n.Aktivnaya, s.seychas())
+		z := n.zapisPodpiski(id)
+		if z == nil || z.Adres != adres {
+			return errors.New("подписка удалена во время обновления")
+		}
+		aktivnaya = n.Aktivnaya == id
+		if aktivnaya {
+			n.Servery = ssylki.Slit(n.Servery, r.Servery)
+			serverov = len(n.Servery)
+		} else {
+			z.Servery = ssylki.Slit(nil, r.Servery)
+			serverov = len(z.Servery)
+		}
+		n.OtmetitObnovlenie(id, teper)
 		return nil
 	}); err != nil {
 		return r, 0, oshibkaSohraneniya{err}
 	}
-	if len(uderzhany) > 0 {
-		// Событие, а не отказ: следующее обновление при опущенном ядре уберёт их
-		// само, и это надо показать, а не спрятать.
-		s.izvestit("serversRetained", map[string]any{"imena": uderzhany})
+	if aktivnaya {
+		s.pravitSost(func(f *sostoyanie.SostoyanieFayla) { f.PodpiskaObnovlena = &teper })
 	}
-	teper := s.seychas()
-	s.pravitSost(func(f *sostoyanie.SostoyanieFayla) { f.PodpiskaObnovlena = &teper })
 	return r, serverov, nil
 }
 
@@ -165,37 +168,4 @@ func zhdatPoChasam(ctx context.Context, d time.Duration) bool {
 	case <-t.C:
 		return true
 	}
-}
-
-// uderzhatZhivyh возвращает в набор те пропавшие серверы, которых ядро ещё
-// держит кандидатами, и отдаёт их имена.
-//
-// Метод, а не свободная функция: решение зависит от dostupKKlash(), то есть от
-// состояния службы. При мёртвом ядре не делает ничего, и это не оптимизация:
-// удерживать нечего, ядро список уже забыло.
-//
-// Расписанию нельзя отвечать отказом, как человеку: команду никто не вызывал,
-// ошибку никто не прочитает, и подписка просто перестала бы обновляться на всё
-// время подключения.
-func (s *Sluzhba) uderzhatZhivyh(prezhnie []protokol.Server, n *Nabor) []string {
-	if adres, _ := s.dostupKKlash(); adres == "" {
-		return nil
-	}
-	est := make(map[string]bool, len(n.Servery))
-	for _, srv := range n.Servery {
-		est[srv.Id] = true
-	}
-	var imena []string
-	for _, srv := range prezhnie {
-		if !est[srv.Id] {
-			// Флаг снимается, иначе экран считает её восьмой записью подписки, а
-			// подписка отдала семь. Пометка удержания ставится взамен: по ней
-			// слияние отличит её от ручной и выбросит при опущенном ядре.
-			srv.IzPodpiski = false
-			srv.Uderzhan = true
-			n.Servery = append(n.Servery, srv)
-			imena = append(imena, srv.Id)
-		}
-	}
-	return imena
 }

@@ -36,7 +36,7 @@ function parametr(imya: string, poumolchaniyu: string): string {
 
 const SLUCHAY = parametr("sluchay", "podnyat");
 
-const servery = [
+const osnovnyeServery = [
   { id: "nl", imya: "Нидерланды · Амстердам", transport: "reality-tcp", host: "203.0.113.11", port: 443, iz_podpiski: true },
   // Транспорты пишутся ровно теми словами, какими их называет служба
   // (`izvestnyeTransporty` в internal/genkonfig/vhod.go). До 19.09.2026 здесь
@@ -51,6 +51,10 @@ const servery = [
   { id: "pl", imya: "Польша · Варшава", transport: "tuic", host: "203.0.113.16", port: 10443, iz_podpiski: true },
   { id: "svoy", imya: "Свой сервер", transport: "trojan", host: "203.0.113.15", port: 443, iz_podpiski: false },
 ];
+
+const zapasnyeServery = [{ id: "reserve-1", imya: "Запасной сервер", host: "203.0.113.20", port: 443, transport: "trojan", iz_podpiski: true }];
+let aktivnayaPodpiska = "osn";
+let servery = [...osnovnyeServery];
 
 // Отказ подъёма берётся настоящим кодом и настоящим текстом службы: экран
 // разбирает код и рисует по нему свой разговор, и выдуманный код провёл бы
@@ -214,7 +218,7 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
   // читала `id`, и выбор сервера при подключении не доезжал никуда.
   connect: (v) => {
     const id = stroka(v.server) || stroka(v.id);
-    if (id) status.vybran_id = id;
+    if (id) { status.vybran_id = id; status.rezhim_marshruta = "ruchnoy"; }
     perevesti("connect");
     return status;
   },
@@ -251,7 +255,7 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
     if (SLUCHAY === "pusto") {
       return { servery: [], vybran: "", podpiska_zadana: false, podpiska_uzel: "" };
     }
-    return { servery, vybran: "nl", podpiska_zadana: true, podpiska_uzel: "panel.example" };
+    return { servery, versii: Object.fromEntries(servery.map(s => [s.id, `demo-v1-${s.id}`])), vybran: status.vybran_id, podpiska_zadana: true, podpiska_uzel: aktivnayaPodpiska === "osn" ? "panel.example" : "reserve.example" };
   },
   addServer: () => ({ server: servery[servery.length - 1] }),
   removeServer: () => ({ ostalos: servery.length }),
@@ -262,14 +266,21 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
     }
     return pravila;
   },
-  listSubscriptions: () => ({ podpiski: [{ id: "osn", imya: "panel.example", aktivnaya: true, serverov: 4 }] }),
+  listSubscriptions: () => ({ podpiski: SLUCHAY === "pusto" ? [] : [
+    { id: "osn", uzel: "panel.example", aktivnaya: aktivnayaPodpiska === "osn", serverov: 5, servery: osnovnyeServery.filter(s => s.iz_podpiski), obnovlena: new Date(Date.now()-50*60000).toISOString() },
+    { id: "reserve", uzel: "reserve.example", aktivnaya: aktivnayaPodpiska === "reserve", serverov: 1, servery: zapasnyeServery },
+  ] }),
   addSubscription: (v) => ({ id: stroka(v.id) || "osn", aktivnaya: true, serverov: servery.length, otkazy: [] }),
   removeSubscription: (v) => ({ udalena: stroka(v.id) }),
-  setActiveSubscription: (v) => ({ aktivnaya: stroka(v.id) || "osn", serverov: servery.length, otkazy: [] }),
+  setActiveSubscription: (v) => {
+    aktivnayaPodpiska = stroka(v.id) || "osn";
+    servery = aktivnayaPodpiska === "osn" ? [...osnovnyeServery] : [...zapasnyeServery, ...osnovnyeServery.filter(s => !s.iz_podpiski)];
+    return { aktivnaya: aktivnayaPodpiska, serverov: servery.length, otkazy: [] };
+  },
   setSubscription: () => ({ zadana: true, serverov: servery.length, otkazy: [] }),
   refreshSubscription: () => ({ serverov: servery.length, otkazy: [] }),
 
-  measureDelays: () => zamery,
+  measureDelays: () => ({ zamery: zamery.zamery.filter(z => servery.some(s => s.id === z.id)).map(z => ({ ...z, versiya: `demo-v1-${z.id}` })) }),
   measureBandwidth: () => ({
     mbit_vniz: 318.4, bayt_vniz: 2_140_000_000, potokov: 4, sovet_vniz: 286,
     cherez_tunnel: true,

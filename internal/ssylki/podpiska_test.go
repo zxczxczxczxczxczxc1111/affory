@@ -3,6 +3,7 @@ package ssylki_test
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -400,35 +401,17 @@ func serverS(uuid, sid string) protokol.Server {
 	}
 }
 
-func TestRotatsiyaHranitPrezhneePokolenie(t *testing.T) {
-	// One mistaken publication currently erases the working credentials with no
-	// way back, and this project has exactly one server.
-	slit := ssylki.Slit([]protokol.Server{serverS("uuid-odin", "sid-odin")},
-		[]protokol.Server{serverS("uuid-dva", "sid-dva")})
-	if slit[0].Uuid != "uuid-dva" {
+func TestRotatsiyaNeHranitStaryeKlyuchi(t *testing.T) {
+	a := ssylki.Slit([]protokol.Server{serverS("old-key", "old-sid")}, []protokol.Server{serverS("new-key", "new-sid")})
+	if len(a) != 1 || a[0].Uuid != "new-key" {
 		t.Fatal("новые ключи не применены")
 	}
-	if slit[0].PrezhnieKlyuchi == nil || slit[0].PrezhnieKlyuchi.Uuid != "uuid-odin" {
-		t.Fatal("прежние ключи потеряны: откатиться будет некуда")
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestIstoriyaNeUglublyaetsya(t *testing.T) {
-	// Одно поколение назад значит ОДНО. Иначе файл состояния копит все ключи,
-	// которые у нас когда-либо были, а откатываются всё равно на предыдущее.
-	a := ssylki.Slit([]protokol.Server{serverS("u1", "s1")}, []protokol.Server{serverS("u2", "s2")})
-	b := ssylki.Slit(a, []protokol.Server{serverS("u3", "s3")})
-	if b[0].PrezhnieKlyuchi.Uuid != "u2" {
-		t.Fatalf("прежние ключи %q, ожидалось u2", b[0].PrezhnieKlyuchi.Uuid)
-	}
-}
-
-func TestBezRotatsiiIstoriyaNeTeryaetsya(t *testing.T) {
-	// A refresh that changed nothing must not quietly drop the rollback point.
-	a := ssylki.Slit([]protokol.Server{serverS("u1", "s1")}, []protokol.Server{serverS("u2", "s2")})
-	b := ssylki.Slit(a, []protokol.Server{serverS("u2", "s2")})
-	if b[0].PrezhnieKlyuchi == nil || b[0].PrezhnieKlyuchi.Uuid != "u1" {
-		t.Fatal("обновление без ротации стёрло точку отката")
+	if strings.Contains(string(b), "old-key") || strings.Contains(string(b), "prezhnie_klyuchi") {
+		t.Fatal("сохранена история ключей")
 	}
 }
 

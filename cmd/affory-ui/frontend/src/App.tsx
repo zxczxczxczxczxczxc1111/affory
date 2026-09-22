@@ -1,3 +1,4 @@
+import { aktualnyeZamery } from "./zamery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./desktop.css";
 import { Glavnyy } from "./ekrany/Glavnyy";
@@ -120,6 +121,7 @@ function zameryIz(telo: unknown): ZamerZaderzhki[] {
     const tekst = (v: unknown) => (typeof v === "string" ? v : "");
     return [{
       id: o.id,
+      versiya: tekst(o.versiya) || undefined,
       tcping_ms: chislo(o.tcping_ms),
       tcping_otkaz: tekst(o.tcping_otkaz),
       realping_ms: chislo(o.realping_ms),
@@ -209,6 +211,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const [otkazyPodpiski, zadatOtkazyPodpiski] = useState<OtkazStroki[]>([]);
   const [podpiski, zadatPodpiski] = useState<PodpiskaNaEkrane[]>([]);
   const [zaderzhki, zadatZaderzhki] = useState<ZamerZaderzhki[]>([]);
+  const posledniySpisok = useRef<SpisokServerov | null>(null);
+  const nomerSpiska = useRef(0);
 
   const [otkaz, zadatOtkaz] = useState<Otkazano | null>(null);
   // What the person closed by hand. status.oshibka is a STANDING refusal and
@@ -287,8 +291,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   }, [zhaloba]);
 
   const obnovitSpisok = useCallback(async () => {
+    const nomer = ++nomerSpiska.current;
     try {
       const kadr = await zvat("listServers");
+      if (nomer !== nomerSpiska.current) return;
       if (kadr.oshibka) {
         // secrets-unreadable is a real answer here (komandy_serverov.go) and
         // it has its own screen in §9.1. Dropping it left an empty list.
@@ -296,7 +302,12 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         return;
       }
       zadatSpisokOtkaz(null);
-      if (kadr.telo && typeof kadr.telo === "object") zadatSpisok(kadr.telo as SpisokServerov);
+      if (kadr.telo && typeof kadr.telo === "object") {
+        const next = kadr.telo as SpisokServerov;
+        posledniySpisok.current = next;
+        zadatSpisok(next);
+        zadatZaderzhki(prev => aktualnyeZamery(prev, next));
+      }
     } catch (e: unknown) {
       zhaloba("listServers", e);
     }
@@ -355,7 +366,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // Runs a command and folds its answer into state. Every command goes
   // through here so a refusal frame becomes a refusal screen in one place.
   const vypolnit = useCallback(async (komanda: string, telo: unknown = {}) => {
-    const blocksControls = ["connect", "disconnect", "setRules", "setRouteMode", "setServer"].includes(komanda);
+    const blocksControls = ["connect", "disconnect", "setRules", "setRouteMode", "setServer", "setActiveSubscription"].includes(komanda);
     if (blocksControls) setBusyCommand(komanda);
     otmetit(komanda, 1);
     try {
@@ -383,7 +394,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       // Замеры задержки. Ответ ЗАМЕЩАЕТ прежний целиком: показывать замер
       // позапрошлого прохода рядом со свежим значит врать про оба.
       if (komanda === "measureDelays" && !kadr.oshibka) {
-        zadatZaderzhki(zameryIz(kadr.telo));
+        zadatZaderzhki(aktualnyeZamery(zameryIz(kadr.telo), posledniySpisok.current));
       }
       // Замер полосы. Отказ УНОСИТ прошлые числа: они были правдой про прошлый
       // проход, а на экране читались бы как ответ на нажатие, которое только
@@ -714,7 +725,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // The service refreshes the subscription on its own schedule; opening the
   // tab is the cheap moment to catch up with that.
   useEffect(() => {
-    if (vkladka === "servery") {
+    if (vkladka === "servery" || vkladka === "podklyuchenie") {
       void obnovitSpisok();
       void obnovitPodpiski();
     }
@@ -879,6 +890,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           <PervyyZapusk sostoyanie={ustanovka.sostoyanie} prichina={ustanovka.prichina} naUstanovku={naUstanovku} />
         ) : vkladka === "podklyuchenie" ? (
           <Glavnyy
+            podpiski={podpiski}
+            naObnovitPodpisku={id => void vypolnit("refreshSubscription", { id })}
+            obnovlenieIdet={zanyatyeKomandy["refreshSubscription"] === true}
             naProverit={() => void vypolnit("measureDelays", {})}
             // measureDelays в пятёрку busyCommand не входит и входить не
             // должен: замер задержек не трогает туннель. Вертушка ему всё
@@ -890,7 +904,12 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             zanyato={busyCommand !== null}
             naPravila={() => zadatVkladku("pravila")}
             naTrafik={r => { if (pravila?.trafik) void vypolnit("setRules", { trafik: { ...pravila.trafik, po_umolchaniyu: r }, bez_ru_spiska: pravila.bez_ru_spiska }); }}
-            naVyborServera={id => { void (async () => { if (await vypolnit("setRouteMode", { rezhim: "ruchnoy" })) await vypolnit("connect", { server: id }); })(); }}
+            naVyborServera={(id, podpiska) => { void (async () => {
+              if (podpiska && !podpiski.some(p => p.id === podpiska && p.aktivnaya)) {
+                if (!await vypolnit("setActiveSubscription", { id: podpiska })) return;
+              }
+              await vypolnit("connect", { server: id });
+            })(); }}
             spisokOtkaz={spisokOtkaz}
             status={naEkrane}
             statistika={statistika}

@@ -32,12 +32,17 @@ func (s *Sluzhba) listServers(k protokol.Kadr) protokol.Kadr {
 	if err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
 	}
+	versii, err := s.versiiServerov(n.Servery)
+	if err != nil {
+		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, "не удалось определить версии серверов")
+	}
 	spisok := make([]protokol.Server, 0, len(n.Servery))
 	for _, srv := range n.Servery {
 		spisok = append(spisok, dlyaEkrana(srv))
 	}
 	return otvet(k.Id, k.Imya, map[string]any{
 		"servery": spisok,
+		"versii":  versii,
 		// n.Vybran как есть, а не VybrannyyServer().Id: последний при пустом
 		// выборе отдаёт Servery[0], то есть экран называл бы выбранным первый
 		// по списку. В авто это станет штатным случаем, а не краем.
@@ -182,7 +187,22 @@ func (s *Sluzhba) refreshSubscription(ctx context.Context, k protokol.Kadr) prot
 	// За всеми подписками сразу: «Обновить» означает «сходи за свежим», и
 	// запасная тут ничем не хуже активной. Наверх поднимается только отказ
 	// активной, отказы запасных лежат в их строках.
-	r, serverov, err := s.obnovitVsePodpiski(ctx)
+	var telo struct {
+		Id string `json:"id"`
+	}
+	if len(k.Telo) > 0 {
+		if err := json.Unmarshal(k.Telo, &telo); err != nil {
+			return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, "тело команды не разбирается")
+		}
+	}
+	var r ssylki.Razbor
+	var serverov int
+	var err error
+	if telo.Id != "" {
+		r, serverov, err = s.obnovitPodpiskuPoId(ctx, telo.Id)
+	} else {
+		r, serverov, err = s.obnovitVsePodpiski(ctx)
+	}
 	if err != nil {
 		return otkazPodpiski(k, r, err)
 	}
@@ -766,31 +786,22 @@ func (s *Sluzhba) posleZapisiNabora(n Nabor) error {
 
 var errPravilaOtstali = errors.New("правила не пересобраны")
 
-// spisokNeTeryaetZhivyh запрещает набору потерять сервер, пока ядро его держит.
-//
-// Ядро держит СВОЙ список кандидатов до следующего подъёма: горячей
-// перезагрузки конфига у него нет. Сервер, выпавший из набора при живом ядре,
-// остаётся достижимым для ядра и невидимым для набора, экрана и правил
-// брандмауэра. В авто на него переключится сам urltest, в ручном шагнёт живое
-// переключение, а при включённом режиме «весь трафик» его адрес вдобавок уйдёт
-// из разрешающих правил, и это уже обрыв, а не расхождение.
-//
-// Критерий «ядро живо» это ПУСТОЙ АДРЕС clash_api, а не состояние: opustit
-// обнуляет порт, а состояния otkaz и ne-neset держатся, пока крутится
-// восстановление, и по ним человеку сказали бы «сначала отключись», когда он
-// уже отключён.
-//
-// Прежний набор приходит АРГУМЕНТОМ от pravitNabor, а не читается заново.
-// Второе чтение внутри заслона было бы TOCTOU в самом заслоне: сравнивали бы с
-// набором, который сосед уже переписал, и заслон пропускал бы ровно ту потерю,
-// против которой стоит. Добавлять при этом можно: новый сервер ядру неизвестен,
-// и живое переключение отвечает на это отдельным кодом, а не молчанием.
+// spisokNeTeryaetZhivyh допускает очистку каталога, когда адреса ядра
+// защищены отдельным снимком. Без снимка сохраняет прежний запрет: иначе
+// пересборка правил могла бы закрыть адрес работающего сервера.
 func (s *Sluzhba) spisokNeTeryaetZhivyh(staryy, novyy Nabor) error {
 	if adres, _ := s.dostupKKlash(); adres == "" {
 		return nil
 	}
-	est := make(map[string]bool, len(novyy.Servery))
-	for _, srv := range novyy.Servery {
+	s.mu.Lock()
+	estSnimok := s.serveryYadra != nil
+	s.mu.Unlock()
+	if estSnimok {
+		return nil
+	}
+	servery := s.serveryDlyaRazresheniy(novyy.Servery)
+	est := make(map[string]bool, len(servery))
+	for _, srv := range servery {
 		est[srv.Id] = true
 	}
 	for _, srv := range staryy.Servery {

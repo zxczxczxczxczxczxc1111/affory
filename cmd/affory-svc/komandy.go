@@ -80,9 +80,12 @@ var otstupyPoUmolchaniyu = []time.Duration{
 }
 
 type Sluzhba struct {
-	mu          sync.Mutex
-	speed       *speedJob
-	speedRunner speedRun
+	klyuchVersiy    []byte
+	serveryYadra    []protokol.Server
+	otpechatkiYadra map[string][32]byte
+	mu              sync.Mutex
+	speed           *speedJob
+	speedRunner     speedRun
 	// zhurnalKomand пишет строку на каждую команду: имя, кто прислал, исход.
 	// nil значит «молчим»: тесты и стенд создают службу без журнала. Тел в нём
 	// нет НИКОГДА, там ключи (см. zhurnalKomand.go).
@@ -1295,6 +1298,8 @@ func (s *Sluzhba) opustitYadro() {
 	s.mu.Lock()
 	s.tun = set.Adapter{}
 	s.portClash, s.sekretClash = 0, ""
+	s.serveryYadra = nil
+	s.otpechatkiYadra = nil
 	s.pravilaKonfiga, s.trafikKonfiga = "", ""
 	s.mu.Unlock()
 }
@@ -1352,7 +1357,15 @@ func (s *Sluzhba) zapomnitNesushchego(id string) {
 	}
 	// Имя ищется ДО замка: набор читается с диска и расшифровывается.
 	imya := ""
-	if id != "" {
+	s.mu.Lock()
+	for _, srv := range s.serveryYadra {
+		if srv.Id == id {
+			imya = srv.Imya
+			break
+		}
+	}
+	s.mu.Unlock()
+	if id != "" && imya == "" {
 		if n, err := s.nabor(); err == nil {
 			for _, srv := range n.Servery {
 				if srv.Id == id {

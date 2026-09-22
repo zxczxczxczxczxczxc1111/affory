@@ -294,7 +294,7 @@ func TestSbrosSostoyaniyaHranitOtmetkuPodpiski(t *testing.T) {
 // Расписание ходит по таймеру, без человека и без прав. Отказ здесь остановил
 // бы обновление подписки на всё время подключения, и узнать об этом было бы
 // неоткуда: команда никем не вызывалась, ошибку никто не читает.
-func TestRaspisaniePodpiskiUderzhivaetZhivyh(t *testing.T) {
+func TestRaspisanieOstavlyaetZhivyhTolkoVSnimke(t *testing.T) {
 	s := podstavnaya(t, nil)
 	// IzPodpiski: true ОБЯЗАТЕЛЬНО. Slit удаляет только серверы, помеченные как
 	// пришедшие из публикации; ручные он удерживает сам, и без этой пометки
@@ -315,10 +315,11 @@ func TestRaspisaniePodpiskiUderzhivaetZhivyh(t *testing.T) {
 	if err := s.Connect(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	s.zapomnitServeryYadra(n.Servery)
 	if _, _, err := s.obnovitPodpisku(context.Background()); err != nil {
 		t.Fatalf("обновление подписки упало вместо удержания: %v", err)
 	}
-	if len(n.Servery) != 2 {
-		t.Fatalf("в наборе %d серверов: пропавший из публикации обязан удержаться, пока ядро живо", len(n.Servery))
+	if len(n.Servery) != 1 {
+		t.Fatalf("в наборе %d серверов: пропавший из публикации не должен сохраняться в каталоге", len(n.Servery))
 	}
 }

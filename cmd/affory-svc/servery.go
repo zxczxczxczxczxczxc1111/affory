@@ -118,6 +118,10 @@ func (s *Sluzhba) naborIzHranilishcha() (Nabor, error) {
 	for _, p := range n.PrivestiPravila() {
 		skazatRedko("набор починен на чтении: " + p)
 	}
+	n.Servery = aktualnyeServery(n.Servery)
+	for i := range n.Podpiski {
+		n.Podpiski[i].Servery = aktualnyeServery(n.Podpiski[i].Servery)
+	}
 	return n, nil
 }
 
@@ -167,8 +171,7 @@ func dlyaEkrana(s protokol.Server) protokol.Server {
 //
 // Замена, а не второй экземпляр: повторное добавление той же ссылки это обычное
 // «человек скопировал ещё раз», и список из двух одинаковых серверов ему только
-// мешает. Ключи при замене обновляются, а прежние сохраняются на поколение
-// назад тем же правилом, что и при обновлении подписки.
+// мешает. Ключи при замене обновляются без хранения прежнего поколения.
 func dobavitServer(n Nabor, novyy protokol.Server) Nabor {
 	n.Servery = ssylki.Slit(n.Servery, dopolnit(n.Servery, novyy))
 	return n

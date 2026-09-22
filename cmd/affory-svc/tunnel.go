@@ -218,6 +218,7 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool) ([]byte, int, string, e
 	s.mu.Lock()
 	s.pravilaKonfiga, s.trafikKonfiga = otpechatokPravil(n.Pravila), trafikPravil(n.Pravila).PoUmolchaniyu
 	s.mu.Unlock()
+	s.zapomnitServeryYadra(n.Servery)
 	return telo, portClash, sekret, nil
 }
 

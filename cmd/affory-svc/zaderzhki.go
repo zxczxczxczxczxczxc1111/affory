@@ -40,6 +40,7 @@ const odnovremennyhZamerov = 4
 const srokTcping = 3 * time.Second
 
 type zamerZaderzhki struct {
+	Versiya       string `json:"versiya,omitempty"`
 	Id            string `json:"id"`
 	TcpingMs      *int64 `json:"tcping_ms"`
 	TcpingOtkaz   string `json:"tcping_otkaz,omitempty"`
@@ -53,6 +54,10 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
 	}
 	servery := n.Servery
+	versii, err := s.versiiServerov(servery)
+	if err != nil {
+		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, "не удалось определить версии серверов")
+	}
 
 	// Снимок доступа к ядру берётся ОДИН раз и до замеров, тем же способом, что
 	// и везде. Читать его в каждой горутине значило бы, что половина замеров
@@ -70,6 +75,7 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 			vorota <- struct{}{}
 			defer func() { <-vorota }()
 			zamery[i] = s.zamerOdnogo(ctx, srv, adresKlash, sekret)
+			zamery[i].Versiya = versii[srv.Id]
 		}(i, srv)
 	}
 	gruppa.Wait()
@@ -94,6 +100,14 @@ func (s *Sluzhba) zamerOdnogo(ctx context.Context, srv protokol.Server, adresKla
 	// Иначе человек прочитает «сервер не отвечает» там, где не подключён он сам.
 	if adresKlash == "" {
 		z.RealpingOtkaz = "VPN отключён: через него мерить нечего"
+		return z
+	}
+	s.mu.Lock()
+	hash, est := s.otpechatkiYadra[srv.Id]
+	proveryat := s.otpechatkiYadra != nil
+	s.mu.Unlock()
+	if proveryat && (!est || hash != otpechatokServera(srv)) {
+		z.RealpingOtkaz = "параметры сервера изменились: нужно переподключение"
 		return z
 	}
 	if d, err := s.zamerit(ctx, adresKlash, sekret, genkonfig.TegKandidata(srv.Id)); err != nil {

@@ -7,37 +7,21 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
 
-// Запись, которую подписка больше не отдаёт, удерживается ради живого ядра, но
-// врать про её происхождение нельзя: на экране 12.09.2026 такой ключ стоял с
-// пометкой «из подписки», а подписка про него уже не знала, и человек читал
-// список как «восемь ключей из подписки» при семи настоящих.
-func TestUderzhannyyKlyuchNeSchitaetsyaIzPodpiski(t *testing.T) {
-	prezhnie := []protokol.Server{
-		{Id: "a", Imya: "ostalsya", IzPodpiski: true},
-		{Id: "b", Imya: "propal", IzPodpiski: true},
+func TestSnimokYadraOtdelenOtKataloga(t *testing.T) {
+	s := &Sluzhba{portClash: 9090}
+	old := []protokol.Server{{Id: "old", Host: "203.0.113.1", Uuid: "secret", IzPodpiski: true}}
+	s.zapomnitServeryYadra(old)
+	current := []protokol.Server{{Id: "new", Host: "203.0.113.2", IzPodpiski: true}}
+	if err := s.spisokNeTeryaetZhivyh(Nabor{Servery: old}, Nabor{Servery: current}); err != nil {
+		t.Fatal(err)
 	}
-	n := &Nabor{Servery: []protokol.Server{{Id: "a", Imya: "ostalsya", IzPodpiski: true}}}
-
-	s := &Sluzhba{}
-	s.mu.Lock()
-	s.portClash, s.sekretClash = 9090, "sekret"
-	s.mu.Unlock()
-
-	imena := s.uderzhatZhivyh(prezhnie, n)
-	if len(imena) != 1 {
-		t.Fatalf("удержано %d записей, ждали одну: %v", len(imena), imena)
+	allowed := s.serveryDlyaRazresheniy(current)
+	if len(allowed) != 2 || allowed[1].Uuid != "" {
+		t.Fatal("снимок адресов потерян либо хранит секрет")
 	}
-	var uderzhan *protokol.Server
-	for i := range n.Servery {
-		if n.Servery[i].Id == "b" {
-			uderzhan = &n.Servery[i]
-		}
-	}
-	if uderzhan == nil {
-		t.Fatal("пропавший ключ не удержан вовсе")
-	}
-	if uderzhan.IzPodpiski {
-		t.Fatal("удержанный ключ помечен как из подписки, хотя подписка его не отдаёт")
+	s.opustitYadro()
+	if len(s.serveryDlyaRazresheniy(current)) != 1 || s.serveryYadra != nil {
+		t.Fatal("снимок пережил отключение")
 	}
 }
 

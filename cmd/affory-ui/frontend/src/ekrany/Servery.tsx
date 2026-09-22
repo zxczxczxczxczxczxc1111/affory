@@ -31,6 +31,7 @@ export function pohozheNaAdres(t: string): boolean {
 }
 
 export interface SpisokServerov {
+  versii?: Record<string, string>;
   servery: Server[];
   vybran: string;
   podpiska_zadana: boolean;
@@ -45,6 +46,7 @@ export interface SpisokServerov {
  *  Адреса здесь нет: он секрет класса ключа и из службы не выезжает. Опознают
  *  подписку по узлу и по имени, которое человек ей дал. */
 export interface PodpiskaNaEkrane {
+  servery?: Server[];
   id: string;
   uzel: string;
   imya?: string;
@@ -67,6 +69,7 @@ export interface PodpiskaNaEkrane {
  *  текстом, а НЕ ноль: ноль читается как «мгновенно» и ставит мёртвый узел
  *  первым по задержке. */
 export interface ZamerZaderzhki {
+  versiya?: string;
   id: string;
   tcping_ms?: number | null;
   tcping_otkaz?: string;
@@ -467,40 +470,25 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                 nazvanie={
                   <span className="flex items-center gap-2">
                     {p.imya || p.uzel || "подписка задана"}
-                    {p.aktivnaya && <Teg ton="akcent">активна</Teg>}
                   </span>
                 }
                 poyasnenie={[
                   vozrast(p.obnovlena) ? `обновлена ${vozrast(p.obnovlena)}` : "ещё не обновлялась",
-                  // У активной ключи в рабочем списке, у запасной сложены в её
-                  // записи и ждут переключения. Число там и там про одно и то
-                  // же, а слово разное: «наготове» говорит, что переключение не
-                  // пойдёт в сеть.
-                  p.aktivnaya
-                    ? (izPodpiski ? `${izPodpiski} ${sklon(izPodpiski)}` : undefined)
-                    : (p.serverov ? `${p.serverov} ${sklon(p.serverov)} наготове` : "ключей ещё нет"),
-                  p.aktivnaya ? "проверка раз в 12 часов" : undefined,
+                  `${p.serverov ?? (p.aktivnaya ? izPodpiski : 0)} ${sklon(p.serverov ?? (p.aktivnaya ? izPodpiski : 0))}`,
+                  "проверка раз в 12 часов",
                   // Причина отказа последней в строке: она важнее остального,
                   // но и длиннее всего, а перенос строки тут один.
                   p.otkaz || undefined,
                 ].filter(Boolean).join(" · ")}
                 aktiven={aktiven}
               >
-                {p.aktivnaya ? (
-                  <Knopka rang="vtoraya" testId="obnovit-podpisku" zhdyot={zhdyot("refreshSubscription")}
-                          aktiven={aktiven} onClick={() => naKomandu("refreshSubscription", {})}>
-                    {/* Значок «обновить» прячется, пока крутится вертушка:
-                        две крутящиеся вещи подряд на одной кнопке это рябь. */}
-                    {zhdyot("refreshSubscription") ? "Спрашиваю" : <><Obnovit />Обновить</>}
-                  </Knopka>
-                ) : (
-                  <Knopka rang="vtoraya" testId={`vklyuchit-${p.id}`} aktiven={aktiven} onClick={() => naKomandu("setActiveSubscription", { id: p.id })}>
-                    Сделать активной
-                  </Knopka>
-                )}
+                <Knopka rang="vtoraya" testId={p.aktivnaya ? "obnovit-podpisku" : `obnovit-podpisku-${p.id}`} zhdyot={zhdyot("refreshSubscription")}
+                        aktiven={aktiven} onClick={() => naKomandu("refreshSubscription", podpiski.length ? { id: p.id } : {})}>
+                  {zhdyot("refreshSubscription") ? "Спрашиваю" : <><Obnovit />Обновить</>}
+                </Knopka>
                 {/* Удаление в два нажатия, как у сервера: подписка уносит с
                     собой весь список ключей, а отмены у этого действия нет. */}
-                {stroki.length > 1 && (
+                {(podpiski.length > 0) && (
                   udalyayuPodpisku === p.id ? (
                     <Knopka
                       rang="opasnaya"

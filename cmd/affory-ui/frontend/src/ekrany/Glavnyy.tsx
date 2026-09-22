@@ -7,13 +7,13 @@ import type {
   StatusOtvet,
 } from "../protokol";
 import { glavnoeDeystvie, podpis } from "./podpisi";
-import { Zaderzhka, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
+import { type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
 import sphere from "../assets/affory-sphere.png";
 import { Knopka, Poisk, PROCHERK, Segment } from "./ui";
 import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
-import { IkGalka, IkServer } from "../ikonki";
+import { KatalogServerov, gruppyServerov } from "./KatalogServerov";
 import { slovoPosleChisla } from "../chisla";
 import { formatSkorosti, useSkorostTrafika } from "./skorostTrafika";
 import "./Glavnyy.css";
@@ -29,12 +29,15 @@ import "./Glavnyy.css";
 // Свечение меняется только внутри ядра; оболочка остаётся неподвижной.
 
 export interface GlavnyyProps {
+  podpiski?: PodpiskaNaEkrane[];
+  naObnovitPodpisku?: (id: string) => void;
+  obnovlenieIdet?: boolean;
   pravila?: PravilaOtvet | null;
   zaderzhki?: ZamerZaderzhki[];
   zanyato?: boolean;
   naProverit?: () => void;
   proverkaIdet?: boolean;
-  naVyborServera?: (id: string) => void;
+  naVyborServera?: (id: string, podpiska?: string) => void;
   naTrafik?: (r: Marshrut) => void;
   naPravila?: () => void;
   skorost?: ReactNode;
@@ -117,6 +120,9 @@ export function vSeti(
 }
 
 export function Glavnyy({
+  podpiski = [],
+  naObnovitPodpisku,
+  obnovlenieIdet = false,
   status,
   statistika = null,
   servery,
@@ -163,11 +169,8 @@ export function Glavnyy({
       ? "Сервер выберется сам"
       : (imyaServera(selected, izvestnye) ?? "Сервер не выбран");
   const transport = podnyat ? transportServera(status.nesushchiy_id, izvestnye) : undefined;
-  const shown = izvestnye.filter((s) =>
-    `${s.imya} ${s.host} ${s.transport}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
+  const gruppy = gruppyServerov(izvestnye, podpiski, spisok?.podpiska_uzel);
+  const vsego = gruppy.reduce((n, g) => n + g.servery.length, 0);
   return (
     <section
       className="flex min-h-0 flex-1 flex-col"
@@ -296,7 +299,7 @@ export function Glavnyy({
                 </div>
                 <p className="text-fg-muted mt-1 text-[13px]">
                   {spisok
-                    ? `${izvestnye.length} ${slovoPosleChisla(izvestnye.length, "сервер", "сервера", "серверов")} в списке`
+                    ? `${vsego} ${slovoPosleChisla(vsego, "сервер", "сервера", "серверов")}${podpiski.length ? ` · ${podpiski.length} ${slovoPosleChisla(podpiski.length, "подписка", "подписки", "подписок")}` : " в списке"}`
                     : spisokOtkaz
                       ? "Список не прочитался"
                       // «Читаю список» при молчащей службе это обещание работы,
@@ -351,47 +354,13 @@ export function Glavnyy({
               </Knopka>
             </div>
 
-            <ul className="flex flex-col gap-1" aria-label="Список серверов">
-              {shown.map((server) => {
-                const active = podnyat && status.nesushchiy_id === server.id;
-                const zamer = zaderzhki.find((z) => z.id === server.id);
-                return (
-                  <li key={server.id}>
-                    <button
-                      type="button"
-                      className={`group/ryad flex h-[52px] w-full items-center gap-3 rounded-lg px-3 text-left transition-colors disabled:pointer-events-none disabled:opacity-45 ${
-                        active ? "bg-accent-soft" : "hover:bg-surface-hover"
-                      }`}
-                      disabled={molchit || busy || zanyato || !naVyborServera}
-                      aria-label={`Подключиться к ${server.imya}`}
-                      aria-pressed={active}
-                      onClick={() => naVyborServera?.(server.id)}
-                    >
-                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${active ? "border-accent/60 text-accent-ink" : "border-border text-fg-muted"}`} aria-hidden>
-                        <IkServer className="h-4 w-4" />
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className={`truncate text-sm font-medium ${active ? "text-foreground" : "text-fg-secondary"}`}>{server.imya}</span>
-                        <span className="text-fg-muted flex items-center gap-1.5 truncate text-[13px]">
-                          {server.transport}
-                          {zamer && <><span aria-hidden>·</span><Zaderzhka zamer={zamer} compact /></>}
-                        </span>
-                      </span>
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center" aria-hidden>
-                        {active ? (
-                          <span className="bg-accent text-foreground flex h-6 w-6 items-center justify-center rounded-full">
-                            <IkGalka className="h-3.5 w-3.5" />
-                          </span>
-                        ) : (
-                          // Пустой кружок, а не значок питания: строка не
-                          // выключает сервер, она выбирает, через какой идти.
-                          <span className="border-border-active group-hover/ryad:border-accent-ink h-[18px] w-[18px] rounded-full border transition-colors" />
-                        )}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+            {!loading && !spisokOtkaz && gruppy.length > 0 && <KatalogServerov
+              servery={izvestnye} podpiski={podpiski} uzel={spisok?.podpiska_uzel} zapros={query}
+              zaderzhki={zaderzhki} nesushchiy={status.nesushchiy_id} vybran={selected} podnyat={podnyat}
+              disabled={molchit || busy || zanyato} naVybor={naVyborServera}
+              naObnovit={naObnovitPodpisku} obnovlyaetsya={obnovlenieIdet}
+            />}
+            <ul>
               {loading && (
                 <li className="text-fg-muted border-border rounded-lg border px-4 py-6 text-center text-[13px]" role="status">
                   {molchit ? "Служба не отвечает, список серверов недоступен" : "Читаю список серверов"}
@@ -402,7 +371,7 @@ export function Glavnyy({
                   Список серверов недоступен. Причина и повторная загрузка указаны выше
                 </li>
               )}
-              {!loading && !spisokOtkaz && shown.length === 0 && (
+              {!loading && !spisokOtkaz && vsego === 0 && (
                 <li className="border-border flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-10 text-center">
                   <span className="text-foreground text-sm font-medium">
                     {query ? "Ничего не найдено" : "Серверов пока нет"}

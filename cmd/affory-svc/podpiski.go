@@ -190,17 +190,34 @@ func (n *Nabor) ZadatAktivnuyu(adres string) {
 		return
 	}
 	if z := n.zapisPoAdresu(adres); z != nil {
-		n.Aktivnaya = z.Id
+		n.PereklyuchitAktivnuyu(z.Id, false)
 		return
 	}
 	z := ZapisPodpiski{Id: IdPodpiski(adres), Adres: adres}
 	n.Podpiski = append(n.Podpiski, z)
-	n.Aktivnaya = z.Id
+	n.PereklyuchitAktivnuyu(z.Id, false)
 }
 
 // UbratPodpisku удаляет запись. Активной становится первая из оставшихся, а на
 // пустом списке активной не остаётся вовсе.
 func (n *Nabor) UbratPodpisku(id string) {
+	if n.Aktivnaya == id {
+		for _, z := range n.Podpiski {
+			if z.Id != id {
+				n.PereklyuchitAktivnuyu(z.Id, false)
+				break
+			}
+		}
+		if n.Aktivnaya == id {
+			var ruchnye []protokol.Server
+			for _, srv := range aktualnyeServery(n.Servery) {
+				if !srv.IzPodpiski {
+					ruchnye = append(ruchnye, srv)
+				}
+			}
+			n.Servery = ruchnye
+		}
+	}
 	ostatok := make([]ZapisPodpiski, 0, len(n.Podpiski))
 	for _, z := range n.Podpiski {
 		if z.Id != id {
@@ -257,10 +274,24 @@ func (s *Sluzhba) listSubscriptions(k protokol.Kadr) protokol.Kadr {
 		if aktivnaya {
 			serverov = vRabochem
 		}
+		istochnik := z.Servery
+		if aktivnaya {
+			istochnik = nil
+			for _, srv := range n.Servery {
+				if srv.IzPodpiski {
+					istochnik = append(istochnik, srv)
+				}
+			}
+		}
+		stroki := make([]protokol.Server, 0, len(istochnik))
+		for _, srv := range aktualnyeServery(istochnik) {
+			stroki = append(stroki, dlyaEkrana(srv))
+		}
 		spisok = append(spisok, map[string]any{
-			"id":   z.Id,
-			"uzel": UzelPodpiski(z.Adres),
-			"imya": z.Imya,
+			"servery": stroki,
+			"id":      z.Id,
+			"uzel":    UzelPodpiski(z.Adres),
+			"imya":    z.Imya,
 			// Число ключей и причина отказа: без них живая запасная и
 			// просроченная выглядят на экране одинаково, а узнать разницу можно
 			// было бы только переключившись.
@@ -312,23 +343,15 @@ func (s *Sluzhba) addSubscription(ctx context.Context, k protokol.Kadr) protokol
 		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
 	}
 
-	// Список серверов тянется ТОЛЬКО если подписка стала активной: запасная
-	// лежит адресом, её ключи приедут при переключении.
-	if !stalaAktivnoy {
-		return otvet(k.Id, k.Imya, map[string]any{"id": IdPodpiski(adres), "aktivnaya": false})
-	}
-	r, serverov, err := s.obnovitPodpisku(ctx)
+	r, serverov, err := s.obnovitPodpiskuPoId(ctx, IdPodpiski(adres))
 	if err != nil {
 		return otkazPodpiski(k, r, err)
 	}
-	return otvet(k.Id, k.Imya, map[string]any{
-		"id": IdPodpiski(adres), "aktivnaya": true, "serverov": serverov, "otkazy": r.Otkazy,
-	})
+	return otvet(k.Id, k.Imya, map[string]any{"id": IdPodpiski(adres), "aktivnaya": stalaAktivnoy, "serverov": serverov, "otkazy": r.Otkazy})
 }
 
-// removeSubscription убирает запись. Серверы удалённой подписки уходят при
-// следующем обновлении активной, а пока ядро поднято, они держатся тем же
-// правилом, что и пропавшие из публикации.
+// removeSubscription убирает источник и его серверы из каталога.
+// Адреса текущего соединения остаются только в снимке работающего ядра.
 func (s *Sluzhba) removeSubscription(k protokol.Kadr) protokol.Kadr {
 	var telo struct {
 		Id string `json:"id"`
@@ -366,10 +389,6 @@ func (s *Sluzhba) setActiveSubscription(ctx context.Context, k protokol.Kadr) pr
 	if err := json.Unmarshal(k.Telo, &telo); err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, "тело команды не разбирается")
 	}
-	// Живое ядро значит, что его конфиг собран при подъёме и знает теги прежней
-	// подписки. Её ключи тогда остаются в списке пометкой удержания и уходят
-	// сами при переподключении, иначе мы отдали бы экрану список, которого ядро
-	// не видит, и упёрлись в заслон против потери живых.
 	adresKlash, _ := s.dostupKKlash()
 	nashli := false
 	pusto := false
@@ -430,65 +449,29 @@ func proveritAdresPodpiski(adres string) string {
 	return ""
 }
 
-// PereklyuchitAktivnuyu перекладывает ключи между записью и рабочим списком.
-//
-// Ключи активной подписки живут в Nabor.Servery, ключи остальных в их записях.
-// Переключение это ровно перекладка: прежние уезжают в свою запись, новые
-// приезжают оттуда. В сеть при этом ходить незачем, их уже привёз обход.
-//
-// uderzhat означает «ядро поднято»: тогда прежние ключи ОСТАЮТСЯ в рабочем
-// списке пометкой удержания. Конфиг ядра собран при подъёме и знает их теги;
-// вычеркнуть их из набора значило бы отдать экрану список, которого ядро не
-// видит, и упереться в заслон против потери живых.
-func (n *Nabor) PereklyuchitAktivnuyu(id string, uderzhat bool) {
+// PereklyuchitAktivnuyu перекладывает актуальные записи между подписками.
+// Снимок работающего ядра хранится в Sluzhba и в кэши подписок не попадает.
+// Второй аргумент оставлен для совместимости внутренних вызовов.
+func (n *Nabor) PereklyuchitAktivnuyu(id string, _ bool) {
 	if n.Aktivnaya == id {
 		return
 	}
-	prezhnyaya := n.zapisPodpiski(n.Aktivnaya)
 	novaya := n.zapisPodpiski(id)
 	if novaya == nil {
 		return
 	}
-
-	ostavshiesya := make([]protokol.Server, 0, len(n.Servery))
-	uehavshie := make([]protokol.Server, 0, len(n.Servery))
-	for _, srv := range n.Servery {
-		if !srv.IzPodpiski && !srv.Uderzhan {
-			// Ручной сервер не принадлежит подписке и переключения не замечает.
-			ostavshiesya = append(ostavshiesya, srv)
-			continue
-		}
-		uehavshie = append(uehavshie, srv)
-		if uderzhat {
-			srv.IzPodpiski = false
-			srv.Uderzhan = true
-			ostavshiesya = append(ostavshiesya, srv)
+	var ruchnye, prezhnie []protokol.Server
+	for _, srv := range aktualnyeServery(n.Servery) {
+		if srv.IzPodpiski {
+			prezhnie = append(prezhnie, srv)
+		} else {
+			ruchnye = append(ruchnye, srv)
 		}
 	}
-	if prezhnyaya != nil {
-		// В запись едут ключи КАК БЫЛИ, с пометкой «из подписки»: удержание это
-		// свойство рабочего списка, а не запаса.
-		for i := range uehavshie {
-			uehavshie[i].Uderzhan = false
-			uehavshie[i].IzPodpiski = true
-		}
-		prezhnyaya.Servery = uehavshie
+	if p := n.zapisPodpiski(n.Aktivnaya); p != nil {
+		p.Servery = prezhnie
 	}
-
-	zanyato := make(map[string]bool, len(ostavshiesya))
-	for _, srv := range ostavshiesya {
-		zanyato[srv.Id] = true
-	}
-	for _, srv := range novaya.Servery {
-		// Один и тот же адрес с портом и транспортом у двух панелей даёт один
-		// идентификатор. Второй экземпляр не кладём: два исходящих с одним тегом
-		// это конфиг, который ядро не соберёт.
-		if zanyato[srv.Id] {
-			continue
-		}
-		ostavshiesya = append(ostavshiesya, srv)
-	}
-	n.Servery = ostavshiesya
+	n.Servery = ssylki.Slit(ruchnye, aktualnyeServery(novaya.Servery))
 	novaya.Servery = nil
 	n.Aktivnaya = id
 }
@@ -510,47 +493,16 @@ func (s *Sluzhba) obnovitVsePodpiski(ctx context.Context) (ssylki.Razbor, int, e
 	if len(n.Podpiski) == 0 {
 		return ssylki.Razbor{}, 0, errPodpiskaNeZadana
 	}
-
-	// Активная идёт прежним путём: её ключи лежат в рабочем списке, их надо
-	// слить, удержать живых и сохранить одной правкой набора.
-	aktivnaya := n.Aktivnaya
-	// Отказ АКТИВНОЙ это отказ обхода: её список человек видит на экране, и
-	// молчать о нём значит показывать вчерашние ключи как сегодняшние.
+	var razbor ssylki.Razbor
+	var serverov int
 	var otkazAktivnoy error
-	razbor, serverov, err := s.obnovitPodpisku(ctx)
-	if err != nil {
-		otkazAktivnoy = err
-		s.otmetitOtkazPodpiski(aktivnaya, err)
-	}
-
 	for _, z := range n.Podpiski {
-		if z.Id == aktivnaya {
-			continue
+		if ctx.Err() != nil {
+			return razbor, serverov, ctx.Err()
 		}
-		r, err := s.zagruzitPodpisku(ctx, z.Adres)
-		if err != nil {
-			// Отказ ЗАПАСНОЙ не поднимается наверх: команду вызвал человек ради
-			// активной, и просроченная запасная панель не повод объявить всё
-			// обновление неудавшимся. Причина лежит в строке подписки, там её и
-			// читают.
-			s.otmetitOtkazPodpiski(z.Id, err)
-			continue
-		}
-		teper := s.seychas()
-		id := z.Id
-		if err := s.pravitNabor(func(n *Nabor) error {
-			zapis := n.zapisPodpiski(id)
-			if zapis == nil {
-				// Запись удалили, пока шла загрузка: класть ключи некуда, и это
-				// не отказ, а гонка с человеком, которую выиграл человек.
-				return nil
-			}
-			zapis.Servery = ssylki.Slit(zapis.Servery, r.Servery)
-			zapis.Obnovlena = &teper
-			zapis.Otkaz = ""
-			return nil
-		}); err != nil {
-			log.Printf("ключи подписки не сохранены: %v", err)
+		r, count, err := s.obnovitPodpiskuPoId(ctx, z.Id)
+		if z.Id == n.Aktivnaya {
+			razbor, serverov, otkazAktivnoy = r, count, err
 		}
 	}
 	return razbor, serverov, otkazAktivnoy

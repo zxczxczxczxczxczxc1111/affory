@@ -107,23 +107,4 @@ type Server struct {
 	// половиной канала.
 	PolosaVverh int `json:"polosa_vverh,omitempty"`
 	PolosaVniz  int `json:"polosa_vniz,omitempty"`
-
-	// PrezhnieKlyuchi это одно поколение назад, и не больше.
-	//
-	// Ротация uuid/pbk/sid в подписке иначе затирает рабочие учётные данные
-	// навсегда: сервер остаётся тот же, ключи новые, и если публикация оказалась
-	// ошибочной, вернуться некуда. Серверов у проекта один, так что это самый
-	// вероятный сценарий, а не экзотика. Хранить историю глубже смысла нет:
-	// откатываются на предыдущее рабочее, а не на позапрошлое.
-	PrezhnieKlyuchi *Klyuchi `json:"prezhnie_klyuchi,omitempty"`
-}
-
-// Klyuchi это то и только то, что меняется при ротации. Адрес и транспорт сюда
-// не входят: их смена делает сервер ДРУГИМ, и она меняет Id.
-type Klyuchi struct {
-	Uuid      string `json:"uuid,omitempty"`
-	PublicKey string `json:"pbk,omitempty"`
-	ShortId   string `json:"sid,omitempty"`
-	Parol     string `json:"parol,omitempty"`
-	Metod     string `json:"metod,omitempty"`
 }

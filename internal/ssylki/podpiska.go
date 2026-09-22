@@ -352,35 +352,16 @@ func (z *Zagruzchik) ZagruzitSPovtorami(ctx context.Context, adres string, popyt
 	return Razbor{}, posledn
 }
 
-// Slit накладывает свежий список на прежний.
-//
-// Три правила, и каждое стоит за конкретной потерей. Ротация ключей сохраняет
-// ОДНО поколение назад, потому что ошибочная публикация иначе затирает рабочие
-// учётные данные навсегда, а сервер у проекта один. Сервер, добавленный руками,
-// переживает обновление: он и есть то, к чему откатываются, когда проблема в
-// самой подписке. Сервер, УШЕДШИЙ из подписки, исчезает, иначе список только
-// растёт и selected-server-gone не срабатывает никогда.
+// Slit заменяет подписочные записи свежими и сохраняет ручные серверы.
+// Устаревшие записи и прежние ключи не являются частью нового каталога.
 func Slit(bylo, stalo []protokol.Server) []protokol.Server {
-	prezhnie := make(map[string]protokol.Server, len(bylo))
-	for _, s := range bylo {
-		prezhnie[s.Id] = s
-	}
-
 	itog := make([]protokol.Server, 0, len(stalo)+len(bylo))
-	for _, novyy := range stalo {
-		staryy, est := prezhnie[novyy.Id]
-		if est {
-			if klyuchiRazlichny(staryy, novyy) {
-				novyy.PrezhnieKlyuchi = &protokol.Klyuchi{
-					Uuid: staryy.Uuid, PublicKey: staryy.PublicKey,
-					ShortId: staryy.ShortId, Parol: staryy.Parol, Metod: staryy.Metod,
-				}
-			} else {
-				// Обновление без ротации не имеет права стереть точку отката.
-				novyy.PrezhnieKlyuchi = staryy.PrezhnieKlyuchi
-			}
+	seen := make(map[string]bool)
+	for _, srv := range stalo {
+		if !srv.Uderzhan && !seen[srv.Id] {
+			itog = append(itog, srv)
+			seen[srv.Id] = true
 		}
-		itog = append(itog, novyy)
 	}
 
 	// Ручные добавляются после: порядок подписки это порядок панели, и менять
@@ -395,9 +376,4 @@ func Slit(bylo, stalo []protokol.Server) []protokol.Server {
 		}
 	}
 	return itog
-}
-
-func klyuchiRazlichny(a, b protokol.Server) bool {
-	return a.Uuid != b.Uuid || a.PublicKey != b.PublicKey ||
-		a.ShortId != b.ShortId || a.Parol != b.Parol || a.Metod != b.Metod
 }

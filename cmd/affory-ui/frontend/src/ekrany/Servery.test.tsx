@@ -461,7 +461,7 @@ describe("серверы: несколько подписок", () => {
       { id: "aaa", uzel: "panel.example.net", aktivnaya: true, serverov: 7 },
       { id: "bbb", uzel: "zapasnaya.example.net", aktivnaya: false, serverov: 4, obnovlena: new Date().toISOString() },
     ]);
-    expect(screen.getByTestId("podpiska-bbb")).toHaveTextContent(/4 сервера наготове/);
+    expect(screen.getByTestId("podpiska-bbb")).toHaveTextContent(/4 сервера/);
   });
 
   it("отказ запасной подписки виден её строкой, а не молчанием", () => {
@@ -472,20 +472,21 @@ describe("серверы: несколько подписок", () => {
     expect(screen.getByTestId("podpiska-bbb")).toHaveTextContent(/подписка истекла/);
   });
 
-  it("показывает обе подписки и помечает активную", () => {
+  it("показывает обе подписки без отдельного режима активности", () => {
     risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
     const stroki = screen.getAllByTestId(/^podpiska-/);
     expect(stroki).toHaveLength(2);
     expect(stroki[0]).toHaveTextContent(/panel\.example\.net/);
-    expect(stroki[0]).toHaveTextContent(/активна/);
+    expect(stroki[0]).not.toHaveTextContent(/активна/);
     expect(stroki[1]).toHaveTextContent(/zapasnaya\.example\.net/);
     expect(stroki[1]).not.toHaveTextContent(/активна/);
   });
 
-  it("кнопка переключения шлёт setActiveSubscription", () => {
+  it("обновление конкретной подписки не переключает источник", () => {
     const na = risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
-    fireEvent.click(screen.getByTestId("vklyuchit-bbb"));
-    expect(na).toHaveBeenCalledWith("setActiveSubscription", { id: "bbb" });
+    fireEvent.click(screen.getByTestId("obnovit-podpisku-bbb"));
+    expect(na).toHaveBeenCalledWith("refreshSubscription", { id: "bbb" });
+    expect(screen.queryByText("Сделать активной")).toBeNull();
   });
 
   it("у активной подписки переключателя нет, а обновление есть", () => {

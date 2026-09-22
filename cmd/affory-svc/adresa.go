@@ -36,7 +36,8 @@ func (s *Sluzhba) adresaKandidatov() ([]netip.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(n.Servery) == 0 {
+	servery := s.serveryDlyaRazresheniy(n.Servery)
+	if len(servery) == 0 {
 		return nil, ErrNetServerov
 	}
 	// Хосты наборов входят наравне с подпиской: загрузка идёт мимо туннеля, а
@@ -51,7 +52,7 @@ func (s *Sluzhba) adresaKandidatov() ([]netip.Addr, error) {
 		}
 	}
 	prochee = append(prochee, s.adresaNaborov()...)
-	return s.sobratAdresaSet(n.Servery, n.AdresAktivnoy(), prochee...)
+	return s.sobratAdresaSet(servery, n.AdresAktivnoy(), prochee...)
 }
 
 // kandidatySIsklyucheniem собирает адреса и НЕ падает из-за одного мёртвого

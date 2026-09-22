@@ -368,8 +368,8 @@ func TestObnovlenieStavitOtmetkuAktivnoyZapisi(t *testing.T) {
 	if zapasnaya == nil {
 		t.Fatal("запасная запись пропала")
 	}
-	if zapasnaya.Obnovlena != nil {
-		t.Fatal("у запасной записи стоит отметка обновления, хотя её никто не грузил")
+	if zapasnaya.Obnovlena == nil {
+		t.Fatal("добавленная запасная подписка не загружена")
 	}
 }
 

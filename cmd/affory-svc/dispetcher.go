@@ -266,6 +266,13 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		// туннеле означает ровно то же, что «переключись на X», и у setServer
 		// для этого есть и проба, и откат на прежний сервер.
 		if telo.Server != "" {
+			peresobrat, err := s.serverTrebuetPodyoma(telo.Server)
+			if err != nil {
+				return otkaz(k.Id, k.Imya, kodPereklyucheniya(err), err.Error())
+			}
+			if peresobrat {
+				s.Disconnect()
+			}
 			if adres, _ := s.dostupKKlash(); adres != "" {
 				if err := s.setServer(ctx, telo.Server); err != nil {
 					return otkaz(k.Id, k.Imya, kodPereklyucheniya(err), err.Error())

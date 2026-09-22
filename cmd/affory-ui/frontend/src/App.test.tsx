@@ -436,7 +436,7 @@ describe("ни один отказ не пропадает молча", () => {
   // Список подписок приходит ОТДЕЛЬНОЙ командой: listServers говорит только про
   // активную, а экрану нужны все. Окно обязано спросить его при открытии
   // вкладки и перезапросить после каждого действия с подписками.
-  it("вкладка серверов спрашивает список подписок и перезапрашивает после переключения", async () => {
+  it("вкладка серверов спрашивает список подписок и перезапрашивает после обновления", async () => {
     const most = mostProby();
     most.otvechatTelom("listSubscriptions", {
       podpiski: [
@@ -452,14 +452,49 @@ describe("ни один отказ не пропадает молча", () => {
     expect(stroka).toHaveTextContent(/zapasnaya\.example\.net/);
 
     const bylo = most.skolkoRaz("listSubscriptions");
-    fireEvent.click(screen.getByTestId("vklyuchit-bbb"));
-    await waitFor(() => expect(most.skolkoRaz("setActiveSubscription")).toBe(1));
+    fireEvent.click(screen.getByTestId("obnovit-podpisku-bbb"));
+    await waitFor(() => expect(most.skolkoRaz("refreshSubscription")).toBe(1));
     await waitFor(() => expect(most.skolkoRaz("listSubscriptions")).toBeGreaterThan(bylo));
   });
 
   // Служба прежней версии этой команды не знает. Её отказ это НЕ повод для
   // баннера: он рассказал бы человеку про наш порядок обновления вместо его
   // подписок, а экран и без списка рисует строку по полям listServers.
+  it("главный экран выбирает источник до подключения и останавливается на отказе источника", async () => {
+    const most = mostProby();
+    most.otvechatTelom("listSubscriptions", { podpiski: [
+      { id: "aaa", uzel: "a.example", aktivnaya: true },
+      { id: "bbb", uzel: "b.example", aktivnaya: false, servery: [{ id: "remote", imya: "Запасной узел", transport: "trojan", host: "203.0.113.1", port: 443, iz_podpiski: true }] },
+    ] });
+    most.otvechatOtkazom("setActiveSubscription", "subscription-unreachable");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Подключиться к Запасной узел" }));
+    await waitFor(() => expect(most.skolkoRaz("setActiveSubscription")).toBe(1));
+    expect(most.skolkoRaz("connect")).toBe(0);
+  });
+
+  it("обновление подписки сохраняет незатронутые замеры на главном экране", async () => {
+    const most = mostProby();
+    const servers = ["a", "b", "manual"].map(id => ({ id, imya: id, host: `${id}.example`, port: 443, transport: "trojan", iz_podpiski: id !== "manual" }));
+    const list = { servery: servers, vybran: "a", podpiska_zadana: true, podpiska_uzel: "panel.example", versii: { a: "a1", b: "b1", manual: "m1" } };
+    most.otvechatTelom("listServers", list);
+    most.otvechatTelom("listSubscriptions", { podpiski: [{ id: "source", uzel: "panel.example", aktivnaya: true }] });
+    most.otvechatTelom("measureDelays", { zamery: [
+      { id: "a", versiya: "a1", realping_ms: 111 },
+      { id: "b", versiya: "b1", realping_ms: 222 },
+      { id: "manual", versiya: "m1", realping_ms: 333 },
+    ] });
+    render(<App />);
+    await screen.findByRole("button", { name: "Подключиться к a" });
+    fireEvent.click(screen.getByRole("button", { name: "Проверить серверы" }));
+    expect(await screen.findByText("222 мс")).toBeTruthy();
+    most.otvechatTelom("listServers", { ...list, versii: { ...list.versii, b: "b2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Обновить panel.example" }));
+    await waitFor(() => expect(screen.queryByText("222 мс")).toBeNull());
+    expect(screen.getByText("111 мс")).toBeTruthy();
+    expect(screen.getByText("333 мс")).toBeTruthy();
+  });
+
   it("служба без listSubscriptions не даёт баннера", async () => {
     const most = mostProby();
     most.otvechatOtkazom("listSubscriptions", "protocol-mismatch");
