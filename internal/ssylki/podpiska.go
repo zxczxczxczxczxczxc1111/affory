@@ -203,6 +203,31 @@ func NovyyZagruzchik() *Zagruzchik {
 	}
 }
 
+// NovyyZagruzchikCherez отдаёт загрузчик, который ходит через локальный вход
+// ядра, то есть ЧЕРЕЗ туннель.
+//
+// Своя копия транспорта, а не правка общего: http.DefaultTransport один на
+// процесс, и прокси в нём увёл бы в туннель заодно замеры и проверку выхода.
+//
+// TLS не трогается ни одним полем, и это не забывчивость. Запрос несёт пропуск
+// к панели, и ослабить проверку сертификата ради доступности значило бы отдать
+// этот пропуск любому, кто встанет на пути.
+func NovyyZagruzchikCherez(proksi string) (*Zagruzchik, error) {
+	z := NovyyZagruzchik()
+	if proksi == "" {
+		return z, nil
+	}
+	u, err := url.Parse("http://" + proksi)
+	if err != nil {
+		return nil, fmt.Errorf("адрес локального входа не разобран: %w", err)
+	}
+	z.Klient = &http.Client{
+		Timeout:   z.Klient.Timeout,
+		Transport: &http.Transport{Proxy: http.ProxyURL(u)},
+	}
+	return z, nil
+}
+
 // Zagruzit скачивает подписку и разбирает её.
 //
 // Адрес подписки это секрет того же класса, что и ключ: он и есть пропуск.

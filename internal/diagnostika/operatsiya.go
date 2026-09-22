@@ -43,6 +43,10 @@ type Operatsiya struct {
 	// Istochnik и Uzel уже ОБЕЗЛИЧЕНЫ вызывающим через Obezlichit.
 	Istochnik string
 	Uzel      string
+	// Put это дорога, которой операция пошла в сеть: «napryamuyu» или
+	// «cherez-vpn». Без него две попытки одной загрузки в журнале неразличимы,
+	// а весь смысл запасного пути в том, чтобы видеть, который из двух работает.
+	Put string
 }
 
 // NomerOperatsii даёт короткий случайный идентификатор.
@@ -141,6 +145,7 @@ func (z *Zhurnal) SobytieOperatsii(o Operatsiya) error {
 		OpShag:         o.Shag,
 		OpIstochnik:    o.Istochnik,
 		OpUzel:         o.Uzel,
+		OpPut:          o.Put,
 		Sborka:         z.sborkaSnimok(),
 	})
 }

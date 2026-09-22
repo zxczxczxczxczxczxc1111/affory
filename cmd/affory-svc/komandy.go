@@ -313,7 +313,16 @@ type Sluzhba struct {
 
 	// Загрузка подписки. Шов, потому что настоящая ходит в сеть, а тест обязан
 	// уметь показать и истекшую подписку, и недоступную, не поднимая сервера.
+	//
+	// Здесь СТРАТЕГИЯ целиком: бюджет времени, выбор пути и запасной заход
+	// (A8). Тесты, которым нужен только ответ подписки, подменяют её и не
+	// думают про дороги.
 	zagruzitPodpisku func(ctx context.Context, adres string) (ssylki.Razbor, error)
+
+	// Одна дорога загрузки: пустой proksi это прямой путь, непустой - через
+	// локальный вход ядра. Отдельным швом от предыдущего, чтобы саму стратегию
+	// можно было проверить настоящую, подменив под ней только сеть.
+	zagruzitCherez func(ctx context.Context, adres, proksi string, popytok int) (ssylki.Razbor, error)
 
 	// Адреса для правила петли И для разрешающих правил брандмауэра. ОДИН
 	// источник на оба списка: два независимых сборщика неизбежно разошлись бы,
@@ -418,12 +427,22 @@ func NovayaSluzhba() *Sluzhba {
 	if n, err := s.naborIzHranilishcha(); err == nil {
 		s.rezhim = rezhimNabora(n)
 	}
-	// Пять попыток: служба стартует Automatic, то есть раньше, чем поднимается
-	// сеть, и первая загрузка подписки почти всегда приходится на этот момент.
+	// Прямой загрузчик один на службу: транспорт держит пул соединений, и
+	// заводить его заново на каждое обновление незачем. Загрузчик через туннель
+	// собирается на месте: порт локального входа живёт ровно столько, сколько
+	// поднят туннель, и меняется между подъёмами.
 	zagr := ssylki.NovyyZagruzchik()
-	s.zagruzitPodpisku = func(ctx context.Context, adres string) (ssylki.Razbor, error) {
-		return zagr.ZagruzitSPovtorami(ctx, adres, 5)
+	s.zagruzitCherez = func(ctx context.Context, adres, proksi string, popytok int) (ssylki.Razbor, error) {
+		if proksi == "" {
+			return zagr.ZagruzitSPovtorami(ctx, adres, popytok)
+		}
+		cherez, err := ssylki.NovyyZagruzchikCherez(proksi)
+		if err != nil {
+			return ssylki.Razbor{}, err
+		}
+		return cherez.ZagruzitSPovtorami(ctx, adres, popytok)
 	}
+	s.zagruzitPodpisku = s.zagruzitPodpiskuStrategiey
 	s.seychas = time.Now
 	s.zhdat = zhdatPoChasam
 	s.prochitat = sostoyanie.Prochitat

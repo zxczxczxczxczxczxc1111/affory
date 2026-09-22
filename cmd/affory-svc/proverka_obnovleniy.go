@@ -210,7 +210,8 @@ func (s *schetchikChteniya) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// proksiObnovleniy отвечает, идти ли за выпуском ЧЕРЕЗ СВОЙ ЖЕ туннель.
+// proksiCherezTunnel отдаёт адрес локального входа ядра, когда идти ЧЕРЕЗ СВОЙ
+// ЖЕ туннель можно. Зовут её двое: проверка обновлений и загрузка подписки.
 //
 // Конфиг ядра уводит affory-svc.exe в direct, и это правильно: обновляться
 // нужно и при лежащем туннеле, а замыкать службу на туннель, которого нет,
@@ -224,7 +225,7 @@ func (s *schetchikChteniya) Read(p []byte) (int, error) {
 // конфиге ядра маршрутизируется в `vybor`), то есть ровно тем путём, что у
 // всех остальных программ машины. Порт ноль это законный случай: прокси
 // надстройка, и туннель поднимают без него, когда 10809 занят чужим клиентом.
-func (s *Sluzhba) proksiObnovleniy() string {
+func (s *Sluzhba) proksiCherezTunnel() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sost != protokol.SostPodnyat || s.portProksiNash <= 0 {
@@ -241,7 +242,7 @@ func (s *Sluzhba) proksiObnovleniy() string {
 // Половина срока каждому: походу через туннель нельзя съедать время прямого,
 // иначе откат существует только на бумаге.
 func (s *Sluzhba) skachatVypusk(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
-	proksi := s.proksiObnovleniy()
+	proksi := s.proksiCherezTunnel()
 	if proksi == "" {
 		return skachatPoSeti(ctx, adres, predel, hod)
 	}

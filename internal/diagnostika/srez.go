@@ -78,6 +78,7 @@ type Srez struct {
 	OpShag         string  `json:"op_shag,omitempty"`
 	OpIstochnik    string  `json:"op_istochnik,omitempty"`
 	OpUzel         string  `json:"op_uzel,omitempty"`
+	OpPut          string  `json:"op_put,omitempty"`
 	Sborka         string  `json:"sborka,omitempty"`
 }
 

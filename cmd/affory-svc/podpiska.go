@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
@@ -90,20 +89,12 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 	// снаружи.
 	nachalo := s.seychas()
 	zapisatOperatsiyu := func(itog string, err error) {
-		// Шаг берётся у самого отказа, если он его несёт: загрузчик уже
-		// разобрался, а повторная классификация обёрнутой ошибки дала бы тот
-		// же ответ более длинным путём.
-		shag := sboi.Klassifitsirovat(err)
-		var zagruzka ssylki.OtkazZagruzki
-		if errors.As(err, &zagruzka) {
-			shag = zagruzka.Vid
-		}
 		_ = s.zhurnalDiag.SobytieOperatsii(diagnostika.Operatsiya{
 			Vid:        "podpiska",
 			Pokolenie:  pokolenie,
 			Dlitelnost: s.seychas().Sub(nachalo),
 			Itog:       itog,
-			Shag:       string(shag),
+			Shag:       string(shagZagruzki(err)),
 			Istochnik:  diagnostika.Obezlichit(adres),
 		})
 	}

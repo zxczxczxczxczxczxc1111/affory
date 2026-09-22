@@ -246,14 +246,11 @@ func otkazPodpiski(k protokol.Kadr, r ssylki.Razbor, err error) protokol.Kadr {
 	// Шаг, на котором сорвалась загрузка, меняет совет: не успевший ответ и
 	// отказ панели по праву доступа лечатся по-разному, а до 22.09.2026 оба
 	// приезжали как «подписка недоступна, обнови подписку».
-	var zagruzka ssylki.OtkazZagruzki
-	if errors.As(err, &zagruzka) {
-		switch zagruzka.Vid {
-		case sboi.Srok:
-			return otkaz(k.Id, k.Imya, protokol.KodPodpiskaSrok, err.Error())
-		case sboi.Dostup:
-			return otkaz(k.Id, k.Imya, protokol.KodPodpiskaDostup, err.Error())
-		}
+	switch shagZagruzki(err) {
+	case sboi.Srok:
+		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaSrok, err.Error())
+	case sboi.Dostup:
+		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaDostup, err.Error())
 	}
 	// Остальные шаги (dns, tcp, tls) ведут в одну сторону - проверить сеть и
 	// повторить, - поэтому код общий, а сам шаг назван в тексте отказа.
