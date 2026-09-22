@@ -11,22 +11,34 @@ index 44af9b6..1d83bb0 100644
  }
  
 diff --git a/common/process/searcher.go b/common/process/searcher.go
-index 7a882fc..afa189c 100644
+index 7a882fc..87e4fe3 100644
 --- a/common/process/searcher.go
 +++ b/common/process/searcher.go
-@@ -23,6 +23,7 @@ var ErrNotFound = E.New("process not found")
+@@ -19,10 +19,14 @@ type Searcher interface {
+ }
+ 
+ var ErrNotFound = E.New("process not found")
++var ErrFamilyUnavailable = E.New("shared process tracker unavailable")
+ 
  type Config struct {
  	Logger         log.ContextLogger
  	PackageManager tun.PackageManager
 +	ProcessFamily  bool
++	FamilyEndpoint string
++	FamilySecret   string
  }
  
  func FindProcessInfo(searcher Searcher, ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
 diff --git a/common/process/searcher_windows.go b/common/process/searcher_windows.go
-index f011765..506d791 100644
+index f011765..a31568e 100644
 --- a/common/process/searcher_windows.go
 +++ b/common/process/searcher_windows.go
-@@ -6,6 +6,7 @@ import (
+@@ -2,10 +2,12 @@ package process
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"net/netip"
  	"syscall"
  
  	"github.com/sagernet/sing-box/adapter"
@@ -34,12 +46,17 @@ index f011765..506d791 100644
  	E "github.com/sagernet/sing/common/exceptions"
  	"github.com/sagernet/sing/common/winiphlpapi"
  
-@@ -14,14 +15,21 @@ import (
+@@ -14,14 +16,30 @@ import (
  
  var _ Searcher = (*windowsSearcher)(nil)
  
 -type windowsSearcher struct{}
-+type windowsSearcher struct{ family *afforyprocess.Watcher }
++type windowsSearcher struct {
++	family interface {
++		Find(uint32) ([]string, error)
++		Close() error
++	}
++}
  
 -func NewSearcher(_ Config) (Searcher, error) {
 +func NewSearcher(config Config) (Searcher, error) {
@@ -50,7 +67,11 @@ index f011765..506d791 100644
 -	return &windowsSearcher{}, nil
 +	s := &windowsSearcher{}
 +	if config.ProcessFamily {
-+		s.family, err = afforyprocess.NewWatcher(func(err error) { config.Logger.Warn("process family snapshot: ", err) })
++		if config.FamilyEndpoint != "" {
++			s.family, err = afforyprocess.NewSharedClient(config.FamilyEndpoint, config.FamilySecret)
++		} else {
++			s.family, err = afforyprocess.NewWatcher(func(err error) { config.Logger.Warn("process family snapshot: ", err) })
++		}
 +		if err != nil {
 +			return nil, E.Cause(err, "initialize process families")
 +		}
@@ -59,7 +80,7 @@ index f011765..506d791 100644
  }
  
  func initWin32API() error {
-@@ -32,6 +40,9 @@ func (s *windowsSearcher) ResetCache() {
+@@ -32,6 +50,9 @@ func (s *windowsSearcher) ResetCache() {
  }
  
  func (s *windowsSearcher) Close() error {
@@ -69,7 +90,7 @@ index f011765..506d791 100644
  	return nil
  }
  
-@@ -44,7 +55,18 @@ func (s *windowsSearcher) FindProcessInfo(ctx context.Context, network string, s
+@@ -44,7 +65,21 @@ func (s *windowsSearcher) FindProcessInfo(ctx context.Context, network string, s
  	if err != nil {
  		return &adapter.ConnectionOwner{ProcessID: pid, UserId: -1}, err
  	}
@@ -78,6 +99,9 @@ index f011765..506d791 100644
 +	if s.family != nil {
 +		paths, err := s.family.Find(pid)
 +		if err != nil {
++			if errors.Is(err, afforyprocess.ErrSharedUnavailable) {
++				return nil, E.Cause(ErrFamilyUnavailable, err.Error())
++			}
 +			return nil, err
 +		}
 +		owner.ProcessFamilyPaths = paths
@@ -89,6 +113,19 @@ index f011765..506d791 100644
  }
  
  func getProcessPath(pid uint32) (string, error) {
+diff --git a/option/route.go b/option/route.go
+index 39f3cfb..0ee4ba1 100644
+--- a/option/route.go
++++ b/option/route.go
+@@ -3,6 +3,8 @@ package option
+ import "github.com/sagernet/sing/common/json/badoption"
+ 
+ type RouteOptions struct {
++	ProcessFamilyEndpoint      string                            `json:"process_family_endpoint,omitempty"`
++	ProcessFamilySecret        string                            `json:"process_family_secret,omitempty"`
+ 	GeoIP                      *GeoIPOptions                     `json:"geoip,omitempty" schema:"omit"`
+ 	Geosite                    *GeositeOptions                   `json:"geosite,omitempty" schema:"omit"`
+ 	Rules                      []Rule                            `json:"rules,omitempty"`
 diff --git a/option/rule.go b/option/rule.go
 index 15f86a4..b87dabd 100644
 --- a/option/rule.go
@@ -103,10 +140,18 @@ index 15f86a4..b87dabd 100644
  	PackageName              badoption.Listable[string]                                                  `json:"package_name,omitempty"`
  	PackageNameRegex         badoption.Listable[string]                                                  `json:"package_name_regex,omitempty"`
 diff --git a/route/process_cache.go b/route/process_cache.go
-index f99ceba..ae85f69 100644
+index f99ceba..13fe3d0 100644
 --- a/route/process_cache.go
 +++ b/route/process_cache.go
-@@ -22,6 +22,9 @@ type processCacheEntry struct {
+@@ -2,6 +2,7 @@ package route
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"net/netip"
+ 	"slices"
+ 	"strings"
+@@ -22,6 +23,9 @@ type processCacheEntry struct {
  }
  
  func (r *Router) findProcessInfoCached(ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
@@ -116,31 +161,208 @@ index f99ceba..ae85f69 100644
  	key := processCacheKey{
  		Network:     network,
  		Source:      source,
+@@ -35,9 +39,9 @@ func (r *Router) findProcessInfoCached(ctx context.Context, network string, sour
+ 	return result, err
+ }
+ 
+-func (r *Router) searchProcessInfo(ctx context.Context, metadata *adapter.InboundContext) {
++func (r *Router) searchProcessInfo(ctx context.Context, metadata *adapter.InboundContext) error {
+ 	if r.processSearcher == nil || metadata.ProcessInfo != nil || !r.isLocalSource(metadata.Source.Addr) {
+-		return
++		return nil
+ 	}
+ 	var originDestination netip.AddrPort
+ 	if metadata.OriginDestination.IsValid() {
+@@ -47,8 +51,11 @@ func (r *Router) searchProcessInfo(ctx context.Context, metadata *adapter.Inboun
+ 	}
+ 	processInfo, err := r.findProcessInfoCached(ctx, metadata.Network, metadata.Source.AddrPort(), originDestination)
+ 	if err != nil {
++		if errors.Is(err, process.ErrFamilyUnavailable) {
++			return err
++		}
+ 		r.logger.InfoContext(ctx, "failed to search process: ", err)
+-		return
++		return nil
+ 	}
+ 	metadata.ProcessInfo = processInfo
+ 	if processInfo.ProcessPath != "" {
+@@ -59,11 +66,11 @@ func (r *Router) searchProcessInfo(ctx context.Context, metadata *adapter.Inboun
+ 		} else {
+ 			r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath)
+ 		}
+-		return
++		return nil
+ 	}
+ 	if len(processInfo.AndroidPackageNames) > 0 {
+ 		r.logger.InfoContext(ctx, "found package name: ", strings.Join(processInfo.AndroidPackageNames, ", "))
+-		return
++		return nil
+ 	}
+ 	if processInfo.UserId != -1 {
+ 		if processInfo.UserName != "" {
+@@ -72,6 +79,7 @@ func (r *Router) searchProcessInfo(ctx context.Context, metadata *adapter.Inboun
+ 			r.logger.InfoContext(ctx, "found user id: ", processInfo.UserId)
+ 		}
+ 	}
++	return nil
+ }
+ 
+ func (r *Router) isLocalSource(source netip.Addr) bool {
+diff --git a/route/process_family_test.go b/route/process_family_test.go
+new file mode 100644
+index 0000000..7ecaf87
+--- /dev/null
++++ b/route/process_family_test.go
+@@ -0,0 +1,28 @@
++package route
++
++import (
++	"context"
++	"errors"
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/process"
++	E "github.com/sagernet/sing/common/exceptions"
++	M "github.com/sagernet/sing/common/metadata"
++	"net/netip"
++	"testing"
++)
++
++type unavailableFamilySearcher struct{}
++
++func (unavailableFamilySearcher) FindProcessInfo(context.Context, string, netip.AddrPort, netip.AddrPort) (*adapter.ConnectionOwner, error) {
++	return nil, E.Cause(process.ErrFamilyUnavailable, "test failure")
++}
++func (unavailableFamilySearcher) ResetCache()  {}
++func (unavailableFamilySearcher) Close() error { return nil }
++
++func TestAfforyTrackerFailureDoesNotFallBackToDefaultRoute(t *testing.T) {
++	r := &Router{needProcessFamily: true, processSearcher: unavailableFamilySearcher{}}
++	metadata := &adapter.InboundContext{Network: "tcp", Source: M.ParseSocksaddr("127.0.0.1:12345"), Destination: M.ParseSocksaddr("127.0.0.1:443")}
++	if err := r.prepareMatchMetadata(context.Background(), metadata); !errors.Is(err, process.ErrFamilyUnavailable) {
++		t.Fatalf("tracker failure lost: %v", err)
++	}
++}
+diff --git a/route/route.go b/route/route.go
+index 62f1c86..8456377 100644
+--- a/route/route.go
++++ b/route/route.go
+@@ -543,7 +543,9 @@ func (r *Router) preMatchFlow(ctx context.Context, metadata *adapter.InboundCont
+ }
+ 
+ func (r *Router) prepareMatchMetadata(ctx context.Context, metadata *adapter.InboundContext) error {
+-	r.searchProcessInfo(ctx, metadata)
++	if err := r.searchProcessInfo(ctx, metadata); err != nil {
++		return err
++	}
+ 	if r.neighborResolver != nil && metadata.SourceMACAddress == nil && metadata.Source.Addr.IsValid() {
+ 		mac, macFound := r.neighborResolver.LookupMAC(metadata.Source.Addr)
+ 		if macFound {
 diff --git a/route/router.go b/route/router.go
-index 682111d..c891f6e 100644
+index 682111d..32c7203 100644
 --- a/route/router.go
 +++ b/route/router.go
-@@ -36,6 +36,7 @@ type Router struct {
- 	httpClientManager adapter.HTTPClientManager
- 	rules             []adapter.Rule
- 	needFindProcess   bool
-+	needProcessFamily bool
- 	needFindNeighbor  bool
- 	leaseFiles        []string
- 	ruleSets          []adapter.RuleSet
-@@ -64,6 +65,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
- 		rules:             make([]adapter.Rule, 0, len(options.Rules)),
- 		ruleSetMap:        make(map[string]adapter.RuleSet),
- 		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
-+		needProcessFamily: hasRule(options.Rules, func(rule option.DefaultRule) bool { return len(rule.ProcessPathTree) > 0 }),
- 		needFindNeighbor:  hasRule(options.Rules, isNeighborRule) || hasDNSRule(dnsOptions.Rules, isNeighborDNSRule) || hasLocalNeighborDNSServer(dnsOptions.Servers) || options.FindNeighbor,
- 		leaseFiles:        options.DHCPLeaseFiles,
- 		pauseManager:      service.FromContext[pause.Manager](ctx),
-@@ -180,9 +182,13 @@ func (r *Router) Start(stage adapter.StartStage) error {
+@@ -25,49 +25,55 @@ import (
+ var _ adapter.Router = (*Router)(nil)
+ 
+ type Router struct {
+-	ctx               context.Context
+-	logger            log.ContextLogger
+-	inbound           adapter.InboundManager
+-	outbound          adapter.OutboundManager
+-	dns               adapter.DNSRouter
+-	dnsTransport      adapter.DNSTransportManager
+-	connection        adapter.ConnectionManager
+-	network           adapter.NetworkManager
+-	httpClientManager adapter.HTTPClientManager
+-	rules             []adapter.Rule
+-	needFindProcess   bool
+-	needFindNeighbor  bool
+-	leaseFiles        []string
+-	ruleSets          []adapter.RuleSet
+-	ruleSetMap        map[string]adapter.RuleSet
+-	ruleSetUpdater    *R.RuleSetUpdater
+-	processSearcher   process.Searcher
+-	processCache      *freelru.Cache[processCacheKey, processCacheEntry]
+-	neighborResolver  adapter.NeighborResolver
+-	pauseManager      pause.Manager
+-	trackers          []adapter.ConnectionTracker
+-	platformInterface adapter.PlatformInterface
+-	started           bool
++	ctx                   context.Context
++	logger                log.ContextLogger
++	inbound               adapter.InboundManager
++	outbound              adapter.OutboundManager
++	dns                   adapter.DNSRouter
++	dnsTransport          adapter.DNSTransportManager
++	connection            adapter.ConnectionManager
++	network               adapter.NetworkManager
++	httpClientManager     adapter.HTTPClientManager
++	rules                 []adapter.Rule
++	needFindProcess       bool
++	needProcessFamily     bool
++	processFamilyEndpoint string
++	processFamilySecret   string
++	needFindNeighbor      bool
++	leaseFiles            []string
++	ruleSets              []adapter.RuleSet
++	ruleSetMap            map[string]adapter.RuleSet
++	ruleSetUpdater        *R.RuleSetUpdater
++	processSearcher       process.Searcher
++	processCache          *freelru.Cache[processCacheKey, processCacheEntry]
++	neighborResolver      adapter.NeighborResolver
++	pauseManager          pause.Manager
++	trackers              []adapter.ConnectionTracker
++	platformInterface     adapter.PlatformInterface
++	started               bool
+ }
+ 
+ func NewRouter(ctx context.Context, logFactory log.Factory, options option.RouteOptions, dnsOptions option.DNSOptions) *Router {
+ 	return &Router{
+-		ctx:               ctx,
+-		logger:            logFactory.NewLogger("router"),
+-		inbound:           service.FromContext[adapter.InboundManager](ctx),
+-		outbound:          service.FromContext[adapter.OutboundManager](ctx),
+-		dns:               service.FromContext[adapter.DNSRouter](ctx),
+-		dnsTransport:      service.FromContext[adapter.DNSTransportManager](ctx),
+-		connection:        service.FromContext[adapter.ConnectionManager](ctx),
+-		network:           service.FromContext[adapter.NetworkManager](ctx),
+-		httpClientManager: service.FromContext[adapter.HTTPClientManager](ctx),
+-		rules:             make([]adapter.Rule, 0, len(options.Rules)),
+-		ruleSetMap:        make(map[string]adapter.RuleSet),
+-		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
+-		needFindNeighbor:  hasRule(options.Rules, isNeighborRule) || hasDNSRule(dnsOptions.Rules, isNeighborDNSRule) || hasLocalNeighborDNSServer(dnsOptions.Servers) || options.FindNeighbor,
+-		leaseFiles:        options.DHCPLeaseFiles,
+-		pauseManager:      service.FromContext[pause.Manager](ctx),
+-		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
++		ctx:                   ctx,
++		logger:                logFactory.NewLogger("router"),
++		inbound:               service.FromContext[adapter.InboundManager](ctx),
++		outbound:              service.FromContext[adapter.OutboundManager](ctx),
++		dns:                   service.FromContext[adapter.DNSRouter](ctx),
++		dnsTransport:          service.FromContext[adapter.DNSTransportManager](ctx),
++		connection:            service.FromContext[adapter.ConnectionManager](ctx),
++		network:               service.FromContext[adapter.NetworkManager](ctx),
++		httpClientManager:     service.FromContext[adapter.HTTPClientManager](ctx),
++		rules:                 make([]adapter.Rule, 0, len(options.Rules)),
++		ruleSetMap:            make(map[string]adapter.RuleSet),
++		needFindProcess:       hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
++		needProcessFamily:     hasRule(options.Rules, func(rule option.DefaultRule) bool { return len(rule.ProcessPathTree) > 0 }),
++		processFamilyEndpoint: options.ProcessFamilyEndpoint,
++		processFamilySecret:   options.ProcessFamilySecret,
++		needFindNeighbor:      hasRule(options.Rules, isNeighborRule) || hasDNSRule(dnsOptions.Rules, isNeighborDNSRule) || hasLocalNeighborDNSServer(dnsOptions.Servers) || options.FindNeighbor,
++		leaseFiles:            options.DHCPLeaseFiles,
++		pauseManager:          service.FromContext[pause.Manager](ctx),
++		platformInterface:     service.FromContext[adapter.PlatformInterface](ctx),
+ 	}
+ }
+ 
+@@ -180,9 +186,15 @@ func (r *Router) Start(stage adapter.StartStage) error {
  				searcher, err := process.NewSearcher(process.Config{
  					Logger:         r.logger,
  					PackageManager: r.network.PackageManager(),
 +					ProcessFamily:  r.needProcessFamily,
++					FamilyEndpoint: r.processFamilyEndpoint,
++					FamilySecret:   r.processFamilySecret,
  				})
  				monitor.Finish()
  				if err != nil {

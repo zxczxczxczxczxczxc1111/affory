@@ -3,17 +3,19 @@
   "teg": "v1.14.1",
   "kommit": "1ac1a339cb1223e9c70eae14c44411c75033c02d",
   "process_family": {
-    "patch": "ce50f6d93fb911945774da35a2fbb257b61958f761ab1a72dda350bf958a5048",
+    "patch": "cd0f0037d193a9916b482851fe2c6dedd8e3ff1e5602d1cd0e9c295851e597f3",
     "family_test.go": "1e371db80194596f8b654716504affc037e3af11bfb94bed745e5ca4f1fd2af4",
     "family.go": "243da069143a29e67a40efe6d766f100ebf2f1e139a4a7192a6b890783608a3a",
+    "shared_windows_test.go": "c50e6fb77fff48d8a43d098b9f0ae12f3e00a1430caa9ade099f67befc02031a",
+    "shared_windows.go": "4b650eead47ebf204c2f20ea0fc11757a5f76afd9e320f7c95b767ed8a073fb9",
     "watcher_windows_test.go": "f4c2b0cd8531ea9c858b655651b8cdcf0fd01921c68d2f7c8251d4900c32be90",
-    "watcher_windows.go": "1e057c198c50152038f7d639d037417937e03f4863a5e3693bc7389e0e838b44"
+    "watcher_windows.go": "129ef943631430f0fe476c19bebf2797823c0d19ded2772d19e9149b0056be14"
   },
-  "versiya": "1.14.1-affory-family.2",
+  "versiya": "1.14.1-affory-family.3",
   "tegi": "with_gvisor,with_quic,with_utls,with_clash_api",
   "go": "go version go1.26.8 windows/amd64",
-  "sha256": "68d201ee0b8e8ae1f00b2747703391dcd264857d1019a7d2dc9395726a6327c7",
-  "bayt": 44257280,
-  "sobrano": "2026-09-22T14:06:06.1434214+03:00",
+  "sha256": "2fda278dc2295ae02ac7693bb3f232131c5709b26202f5abc9237dd7e11cfccd",
+  "bayt": 44270080,
+  "sobrano": "2026-09-22T14:23:04.0742594+03:00",
   "vypusk": "1.4.2"
 }

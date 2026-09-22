@@ -183,11 +183,16 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool) ([]byte, int, string, e
 		merged := trafikPravil(n.Pravila)
 		trafik = &merged
 	}
+	tracker, err := s.trackerDlyaKonfiga(trafik)
+	if err != nil {
+		return nil, 0, "", err
+	}
 	telo, err := genkonfig.SingBox(genkonfig.Vhod{
-		Trafik:   trafik,
-		AdresTun: podsetTun.String(),
-		Server:   vybrannyy,
-		Rezhim:   rezhimNabora(n),
+		ProcessTracker: tracker,
+		Trafik:         trafik,
+		AdresTun:       podsetTun.String(),
+		Server:         vybrannyy,
+		Rezhim:         rezhimNabora(n),
 		// Кандидаты это ВСЕ серверы, а не только выбранный: urltest пробит их
 		// все, и адрес, не попавший в правило петли, это петля на старте.
 		Servery: n.Servery,

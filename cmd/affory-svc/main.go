@@ -160,6 +160,12 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 	defer otmena()
 	yadro := NovayaSluzhba()
 	defer yadro.Zavershit()
+	// Наблюдение переживает Disconnect и перезапуск ядра; остановка только
+	// вместе со службой. Ошибка не должна молча менять охват правил.
+	yadro.processTracker, yadro.processTrackerErr = novyyNablyudatelPrilozheniy()
+	if yadro.processTrackerErr != nil {
+		log.Printf("наблюдение за приложениями не запущено: %v", yadro.processTrackerErr)
+	}
 	yadro.zhurnalKomand = zhurnalKomand
 	// Состав подписок при КАЖДОМ старте, одной строкой.
 	//

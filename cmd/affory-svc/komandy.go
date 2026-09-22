@@ -80,10 +80,12 @@ var otstupyPoUmolchaniyu = []time.Duration{
 }
 
 type Sluzhba struct {
-	klyuchVersiy    []byte
-	serveryYadra    []protokol.Server
-	otpechatkiYadra map[string][32]byte
-	mu              sync.Mutex
+	processTracker    *nablyudatelPrilozheniy
+	processTrackerErr error
+	klyuchVersiy      []byte
+	serveryYadra      []protokol.Server
+	otpechatkiYadra   map[string][32]byte
+	mu                sync.Mutex
 	// Поколения обновлений защищены muNabor вместе с записью их результатов.
 	nomerObnovleniya    uint64
 	obnovleniyaPodpisok map[string]uint64
@@ -1179,6 +1181,11 @@ func (s *Sluzhba) Zavershit() {
 	s.fonOtmena()
 	s.fon.Wait()
 	s.Disconnect()
+	if s.processTracker != nil {
+		if err := s.processTracker.Close(); err != nil {
+			log.Printf("остановка наблюдения за приложениями: %v", err)
+		}
+	}
 	s.osvoboditSet()
 }
 

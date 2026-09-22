@@ -41,3 +41,12 @@ func TestExplicitApplicationsPrecedeAllInheritedRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedTrackerConfigIsPassedToCore(t *testing.T) {
+	v := obraztsovyyVhod()
+	v.ProcessTracker = ProcessTracker{Endpoint: "http://127.0.0.1:12345", Secret: "test-token"}
+	route := sobrat(t, v)["route"].(map[string]any)
+	if route["process_family_endpoint"] != v.ProcessTracker.Endpoint || route["process_family_secret"] != v.ProcessTracker.Secret {
+		t.Fatal("shared tracker configuration dropped")
+	}
+}

@@ -1,6 +1,6 @@
 module github.com/zxczxczxczxczxczxc1111/affory
 
-go 1.25.0
+go 1.25.5
 
 require golang.org/x/sys v0.47.0
 
@@ -26,8 +26,11 @@ require (
 	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/sagernet/sing-box/common/afforyprocess v0.0.0
 	golang.org/x/mod v0.39.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
+
+replace github.com/sagernet/sing-box/common/afforyprocess => ./ustanovka/processfamily

@@ -63,8 +63,24 @@ func (w *Watcher) Find(pid uint32) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return w.find(p), nil
+}
+
+// FindIdentity is used across core restarts. A PID alone is not an identity.
+func (w *Watcher) FindIdentity(pid uint32, created uint64) ([]string, error) {
+	p, err := readProcess(pid)
+	if err != nil {
+		return nil, err
+	}
+	if p.Created != created {
+		return nil, errors.New("process identity changed")
+	}
+	return w.find(p), nil
+}
+
+func (w *Watcher) find(p Process) []string {
 	if paths := w.graph.Paths(p); len(paths) > 1 {
-		return paths, nil
+		return paths
 	}
 	chain := []Process{p}
 	child := p
@@ -77,7 +93,7 @@ func (w *Watcher) Find(pid uint32) ([]string, error) {
 		child = parent
 	}
 	w.graph.Observe(chain, clockTicks())
-	return w.graph.Paths(p), nil
+	return w.graph.Paths(p)
 }
 
 func clockTicks() uint64 {

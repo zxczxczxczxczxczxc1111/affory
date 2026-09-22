@@ -84,6 +84,10 @@ func SingBox(v Vhod) ([]byte, error) {
 	if r := razdelNaborov(v); r != nil {
 		marshrut["rule_set"] = r
 	}
+	if v.ProcessTracker.Endpoint != "" {
+		marshrut["process_family_endpoint"] = v.ProcessTracker.Endpoint
+		marshrut["process_family_secret"] = v.ProcessTracker.Secret
+	}
 	eksperimentalnoe := map[string]any{
 		"clash_api": map[string]any{
 			"external_controller": fmt.Sprintf("%s:%d", v.ClashApi.Adres, v.ClashApi.Port),

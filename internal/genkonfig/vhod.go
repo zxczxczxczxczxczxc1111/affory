@@ -72,8 +72,11 @@ func VseTransporty() []string {
 // Vhod это полный список того, что генератор не имеет права выдумать сам.
 // Каждое поле здесь появилось потому, что константа на его месте однажды
 // оказалась бы ложью в чужой сети.
+type ProcessTracker struct{ Endpoint, Secret string }
+
 type Vhod struct {
-	Trafik *protokol.PravilaTrafika
+	ProcessTracker ProcessTracker
+	Trafik         *protokol.PravilaTrafika
 	// Сервер, к которому подключаемся.
 	Server protokol.Server
 
