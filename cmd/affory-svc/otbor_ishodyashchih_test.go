@@ -60,7 +60,7 @@ func TestOtvergnutyyYadromServerIsklyuchaetsyaAOstalnyePodnimayutsya(t *testing.
 	defer s.Otpisatsya(id)
 
 	put := filepath.Join(t.TempDir(), "sing-box.json")
-	if _, _, err := s.sobratTunProverennyy(put); err != nil {
+	if _, _, err := s.sobratTunProverennyy(put, false); err != nil {
 		t.Fatalf("подъём отказал целиком из-за ОДНОГО негодного сервера: %v", err)
 	}
 	if zvali < 2 {
@@ -120,7 +120,7 @@ func TestOtvergnutyyVybrannyyServerEtoOtkazANePodmena(t *testing.T) {
 	}
 
 	put := filepath.Join(t.TempDir(), "sing-box.json")
-	_, _, err := s.sobratTunProverennyy(put)
+	_, _, err := s.sobratTunProverennyy(put, false)
 	if err == nil {
 		t.Fatal("отказа не было: служба молча увела трафик на другой сервер")
 	}
@@ -139,7 +139,7 @@ func TestOtkazBezNomeraIshodyashchegoNeIsklyuchaetNikogo(t *testing.T) {
 		return &yadra.OshibkaKonfiga{Vyhod: "decode config: invalid character"}
 	}
 	put := filepath.Join(t.TempDir(), "sing-box.json")
-	if _, _, err := s.sobratTunProverennyy(put); err == nil {
+	if _, _, err := s.sobratTunProverennyy(put, false); err == nil {
 		t.Fatal("неразбираемый конфиг принят за годный")
 	}
 	if zvali != 1 {

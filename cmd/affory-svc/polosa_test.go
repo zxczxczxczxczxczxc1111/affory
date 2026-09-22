@@ -24,7 +24,7 @@ func TestPolosaKanalaDoezzhaetDoKonfiga(t *testing.T) {
 		t.Fatalf("полоса не записана: %v", err)
 	}
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestPolosaKanalaDoezzhaetDoKonfiga(t *testing.T) {
 func TestBezNastroykiPolosaNeObyavlyaetsya(t *testing.T) {
 	s := podstavnayaSHy2(t)
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}

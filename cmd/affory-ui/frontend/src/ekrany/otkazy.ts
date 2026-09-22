@@ -53,6 +53,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "server-rejected-by-core": { deystvie: "otkryt-servery", tekst: "ядро не приняло сервер" },
   "candidate-in-use": { deystvie: "nichego", tekst: "сервер занят подключением, сначала отключись" },
   "rule-invalid": { deystvie: "nichego", tekst: "правило не принято: путь не ведёт к файлу или домен не похож на имя" },
+  "rules-rejected-by-core": { deystvie: "nichego", tekst: "новые правила не приняты, VPN работает по прежним" },
   "switch-needs-reconnect": { deystvie: "perepodklyuchitsya", tekst: "переподключись, чтобы выбрать этот сервер" },
   "switch-target-not-carrying": { deystvie: "otkryt-servery", tekst: "этот сервер не отвечает, выбери другой" },
   "switch-failed": { deystvie: "povtorit", tekst: "переключиться не удалось, попробуй ещё раз" },

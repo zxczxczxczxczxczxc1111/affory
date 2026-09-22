@@ -13,12 +13,23 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
+// perepodklyuchit поднимает туннель заново под новый конфиг.
+//
+// Кандидат проверяется ДО остановки (A6): иначе человек с набором правил,
+// которого ядро не принимает, терял рабочее подключение и узнавал причину уже
+// без VPN. Подробности в kandidat.go.
 func (s *Sluzhba) perepodklyuchit(ctx context.Context) error {
 	s.mu.Lock()
 	active, expected := s.portClash != 0, s.pokolenieP+1
 	s.mu.Unlock()
 	if !active {
+		// Ядра нет, ронять нечего: конфиг соберётся и проверится сам при
+		// следующем подъёме. Отказ здесь запрещал бы править правила при
+		// выключенном VPN.
 		return nil
+	}
+	if err := s.proveritKandidata(); err != nil {
+		return err
 	}
 	s.Disconnect()
 	return s.connect(ctx, &expected)

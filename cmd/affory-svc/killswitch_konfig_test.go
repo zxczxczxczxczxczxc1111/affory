@@ -20,7 +20,7 @@ func TestVRezhimeVsegoTrafikaChastnyeSetiNeIsklyuchayutsya(t *testing.T) {
 	s.killSwitch = true
 	s.mu.Unlock()
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestVRezhimeVsegoTrafikaChastnyeSetiNeIsklyuchayutsya(t *testing.T) {
 func TestBezRezhimaChastnyeSetiIsklyuchayutsya(t *testing.T) {
 	s := podstavnaya(t, nil)
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestRezhimNeOtmenyaetPetlevyeIsklyucheniya(t *testing.T) {
 	s.sost = protokol.SostPodnyat
 	s.mu.Unlock()
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}

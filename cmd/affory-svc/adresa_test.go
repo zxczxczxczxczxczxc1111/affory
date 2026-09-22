@@ -206,7 +206,7 @@ func TestObaPotrebitelyaIdutCherezOdinSbornik(t *testing.T) {
 		return []netip.Addr{adrServera, primetnyy}, nil
 	}
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestOtkazSbornikaOstanavlivaetOboih(t *testing.T) {
 	s := podstavnaya(t, nil)
 	s.sobratAdresa = func() ([]netip.Addr, error) { return nil, errors.New("имя не разрешилось") }
 
-	if _, _, _, err := s.sobratTun(nil); err == nil {
+	if _, _, _, err := s.sobratTun(nil, false); err == nil {
 		t.Fatal("конфиг туннеля собрался при отказе сборщика адресов")
 	}
 	if _, err := s.spisokRazreshyonnogo(set.Adapter{

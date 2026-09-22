@@ -53,6 +53,12 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	// включили в окне. Подставная служба читает пустоту и перечитывает.
 	s.prochitat = func() (sostoyanie.SostoyanieFayla, error) { return sostoyanie.SostoyanieFayla{}, nil }
 	s.zagruzitNastroyki()
+	// Судьи конфига в фикстуре НЕТ. Настоящий зовёт sing-box.exe и сверяет его
+	// с файлом отпечатков, которого во временном каталоге теста не бывает; до
+	// A6 это ни на что не влияло, потому что подъём здесь заглушен целиком и до
+	// проверки не доходил, а проверка кандидата зовётся уже из перезапуска.
+	// Тесты, которым судья нужен, ставят свой сами (см. kandidat_test.go).
+	s.proveritKonfig = nil
 	s.storozhit = func(ctx context.Context, imya, konfig string, sob func(protokol.Sostoyanie)) error {
 		<-ctx.Done()
 		return ctx.Err()

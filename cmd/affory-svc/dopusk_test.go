@@ -42,7 +42,7 @@ var resheniyeOPravah = map[string]bool{
 	// доступом, это сузить автомат до одного узла, тогда как выбрать этот узел
 	// напрямую она могла и прежде командой setServer.
 	"setAutoMember": false,
-	"setAutostart": false, "setConnectOnStart": false,
+	"setAutostart":  false, "setConnectOnStart": false,
 	// Полоса канала это число про домашний интернет, а не про права на машине:
 	// UAC на её правку означал бы запрос прав ради поля ввода. Худшее, что даёт
 	// чужая программа с этим доступом, это испорченный замер собственной

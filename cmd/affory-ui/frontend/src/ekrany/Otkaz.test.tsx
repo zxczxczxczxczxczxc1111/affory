@@ -37,7 +37,7 @@ const VSE_DEYSTVIYA: Deystvie[] = [
 describe("экраны отказов", () => {
   const kody = kodyIzGo().filter((k) => !BEZ_EKRANA.has(k));
 
-  it("коды прочитаны из kody.go, и их сорок три", () => {
+  it("коды прочитаны из kody.go, и их сорок четыре", () => {
     // Pinning the count is deliberate: a new code must fail here until the
     // screen for it exists, and an empty read must not pass as "all covered".
     // Тридцать восьмой это internal-error, заведён 04.09.2026 полосой З:
@@ -52,7 +52,10 @@ describe("экраны отказов", () => {
     // probe-timeout, subscription-timeout и subscription-auth-failed. Все три
     // отделяют «не успели» от «отказали»: прежде таймаут пробы назывался
     // отказом ключа и отправлял чинить исправную подписку.
-    expect(kody.length).toBe(43);
+    // Сорок четвёртый заведён 22.09.2026 (A6): rules-rejected-by-core. Набор
+    // правил, который ядро не приняло, отличается от негодной строки: чинится
+    // он не правкой строки, а отказом от неё, и VPN при этом цел.
+    expect(kody.length).toBe(44);
   });
 
   it.each(kody)("у кода %s есть свой текст и действие из словаря", (kod) => {

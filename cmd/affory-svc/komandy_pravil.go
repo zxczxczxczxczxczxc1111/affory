@@ -78,7 +78,12 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	// того, что в наборе уже лежит, а читать набор отдельно от записи значит
 	// проверять по одному списку, а писать в другой.
 	var pravila PravilaNabora
+	// Прежние правила запоминаются ДО правки: если ядро не примет новый конфиг,
+	// набор откатывается на них (A6). Откат ровно на одну операцию - ту, что
+	// сейчас; архива прежних наборов у нас нет и не нужно.
+	var bylo PravilaNabora
 	if err := s.pravitNabor(func(n *Nabor) error {
+		bylo = n.Pravila
 		if telo.Reviziya != "" && telo.Reviziya != reviziyaPravil(n.Pravila) {
 			return fmt.Errorf("%w: правила уже изменены другим запросом. Перечитай набор перед применением черновика", errPraviloNegodno)
 		}
@@ -121,6 +126,18 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	adres, _ := s.dostupKKlash()
 	if telo.Trafik != nil && adres != "" && s.pravilaOzhidayut(pravila) {
 		if err := s.perepodklyuchit(ctx); err != nil {
+			// Кандидат забракован ДО остановки: рабочее подключение цело, а
+			// сохранённые правила надо снять - иначе следующий подъём соберётся
+			// с тем же негодным набором, и человек потеряет VPN уже без
+			// единого своего действия.
+			if errors.Is(err, errKandidatNegoden) {
+				vernuli := s.vernutPravila(bylo)
+				tekst := "Правила не применены: " + err.Error() + ". VPN продолжает работать по прежним правилам"
+				if !vernuli {
+					tekst += ". Вернуть прежние правила не удалось, проверь список"
+				}
+				return otkaz(k.Id, k.Imya, protokol.KodPravilaNePrinyaty, tekst)
+			}
 			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.Status().Oshib), "Правила сохранены. Переподключение не завершено: "+err.Error())
 		}
 		return otvet(k.Id, k.Imya, teloPravil(pravila, s.pravilaOzhidayut(pravila), true))

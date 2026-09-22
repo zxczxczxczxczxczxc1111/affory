@@ -187,7 +187,7 @@ func TestKonfigSobiraetsyaBezUbrannogoIzAvto(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("сервер не убрался: %v", err)
 	}
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг не собрался: %v", err)
 	}

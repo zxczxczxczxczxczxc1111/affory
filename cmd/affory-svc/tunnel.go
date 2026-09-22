@@ -56,7 +56,7 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 	set.ZhdatIscheznoveniya(uhod, imyaAdapteraTun)
 	otmUhod()
 
-	portClash, sekret, err := s.sobratTunProverennyy(putKonfigaTun())
+	portClash, sekret, err := s.sobratTunProverennyy(putKonfigaTun(), false)
 	if err != nil {
 		return set.Adapter{}, err
 	}
@@ -119,7 +119,14 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 // sobratTun собирает конфиг ядра. isklyucheny это идентификаторы серверов,
 // которые ядро уже отвергло: их не должно быть ни среди кандидатов urltest, ни
 // среди исходящих, иначе следующая проверка отвергнет конфиг ровно так же.
-func (s *Sluzhba) sobratTun(isklyucheny map[string]bool) ([]byte, int, string, error) {
+//
+// suhaya означает сборку ДЛЯ ПРОВЕРКИ, а не для подъёма (A6). Отличие ровно в
+// побочных действиях: сухая ничего не запоминает в службе. Запомнить значило бы
+// соврать про живой туннель тремя способами сразу - подменить выбранный порт
+// прокси (сторож системного прокси начал бы обвинять в перехвате нас самих),
+// переписать отпечаток правил (и pravilaOzhidayut ответил бы «уже применено»
+// про непринятое) и назвать ядру серверы, которых оно не несёт.
+func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, int, string, error) {
 	n, err := s.nabor()
 	if err != nil {
 		return nil, 0, "", err
@@ -205,7 +212,7 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool) ([]byte, int, string, e
 		Resolver:       resolver,
 		PutiProtsessov: puti,
 		ClashApi:       genkonfig.ClashApi{Adres: "127.0.0.1", Port: portClash, Sekret: sekret},
-		PortProksi:     s.vybratPortProksi(),
+		PortProksi:     s.portDlyaKonfiga(suhaya),
 		VesTrafik:      vesTrafik,
 		// Только наборы с файлом на диске: ядро поднимается с initial_path, а
 		// не с сети, и неудача загрузки остаётся неудачей загрузки.
@@ -223,11 +230,33 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool) ([]byte, int, string, e
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("конфиг туннеля не собран: %w", err)
 	}
-	s.mu.Lock()
-	s.pravilaKonfiga, s.trafikKonfiga = otpechatokPravil(n.Pravila), trafikPravil(n.Pravila).PoUmolchaniyu
-	s.mu.Unlock()
-	s.zapomnitServeryYadra(n.Servery)
+	if !suhaya {
+		s.mu.Lock()
+		s.pravilaKonfiga, s.trafikKonfiga = otpechatokPravil(n.Pravila), trafikPravil(n.Pravila).PoUmolchaniyu
+		s.mu.Unlock()
+		s.zapomnitServeryYadra(n.Servery)
+	}
 	return telo, portClash, sekret, nil
+}
+
+// portDlyaKonfiga отдаёт порт локального входа для собираемого конфига.
+//
+// Боевая сборка ВЫБИРАЕТ порт и запоминает его. Сухая берёт уже запомненный,
+// то есть тот самый, на котором стоит живое ядро: выбирать заново нельзя,
+// потому что наш же вход занимает 10809, и проверка получила бы конфиг без
+// прокси, то есть проверяла бы не то, что потом поднимется. При опущенном
+// туннеле запомненного нет, и порт считается обычным путём, но не запоминается.
+func (s *Sluzhba) portDlyaKonfiga(suhaya bool) int {
+	if !suhaya {
+		return s.vybratPortProksi()
+	}
+	s.mu.Lock()
+	nash := s.portProksiNash
+	s.mu.Unlock()
+	if nash > 0 {
+		return nash
+	}
+	return portProksi(PortProksiPoUmolchaniyu)
 }
 
 // Секрет заново на каждый старт: постоянный секрет в файле это постоянный
@@ -297,10 +326,10 @@ func portProksi(port int) int {
 //
 // Конфиг пишется на своё место КАЖДЫЙ круг: ядро судит файл, а не память, и
 // проверять один текст, запуская другой, значило бы проверять не то.
-func (s *Sluzhba) sobratTunProverennyy(put string) (int, string, error) {
+func (s *Sluzhba) sobratTunProverennyy(put string, suhaya bool) (int, string, error) {
 	isklyucheny := map[string]bool{}
 	for {
-		telo, portClash, sekret, err := s.sobratTun(isklyucheny)
+		telo, portClash, sekret, err := s.sobratTun(isklyucheny, suhaya)
 		if err != nil {
 			return 0, "", err
 		}
@@ -339,6 +368,13 @@ func (s *Sluzhba) sobratTunProverennyy(put string) (int, string, error) {
 		}
 
 		isklyucheny[id] = true
+		if suhaya {
+			// Сухая проверка НИЧЕГО не объявляет наружу: тот же сервер через
+			// секунду исключит боевая сборка, и человек получил бы два
+			// одинаковых сообщения об одном событии.
+			log.Printf("проверка кандидата: сервер %s исключён, ядро не приняло его исходящий: %s", id, o.Vyhod)
+			continue
+		}
 		// Молча выкинуть сервер значит оставить человека с подпиской, которая
 		// тихо стала короче. То же правило, что у исключения по имени.
 		log.Printf("сервер %s исключён: ядро не приняло его исходящий (%s): %s",

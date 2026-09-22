@@ -41,7 +41,7 @@ func TestKonfigTunnelyaSoderzhitNabor(t *testing.T) {
 		return nil, nil
 	}
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestNaborSkachivaetsyaVFaylPeredPodyomom(t *testing.T) {
 		return []byte("srs-telo"), nil
 	}
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestNaborBezFaylaINeSkachannyyNeVhoditVKonfig(t *testing.T) {
 		return nil, errors.New("сети нет")
 	}
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("неудача загрузки набора уронила подъём: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestBezRuSpiskaUbiraetNaborIzKonfiga(t *testing.T) {
 		t.Fatalf("набор не записан: %v", err)
 	}
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatalf("конфиг туннеля не собран: %v", err)
 	}

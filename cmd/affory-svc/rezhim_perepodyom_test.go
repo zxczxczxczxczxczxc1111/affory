@@ -103,7 +103,7 @@ func TestPosleVklyucheniyaRezhimaKonfigBezChastnyhSetey(t *testing.T) {
 		t.Fatalf("режим не включился: %v", err)
 	}
 
-	telo, _, _, err := s.sobratTun(nil)
+	telo, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -142,7 +142,7 @@ func TestPravilaPopadayutVKonfigIIschezayutPodRezhimom(t *testing.T) {
 	telo, _ := json.Marshal(map[string]any{"protsessy": []string{put}, "domeny": []string{"example.org"}})
 	razobratPravila(t, s.Obrabotat(ctxAdmina(), protokol.Kadr{Id: 1, Imya: "setRules", Telo: telo}))
 
-	k, _, _, err := s.sobratTun(nil)
+	k, _, _, err := s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestPravilaPopadayutVKonfigIIschezayutPodRezhimom(t *testing.T) {
 	s.mu.Lock()
 	s.killSwitch = true
 	s.mu.Unlock()
-	k, _, _, err = s.sobratTun(nil)
+	k, _, _, err = s.sobratTun(nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
