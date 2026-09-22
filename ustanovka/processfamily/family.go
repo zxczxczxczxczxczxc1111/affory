@@ -12,6 +12,7 @@ const retentionTicks = 30 * 10000000
 
 type Process struct {
 	PID, Parent uint32
+	Session     uint32
 	Created     uint64
 	Path        string
 	observed    uint64

@@ -1,4 +1,37 @@
-import { imyaMarshruta, type KatalogServisov, type PravilaTrafika } from "./trafik";
+import { imyaMarshruta, type KatalogServisov, type PravilaTrafika, type PraviloPrilozheniya, type Marshrut } from "./trafik";
+
+export interface ZapuskPrilozheniya {
+  pid:number; created:string; put:string; imya:string; cherez:string[];
+  marshrut:Marshrut; pravilo_put:string; pravilo_imya:string; pereopredelen:boolean;
+}
+export interface OhvatPrilozheniya {
+  pravilo:PraviloPrilozheniya; reviziya_pravil:string; trebuet_podyoma:boolean; vremya:string;
+  fayl:"est"|"net"|"nedostupen"|"ne_proveren"|"papka";
+  samo:number; vsego:number; zapushchennye:ZapuskPrilozheniya[];
+  neizvestno:number; neizvestnye:string[]; ogranichen:boolean;
+}
+export type ProveritPrilozhenie = (put:string)=>Promise<OhvatPrilozheniya>;
+
+function objectValue(value:unknown):Record<string,unknown>{
+  if (!value || typeof value!=="object" || Array.isArray(value)) throw new Error("Некорректные сведения о приложении");
+  return value as Record<string,unknown>;
+}
+function stringValue(value:unknown):string{if(typeof value!=="string")throw new Error("Некорректное текстовое поле проверки");return value;}
+function countValue(value:unknown):number{if(typeof value!=="number" || !Number.isSafeInteger(value) || value<0)throw new Error("Некорректный счётчик проверки");return value;}
+function boolValue(value:unknown):boolean{if(typeof value!=="boolean")throw new Error("Некорректное состояние проверки");return value;}
+function stringsValue(value:unknown):string[]{if(!Array.isArray(value))throw new Error("Некорректный список проверки");return value.map(stringValue);}
+function routeValue(value:unknown):Marshrut{if(value!=="vpn" && value!=="direct")throw new Error("Неизвестный маршрут проверки");return value;}
+export function razobratOhvat(value:unknown):OhvatPrilozheniya{
+  const v=objectValue(value),r=objectValue(v.pravilo);
+  const fayl=v.fayl;
+  if(fayl!=="est" && fayl!=="net" && fayl!=="nedostupen" && fayl!=="ne_proveren" && fayl!=="papka")throw new Error("Неизвестное состояние файла");
+  const vremya=stringValue(v.vremya);
+  if(!Number.isFinite(Date.parse(vremya)) || !Array.isArray(v.zapushchennye))throw new Error("Некорректный результат проверки приложения");
+  return {pravilo:{put:stringValue(r.put),imya:stringValue(r.imya),potomki:boolValue(r.potomki),marshrut:routeValue(r.marshrut)},
+    reviziya_pravil:stringValue(v.reviziya_pravil),trebuet_podyoma:boolValue(v.trebuet_podyoma),vremya,fayl,
+    samo:countValue(v.samo),vsego:countValue(v.vsego),neizvestno:countValue(v.neizvestno),neizvestnye:stringsValue(v.neizvestnye),ogranichen:boolValue(v.ogranichen),
+    zapushchennye:v.zapushchennye.map((row:unknown)=>{const c=objectValue(row);return {pid:countValue(c.pid),created:stringValue(c.created),put:stringValue(c.put),imya:stringValue(c.imya),cherez:stringsValue(c.cherez),marshrut:routeValue(c.marshrut),pravilo_put:stringValue(c.pravilo_put),pravilo_imya:stringValue(c.pravilo_imya),pereopredelen:boolValue(c.pereopredelen)};})};
+}
 
 export interface FiltrSoedineniy { domen?: string; put?: string }
 export interface Soedinenie {

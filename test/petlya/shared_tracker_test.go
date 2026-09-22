@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/common/afforyprocess"
+	"golang.org/x/sys/windows"
 )
 
 func TestSharedTrackerHelper(t *testing.T) {
@@ -208,6 +209,28 @@ func checkSharedTrackerRestart(t *testing.T, events bool) {
 		}
 	}
 	launcherExited = true
+	var session uint32
+	if err := windows.ProcessIdToSessionId(uint32(os.Getpid()), &session); err != nil {
+		t.Fatal(err)
+	}
+	views, err := w.Views(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundLiveChild := false
+	for _, view := range views {
+		if view.PID == uint32(cmd.Process.Pid) {
+			t.Fatal("exited launcher shown as running")
+		}
+		if view.PID == uint32(pid) {
+			for _, path := range view.Paths {
+				foundLiveChild = foundLiveChild || strings.EqualFold(path, launcher)
+			}
+		}
+	}
+	if !foundLiveChild {
+		t.Fatal("scope snapshot lost the app after launcher exit")
+	}
 	second := startCore(true, false)
 	query(second, "OK")
 	second.Pogasit()

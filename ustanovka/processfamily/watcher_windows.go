@@ -210,6 +210,10 @@ func readProcess(pid uint32) (Process, error) {
 }
 
 func snapshot(g *Graph) ([]Process, error) {
+	return snapshotSession(g, nil)
+}
+
+func snapshotSession(g *Graph, session *uint32) ([]Process, error) {
 	var buf []byte
 	var used uint32
 	for size := uint32(1 << 20); ; {
@@ -233,7 +237,7 @@ func snapshot(g *Graph) ([]Process, error) {
 			return nil, fmt.Errorf("invalid process snapshot offset %d", offset)
 		}
 		info := (*windows.SYSTEM_PROCESS_INFORMATION)(unsafe.Pointer(&buf[offset]))
-		if info.UniqueProcessID > 4 && info.CreateTime > 0 && info.NumberOfThreads > 0 {
+		if info.UniqueProcessID > 4 && info.CreateTime > 0 && info.NumberOfThreads > 0 && (session == nil || info.SessionID == *session) {
 			pid, created := uint32(info.UniqueProcessID), uint64(info.CreateTime)
 			path := g.KnownPath(pid, created)
 			if path == "" {
@@ -242,7 +246,7 @@ func snapshot(g *Graph) ([]Process, error) {
 				}
 			}
 			if path != "" {
-				result = append(result, Process{PID: pid, Parent: uint32(info.InheritedFromUniqueProcessID), Created: created, Path: path})
+				result = append(result, Process{PID: pid, Parent: uint32(info.InheritedFromUniqueProcessID), Created: created, Path: path, Session: info.SessionID})
 			}
 		}
 		if info.NextEntryOffset == 0 {

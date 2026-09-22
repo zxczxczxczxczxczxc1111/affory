@@ -153,6 +153,7 @@ vi.mock("./most", () => ({
   },
   otkrytPapkuZhurnalov: async () => { stend.s.sled.push({chto:"otkrytPapkuZhurnalov",args:[]}); },
   prochitatSoedineniya: async (filter:unknown) => { stend.s.sled.push({chto:"prochitatSoedineniya",args:[filter]}); return {yadro:false,vremya:new Date().toISOString(),ogranichen:false,soedineniya:[]}; },
+  prochitatOhvatPrilozheniya: async (put:string) => {stend.s.sled.push({chto:"prochitatOhvatPrilozheniya",args:[put]});return {pravilo:{put,imya:"App",potomki:true,marshrut:"vpn"},reviziya_pravil:"test",trebuet_podyoma:false,vremya:new Date().toISOString(),fayl:"est",samo:0,vsego:0,zapushchennye:[],neizvestno:0,neizvestnye:[],ogranichen:false};},
   tekstBufera: async () => {
     if (stend.s.buferLomaetsya) throw new Error("буфер обмена не прочитался");
     return stend.s.bufer ?? "";
@@ -676,6 +677,18 @@ it("проверка домена соединена с мостом и не в�
   await screen.findByText(/Подключение не запущено/);
   expect(stend.s.sled).toContainEqual({chto:"prochitatSoedineniya",args:[{domen:"api.example.org"}]});
   expect(most.skolkoRaz("setJournal")).toBe(0);
+});
+
+it("проверка охвата использует отдельный запрос и не меняет правила",async()=>{
+  const most=mostProby();
+  most.otvechatTelom("listRules",{protsessy:[],domeny:[],trafik:{po_umolchaniyu:"vpn",servisy:[],domeny:[],prilozheniya:[{put:"C:\\App.exe",imya:"App",potomki:true,marshrut:"vpn"}]}});
+  render(<App/>);
+  fireEvent.click(await screen.findByRole("tab",{name:"Правила"}));
+  fireEvent.click(await screen.findByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Проверить охват"}));
+  await screen.findByText(/Приложение и связанные запуски в этом сеансе не обнаружены/);
+  expect(stend.s.sled).toContainEqual({chto:"prochitatOhvatPrilozheniya",args:["C:\\App.exe"]});
+  expect(most.skolkoRaz("setRules")).toBe(0);
 });
 
 it("кнопка папки журналов вызывает нативный мост без команды службы", async () => {

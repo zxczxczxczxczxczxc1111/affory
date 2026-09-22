@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { domenPopadaet, normalizovatProbuDomena, opisatDomen, type ProveritSoedineniya, type SnimokSoedineniy } from "../ohvat";
+import { domenPopadaet, normalizovatProbuDomena, opisatDomen, type ProveritSoedineniya, type SnimokSoedineniy, type ProveritPrilozhenie } from "../ohvat";
 import { imyaMarshruta, type KatalogServisov, type PravilaTrafika } from "../trafik";
 import { Knopka, Pole } from "./ui";
+import { ProverkaPrilozheniya } from "./ProverkaPrilozheniya";
 
-export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabled,naSbros,proverit}:{
+export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabled,naSbros,proverit,proveritPrilozhenie,vybratFayl,zamenit}:{
   vid:"apps"|"sites"; trafik:PravilaTrafika; katalog?:KatalogServisov; chernovik:boolean;
   ozhidayut?:boolean; disabled:boolean; naSbros:()=>void; proverit?:ProveritSoedineniya;
+  proveritPrilozhenie?:ProveritPrilozhenie;vybratFayl?:()=>Promise<string>;zamenit?:(oldPath:string,newPath:string)=>boolean;
 }) {
   const [open,setOpen]=useState(false), [confirm,setConfirm]=useState(false);
   const [input,setInput]=useState(""), [busy,setBusy]=useState(false), [error,setError]=useState("");
@@ -16,12 +18,13 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
   const query=sites?normalizovatProbuDomena(input):input.trim();
   const count=sites?trafik.domeny.length:trafik.prilozheniya.length;
   const changeInput=(value:string)=>{epoch.current++;setInput(value);setResult(null);setError("");setBusy(false);};
-  const inspect=async()=>{
+  const inspect=async(value=input)=>{
     if (!proverit || busy || disabled) return;
-    if (sites && input.trim() && !query) {setError("Укажи домен или ссылку HTTP/HTTPS");return;}
+    const filter=sites?normalizovatProbuDomena(value):value.trim();
+    if (sites && value.trim() && !filter) {setError("Укажи домен или ссылку HTTP/HTTPS");return;}
     const ticket=++epoch.current;
     setBusy(true);setError("");setResult(null);
-    try {const snapshot=await proverit(sites?{domen:query}:{put:query});if(ticket===epoch.current)setResult(snapshot);}
+    try {const snapshot=await proverit(sites?{domen:filter}:{put:filter});if(ticket===epoch.current)setResult(snapshot);}
     catch(e:unknown){if(ticket===epoch.current)setError(e instanceof Error?e.message:String(e));}
     finally{if(ticket===epoch.current)setBusy(false);}
   };
@@ -49,6 +52,7 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
       <p className="text-fg-muted">{sites?"Сначала действует правило приложения, затем сайта, затем сервиса. Например, отдельное правило для api.example.com важнее общего правила для example.com.":"Отдельное правило приложения действует первым. Например, если Steam открыл лаунчер, а тот запустил игру, сначала учитывается правило игры, затем лаунчера, затем Steam. Если запуск не удалось заметить, Affory не угадывает, какие программы связаны."}</p>
       <p className="text-fg-muted">Это настройки маршрута, а не результат сетевой проверки.</p>
     </div>}
+    {!sites && <ProverkaPrilozheniya rules={trafik.prilozheniya} draft={chernovik} disabled={disabled} connectionBusy={busy} proverit={proveritPrilozhenie} vybratFayl={vybratFayl} zamenit={zamenit} soedineniya={path=>{changeInput(path);void inspect(path);}}/>}
     <form className="flex flex-col gap-3" onSubmit={e=>{e.preventDefault();void inspect();}}>
       <p className="text-foreground font-medium">Проверка по соединениям</p>
       <p className="text-fg-muted">Открой сайт или выполни действие в приложении, затем нажми «Проверить соединения». Оставь поле пустым, чтобы увидеть все текущие соединения.</p>
@@ -73,7 +77,7 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
         </ul>}
         {result.ogranichen && <p>Показаны первые 200 совпадений. Уточни фильтр.</p>}
       </div>}
-      <p className="text-fg-muted">{sites?"Проверка example.com включает соединения с api.example.com и другими его поддоменами. Она не перебирает все возможные адреса.":"По указанному пути видны только соединения этого приложения. Чтобы увидеть программы, которые оно запустило, очисти поле и найди их в общем списке."} Здесь видно, куда направлено соединение, но это ещё не означает, что сайт ответил. Запись журнала не включается.</p>
+      <p className="text-fg-muted">{sites?"Проверка example.com включает соединения с api.example.com и другими его поддоменами. Она не перебирает все возможные адреса.":"По указанному пути видны соединения всех запусков этого файла, в том числе открытых отдельно. Для другой программы нажми «Соединения» в проверке охвата выше."} Здесь видно, куда направлено соединение, но это ещё не означает, что сайт ответил. Запись журнала не включается.</p>
     </form>
   </section>;
 }

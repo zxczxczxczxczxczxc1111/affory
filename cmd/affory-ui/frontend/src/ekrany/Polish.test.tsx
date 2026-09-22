@@ -93,7 +93,7 @@ it("application rules show names without letter avatars and still route the proc
   const trafik: PravilaTrafika = { po_umolchaniyu: "vpn", prilozheniya: [{ put: "C:\\Games\\Steam\\steam.exe", imya: "steam.exe", potomki: true, marshrut: "direct" }], domeny: [], servisy: [] };
   const { container } = render(<Marshruty otlozheno={{}} trafik={trafik} status={{ sostoyanie: "vyklyuchen" }} pravila={{ protsessy: [], domeny: [], trafik }} naKomandu={send} />);
   fireEvent.click(screen.getByRole("tab", { name: /Приложения/ }));
-  expect(screen.getByText("steam.exe")).toBeInTheDocument();
+  expect(screen.getByTitle(String.raw`C:\Games\Steam\steam.exe`).closest("li")).toHaveTextContent("steam.exe");
     // Значков в правилах приложений нет по решению владельца: строка это имя
   // файла и путь под ним, а путь целиком лежит в подсказке.
   expect(container.querySelector("img, [style*='mask-image']")).toBeNull();

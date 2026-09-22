@@ -1,5 +1,11 @@
 import { Browser, Call, Clipboard, Events, Window } from "@wailsio/runtime";
-import { razobratSnimok, type ProveritSoedineniya } from "./ohvat";
+import { razobratSnimok, razobratOhvat, type ProveritPrilozhenie, type ProveritSoedineniya } from "./ohvat";
+
+export const prochitatOhvatPrilozheniya:ProveritPrilozhenie = async (put) => {
+  const response=await zvat("inspectApplication",{put});
+  if(response.oshibka)throw new Error(response.oshibka.tekst);
+  return razobratOhvat(response.telo);
+};
 
 export const prochitatSoedineniya:ProveritSoedineniya = async (filter) => {
   const response=await zvat("listConnections",filter);

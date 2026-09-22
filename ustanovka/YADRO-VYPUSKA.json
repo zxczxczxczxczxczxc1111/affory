@@ -10,17 +10,19 @@
     "events_windows_test.go": "6b9c68b04302e6cf19b409686514978e1ecda5c86a860b3a1e581de385facf51",
     "events_windows.go": "efb9467b5a4b59ffc89f7ba638f30c2a2193cf148b583a48f01922b5405a34ee",
     "family_test.go": "1e371db80194596f8b654716504affc037e3af11bfb94bed745e5ca4f1fd2af4",
-    "family.go": "912d72b75d81cef701876a54f9d73f1e8337627df35825bbcb959f760c91fd3f",
+    "family.go": "4a0a4a4b7316cbc0db4ce93a1d2aac3aead8c50c5924e918d3c17e7730faca18",
     "shared_windows_test.go": "c50e6fb77fff48d8a43d098b9f0ae12f3e00a1430caa9ade099f67befc02031a",
     "shared_windows.go": "735cc98458b5a93ff581de70385ab7acc05bd6e100781a944604167648d9a5c2",
+    "view_windows_test.go": "101c35e5eb8d6796b62ca638c090a98ea898bdeea85f2f2b368e166acc8b3747",
+    "view_windows.go": "501c3777d6091fefd4fd0de303b15c72b59cff0093d8d5eb4e654f8ed3fe23f5",
     "watcher_windows_test.go": "f4c2b0cd8531ea9c858b655651b8cdcf0fd01921c68d2f7c8251d4900c32be90",
-    "watcher_windows.go": "39103c9940187a8934638b4985316ca03355950c49ba5c0a205b7c000650b520"
+    "watcher_windows.go": "d906aec2621a9df6c5fea6b7cada4adeb2571d824913baead886c8194bf6ffe0"
   },
-  "versiya": "1.14.1-affory-family.4",
+  "versiya": "1.14.1-affory-family.5",
   "tegi": "with_gvisor,with_quic,with_utls,with_clash_api",
   "go": "go version go1.26.8 windows/amd64",
-  "sha256": "a5b045d25f6f987d19fbb32ec5d62c05da29d43ca7bab47abe24f33d4d4d3992",
-  "bayt": 44459520,
-  "sobrano": "2026-09-22T15:09:25.8505196+03:00",
+  "sha256": "8a7611f871b617a98e2e483516045f4f55c2412dc3775caa1aa7c87904b90508",
+  "bayt": 44464128,
+  "sobrano": "2026-09-22T15:49:42.7391914+03:00",
   "vypusk": "1.4.2"
 }

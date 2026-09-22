@@ -13,7 +13,7 @@ import { KOD_OBOLOCHKI, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
-  dobavitSEkrana, otkrytPapkuZhurnalov, prochitatSoedineniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, sohranitProfil, spisokProtsessov, startovayaVkladka,
+  dobavitSEkrana, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, sohranitProfil, spisokProtsessov, startovayaVkladka,
   tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, type Zapushchennyy,
 } from "./most";
 import { Servery, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
@@ -961,6 +961,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           />
         ) : vkladka === "pravila" ? (
           <Pravila
+            proveritPrilozhenie={prochitatOhvatPrilozheniya}
             proveritSoedineniya={prochitatSoedineniya}
             chernovik={chernovikPravil}
             naChernovik={zadatChernovikPravil}

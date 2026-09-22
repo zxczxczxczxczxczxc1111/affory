@@ -59,7 +59,7 @@ it("приложение проверяется по точному пути б�
   expect(screen.getByText(/Подсказка учитывает черновик/)).toBeInTheDocument();
   await act(async()=>fireEvent.click(screen.getByRole("button",{name:"Проверить соединения"})));
   expect(inspect).toHaveBeenCalledWith({put:"C:\\app.exe"});
-  expect(screen.getByText(/По указанному пути видны только соединения этого приложения/)).toBeInTheDocument();
+  expect(screen.getByText(/По указанному пути видны соединения всех запусков этого файла/)).toBeInTheDocument();
 });
 
 it("суффиксы имеют границы, более точный домен побеждает, IDNA приводится",()=>{

@@ -53,6 +53,22 @@ it("повтор приложения обновляет правило на п�
   expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({trafik:expect.objectContaining({prilozheniya:[{...first,marshrut:"vpn"},second]})}));
 });
 
+it("замена файла сохраняет маршрут и охват, существующее правило не перетирается",async()=>{
+  const app={put:"C:\\Old.exe",imya:"Old.exe",potomki:true,marshrut:"direct" as const};
+  const other={...app,put:"C:\\Other.exe",imya:"Other.exe"};
+  const choose=vi.fn().mockResolvedValueOnce(other.put).mockResolvedValueOnce("C:\\New.exe");
+  const send=vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={{...rules,trafik:{...rules.trafik!,prilozheniya:[app,other]}}} otlozheno={{}} naKomandu={send} naVyborPrilozheniya={choose}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  await act(async()=>fireEvent.click(screen.getByRole("button",{name:"Заменить файл"})));
+  expect(screen.getByRole("alert")).toHaveTextContent("уже есть правило");
+  expect(screen.queryByRole("button",{name:"Применить изменения"})).toBeNull();
+  await act(async()=>fireEvent.click(screen.getByRole("button",{name:"Заменить файл"})));
+  expect(send).not.toHaveBeenCalled();
+  await primenit();
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({trafik:expect.objectContaining({prilozheniya:[{...app,put:"C:\\New.exe",imya:"New.exe"},other]})}));
+});
+
 it("новая форма учитывает смену общего режима, открытая сохраняет выбранный маршрут", () => {
   const initial:PravilaOtvet={...rules,trafik:{...rules.trafik!,po_umolchaniyu:"vpn"}};
   const props={status:{sostoyanie:"vyklyuchen" as const},otlozheno:{},naKomandu:vi.fn()};

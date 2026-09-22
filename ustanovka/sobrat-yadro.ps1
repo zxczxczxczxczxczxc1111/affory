@@ -189,7 +189,7 @@ try {
     if ($opisanie -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)$') {
         throw "версия не выводится: describe дал '$opisanie', а ждали vX.Y.Z"
     }
-    $ver = "$($Matches[1])-affory-family.4"
+    $ver = "$($Matches[1])-affory-family.5"
     $sobrannyy = "$(Nativno { & git rev-parse HEAD } 'коммит форка не прочитался')".Trim()
     if (-not $sobrannyy) { throw 'коммит форка пуст: отпечаток был бы враньём' }
     # Заказанный коммит сверяется с тем, что реально лежит в дереве.

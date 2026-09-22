@@ -260,6 +260,17 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
   addServer: () => ({ server: servery[servery.length - 1] }),
   removeServer: () => ({ ostalos: servery.length }),
   listRules: () => pravila,
+  inspectApplication: (v) => {
+    const root=pravila.trafik.prilozheniya.find(a=>a.put.toLowerCase()===stroka(v.put).toLowerCase());
+    if(!root)throw new Error("Правило приложения изменилось. Обнови список правил");
+    const launcher=root.put.toLowerCase().includes("steam");
+    const child=launcher?"C:\\Games\\Demo\\game.exe":root.put;
+    const winner=pravila.trafik.prilozheniya.find(a=>a.put.toLowerCase()===child.toLowerCase()) || root;
+    const included=!launcher || root.potomki;
+    return {pravilo:root,reviziya_pravil:"demo",trebuet_podyoma:false,vremya:new Date().toISOString(),fayl:root.put.includes("Missing")?"net":"est",samo:launcher?0:1,vsego:included?1:0,
+      zapushchennye:included?[{pid:24680,created:"134000000000000001",put:child,imya:child.split("\\").pop(),cherez:launcher?[root.put,child]:[root.put],marshrut:winner.marshrut,pravilo_put:winner.put,pravilo_imya:winner.imya,pereopredelen:winner.put!==root.put}]:[],
+      neizvestno:1,neizvestnye:["C:\\Apps\\Separate.exe"],ogranichen:false};
+  },
   listConnections: () => ({yadro:status.sostoyanie==="podnyat",vremya:new Date().toISOString(),ogranichen:false,soedineniya:[]}),
   setRules: (v) => {
     if (v.trafik && typeof v.trafik === "object") {
@@ -343,6 +354,7 @@ function izvestit(imya: string, data: unknown): void {
 
 export const Call = {
   async ByName(imya: string, ...args: unknown[]): Promise<unknown> {
+    if (imya === "main.most.VybratPrilozhenie") throw new Error("В браузерном стенде выбор файла недоступен. В установленном Affory откроется окно выбора приложения.");
     if (imya === "main.most.OtkrytPapkuZhurnalov") throw new Error("В браузерном стенде Проводник недоступен. В установленном Affory кнопка открывает папку журналов.");
     if (imya === "main.most.SluzhbaUstanovlena") return true;
     if (imya === "main.most.Zvat") {
