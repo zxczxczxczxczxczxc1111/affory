@@ -93,10 +93,11 @@ it("service toggle sends a domain bundle route without inventing process exclusi
       naKomandu={send}
     />,
   );
-  fireEvent.click(screen.getByLabelText("YouTube через VPN"));
+  fireEvent.click(screen.getByRole("combobox",{name:"Маршрут сервиса YouTube"}));
+  fireEvent.click(screen.getByRole("option",{name:"Через VPN"}));
   // Число и слово стоят в разных строках макета, поэтому пробел между ними
   // рисует раскладка, а не текст.
-  expect(screen.getByTestId("svodka-pravil").textContent).toMatch(/2\s*правила/);
+  expect(screen.getByTestId("svodka-pravil").textContent).toMatch(/2\s*отдельных правила/);
   expect(screen.getByText("2 домена с поддоменами")).toBeInTheDocument();
   await primenit();
   expect(send).toHaveBeenCalledWith(
@@ -270,8 +271,9 @@ it("pending rule application disables controls instead of losing a second edit",
       zanyato
     />,
   );
-  expect(screen.getByLabelText("YouTube через VPN")).toBeDisabled();
-  fireEvent.click(screen.getByLabelText("YouTube через VPN"));
+  expect(screen.getByRole("combobox",{name:"Маршрут сервиса YouTube"})).toBeDisabled();
+  fireEvent.click(screen.getByRole("combobox",{name:"Маршрут сервиса YouTube"}));
+  expect(screen.queryByRole("option",{name:"Напрямую"})).toBeNull();
   expect(send).not.toHaveBeenCalled();
 });
 it("журнал перенесён из правил в настройки", () => {

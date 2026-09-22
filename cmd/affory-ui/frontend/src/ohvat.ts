@@ -1,4 +1,4 @@
-import { imyaMarshruta, type KatalogServisov, type PravilaTrafika, type PraviloPrilozheniya, type Marshrut } from "./trafik";
+import { imyaMarshruta, type KatalogServisov, type PravilaTrafika, type PraviloPrilozheniya, type PraviloDomena, type Marshrut } from "./trafik";
 
 export interface ZapuskPrilozheniya {
   pid:number; created:string; put:string; imya:string; cherez:string[];
@@ -55,6 +55,16 @@ export function normalizovatProbuDomena(input:string):string {
 }
 export function domenPopadaet(host:string,rule:string):boolean {
   return host===rule || host.endsWith(`.${rule}`);
+}
+
+// Probe each service suffix and each explicit subdomain boundary. This avoids
+// reporting a broad domain rule which a more specific same-route rule eclipses.
+export function perekrytiyaServisa(hosts:string[],domains:PraviloDomena[],route:Marshrut):PraviloDomena[] {
+  const sorted=[...domains].sort((a,b)=>b.domen.split(".").length-a.domen.split(".").length);
+  const probes=[...hosts,...domains.filter(d=>hosts.some(host=>domenPopadaet(d.domen,host))).map(d=>d.domen)];
+  const winners=new Map<string,PraviloDomena>();
+  for(const host of probes){const winner=sorted.find(d=>domenPopadaet(host,d.domen));if(winner && winner.marshrut!==route)winners.set(winner.domen,winner);}
+  return [...winners.values()];
 }
 // Только доменная часть намерения. Правила приложения, DNS и системные
 // исключения объясняются отдельно: здесь нет сведений о конкретном сокете.

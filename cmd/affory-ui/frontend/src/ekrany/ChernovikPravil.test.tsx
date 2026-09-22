@@ -22,7 +22,8 @@ it("повторное нажатие во время применения не 
 it("изменения разных вкладок применяются одной командой с исходной ревизией",async()=>{
   const send=vi.fn().mockResolvedValue(true);
   render(<Pravila status={{sostoyanie:"podnyat"}} pravila={rules} otlozheno={{}} naKomandu={send}/>);
-  fireEvent.click(screen.getByLabelText("YouTube через VPN"));
+  fireEvent.click(screen.getByRole("combobox",{name:"Маршрут сервиса YouTube"}));
+  fireEvent.click(screen.getByRole("option",{name:"Напрямую"}));
   fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
   fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
   fireEvent.change(screen.getByLabelText("Домен сайта"),{target:{value:"example.org"}});

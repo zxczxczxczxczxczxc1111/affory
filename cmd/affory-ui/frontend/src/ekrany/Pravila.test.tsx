@@ -155,7 +155,7 @@ describe("правила: четыре состояния списка", () => {
         servisy: [{ id: "youtube", marshrut: "vpn" }],
       }),
     });
-    expect(screen.getByTestId("svodka-pravil")).toHaveTextContent(/3\s*правила/);
+    expect(screen.getByTestId("svodka-pravil")).toHaveTextContent(/3\s*отдельных правила/);
   });
 });
 
@@ -174,57 +174,23 @@ describe("вкладки говорят, что на них включено", (
 
 });
 
-describe("счёт на вкладке «Сервисы» отвечает за тумблеры, а не за записи набора", () => {
-  // Два дефекта одного корня (найдены владельцем 16.09.2026): счёт брал длину
-  // списка ЯВНЫХ маршрутов. В режиме «Всё через VPN» явных записей нет вовсе,
-  // и восемь включённых сервисов показывались нулём; а каждое переключение
-  // добавляло запись, и счёт рос, хотя на экране ничего не прибавлялось.
-  it("восемь включённых сервисов показываются восемью, а не нулём", () => {
-    risovat({
-      otlozheno: {},
-      pravila: { ...sTrafikom(), katalog: KATALOG },
-    });
-    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("8");
+describe("счёт сервисов отделён от количества заданных маршрутов", () => {
+  it.each([
+    ["vpn", [], 8, 0],
+    ["vpn", [{id:"youtube",marshrut:"direct"}], 7, 1],
+    ["vpn", [{id:"youtube",marshrut:"vpn"},{id:"claude",marshrut:"vpn"}], 8, 2],
+    ["direct", [{id:"youtube",marshrut:"vpn"}], 1, 1],
+  ] as const)("режим %s не меняет размер каталога: %j", (defaultRoute, rules, vpn, explicit) => {
+    risovat({otlozheno:{},pravila:{...sTrafikom({po_umolchaniyu:defaultRoute,servisy:[...rules]}),katalog:KATALOG}});
+    expect(screen.getByRole("tab",{name:/Сервисы/})).toHaveTextContent("8");
+    const summary=screen.getByLabelText("Маршруты сервисов");
+    expect(summary).toHaveTextContent(`через VPN ${vpn}, напрямую ${8-vpn}`);
+    expect(summary).toHaveTextContent(`Заданы отдельно: ${explicit} · по общему режиму: ${8-explicit}`);
   });
-
-  it("выключенный сервис уменьшает счёт, а не увеличивает", () => {
-    risovat({
-      otlozheno: {},
-      pravila: {
-        ...sTrafikom({ servisy: [{ id: "youtube", marshrut: "direct" }] }),
-        katalog: KATALOG,
-      },
-    });
-    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("7");
-  });
-
-  it("явный маршрут, совпавший с умолчанием, счёт не раздувает", () => {
-    // Запись остаётся намеренно: она переживает смену режима. Но на экране
-    // сервис по-прежнему просто включён, и счёт обязан это повторять.
-    risovat({
-      otlozheno: {},
-      pravila: {
-        ...sTrafikom({ servisy: [{ id: "youtube", marshrut: "vpn" }, { id: "claude", marshrut: "vpn" }] }),
-        katalog: KATALOG,
-      },
-    });
-    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("8");
-  });
-
-  it("в режиме «Только выбранное» счёт равен числу выбранных", () => {
-    risovat({
-      otlozheno: {},
-      pravila: {
-        ...sTrafikom({ po_umolchaniyu: "direct", servisy: [{ id: "youtube", marshrut: "vpn" }] }),
-        katalog: KATALOG,
-      },
-    });
-    expect(screen.getByRole("tab", { name: /Сервисы/ })).toHaveTextContent("1");
-  });
-
-  it("без каталога счёта нет: считать нечего, а ноль это измеренное значение", () => {
-    risovat({ otlozheno: {}, pravila: sTrafikom() });
-    expect(screen.getByRole("tab", { name: /Сервисы/ })).not.toHaveTextContent(/\d/);
+  it("без каталога нет выдуманного нуля маршрутов", () => {
+    risovat({otlozheno:{},pravila:sTrafikom()});
+    expect(screen.getByRole("tab",{name:/Сервисы/})).not.toHaveTextContent(/\d/);
+    expect(screen.queryByLabelText("Маршруты сервисов")).toBeNull();
   });
 });
 

@@ -38,3 +38,10 @@ export interface KatalogServisov {
 }
 export const imyaMarshruta = (route: Marshrut) =>
   route === "vpn" ? "Через VPN" : "Напрямую";
+
+export type VyborServisa = Marshrut | "inherit";
+export function zadatMarshrutServisa(trafik:PravilaTrafika,id:string,value:VyborServisa):PravilaTrafika {
+  if(value==="inherit") return {...trafik,servisy:trafik.servisy.filter(s=>s.id!==id)};
+  const exists=trafik.servisy.some(s=>s.id===id);
+  return {...trafik,servisy:exists?trafik.servisy.map(s=>s.id===id?{...s,marshrut:value}:s):[...trafik.servisy,{id,marshrut:value}]};
+}

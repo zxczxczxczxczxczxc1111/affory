@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PravilaProps } from "./Pravila";
-import { imyaMarshruta, snimokPravil, type ChernovikPravil, type Marshrut, type PravilaTrafika } from "../trafik";
+import { imyaMarshruta, snimokPravil, zadatMarshrutServisa, type VyborServisa, type ChernovikPravil, type Marshrut, type PravilaTrafika } from "../trafik";
+import { perekrytiyaServisa } from "../ohvat";
 import { Flazhok, Knopka, Poisk, Pole, SegmentStolbik, Svorachivaemyy, Tumbler } from "./ui";
 import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
 import { IkonkaServisa } from "./IkonkaServisa";
@@ -210,19 +211,23 @@ export function Marshruty({
   // приложений и сайтов, а «российские сайты напрямую» не показывал вообще
   // никто: чтобы узнать про них, надо было догадаться открыть «Сайты».
   const ruSpisokVkl = !bezRu;
-  // Сервисы считаются ПО ТУМБЛЕРАМ, а не по записям набора. Записей в режиме
-  // «Всё через VPN» нет вовсе, и восемь включённых сервисов показывались
-  // нулём; а явный маршрут пишется даже когда совпал с умолчанием (так он
-  // переживает смену режима), и счёт рос от одного переключения туда-обратно.
+  // Tabs count visible entries; the service summary separately counts configured
+  // routes and explicit overrides. Neither counter claims a live network result.
   const servisovCherezVPN = katalog.filter(
     (s) => (services.find((r) => r.id === s.id)?.marshrut ?? trafik.po_umolchaniyu) === "vpn",
   ).length;
+  const servisovYavno=katalog.filter(s=>services.some(r=>r.id===s.id)).length;
+  const pereopredeleniya=new Map(katalog.map(s=>{
+    const route=services.find(r=>r.id===s.id)?.marshrut ?? trafik.po_umolchaniyu;
+    return [s.id,perekrytiyaServisa(s.domeny,domains,route)];
+  }));
+  const perekryvayushchihDomenov=new Set([...pereopredeleniya.values()].flat().map(d=>d.domen)).size;
   const VKLADKI: { v: typeof tab; podpis: string; schyot: number; poyasnenie?: string; vklyucheno?: string }[] = [
     {
       v: "services",
       podpis: "Сервисы",
-      schyot: servisovCherezVPN,
-      poyasnenie: `${servisovCherezVPN} из ${katalog.length} через VPN`,
+      schyot: katalog.length,
+      poyasnenie: `${katalog.length} сервисов в каталоге`,
     },
     { v: "apps", podpis: "Приложения", schyot: apps.length, poyasnenie: `${apps.length} правил приложений` },
     {
@@ -252,12 +257,13 @@ export function Marshruty({
           <p className="flex items-baseline gap-2">
             <span className="text-accent-ink text-[26px] font-semibold leading-none">{ruleCount}</span>
             <span className="text-fg-secondary text-sm">
-              {slovoPosleChisla(ruleCount, "правило", "правила", "правил")}
+              {slovoPosleChisla(ruleCount, "отдельное правило", "отдельных правила", "отдельных правил")}
             </span>
           </p>
           <p className="text-fg-muted mt-2 text-[13px] leading-relaxed">
             Явные маршруты сохраняются при смене режима
           </p>
+          <p className="text-fg-muted mt-2 flex flex-wrap gap-x-3 text-[13px] leading-relaxed"><span className="whitespace-nowrap">Приложения: {apps.length}</span><span className="whitespace-nowrap">Сайты: {domains.length}</span><span className="whitespace-nowrap">Сервисы: {services.length}</span></p>
         </div>
         {status.sostoyanie === "vyklyuchen" && (
           <p className="text-fg-muted text-[13px] leading-relaxed">
@@ -304,8 +310,7 @@ export function Marshruty({
                 }`}
               >
                 {podpis}
-                {/* Счёт у вкладок значит разное, и это названо словами в
-                    подсказке: у сервисов это тумблеры, у остальных записи. */}
+                {/* Число элементов на вкладке, а не число соединений через VPN. */}
                 {schyot > 0 && (
                   <span
                     title={poyasnenie}
@@ -337,8 +342,16 @@ export function Marshruty({
             <div className="flex flex-col gap-5">
               <header>
                 <h3 className="text-foreground text-[17px] font-semibold leading-tight">Популярные сервисы</h3>
-                <p className="text-fg-muted mt-1 text-[13px]">Домены и поддомены одним переключателем</p>
+                <p className="text-fg-muted mt-1 text-[13px]">Маршрут доменов и поддоменов. «По общему режиму» следует настройке слева.</p>
               </header>
+              {(katalog.length>0 || services.length>0) && <div className="flex flex-wrap items-center justify-between gap-3">
+                {katalog.length>0 && <div className="text-fg-muted text-[13px]" aria-label="Маршруты сервисов">
+                  <p>По настройкам: через VPN {servisovCherezVPN}, напрямую {katalog.length-servisovCherezVPN}</p>
+                  <p>Заданы отдельно: {servisovYavno} · по общему режиму: {katalog.length-servisovYavno}</p>
+                  {perekryvayushchihDomenov>0 && <p className="text-warn">Другой маршрут задан в правилах сайтов: {perekryvayushchihDomenov}</p>}
+                </div>}
+                <Knopka rang="vtoraya" aktiven={!disabled && services.length>0} onClick={()=>save({...trafik,servisy:[]})}>Сбросить маршруты сервисов</Knopka>
+              </div>}
 
               {katalog.length === 0 && (
                 // Пустой каталог рисовал пустоту: заголовок, подпись и полэкрана
@@ -361,32 +374,21 @@ export function Marshruty({
                   const otkryt = raskryto[service.id] ?? false;
                   return (
                     <article key={service.id} className="border-border bg-surface flex flex-col overflow-hidden rounded-xl border">
-                      <div className="flex items-center gap-3 px-4 py-3.5">
+                      <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
                         <span className={`border-border flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${vkl ? "text-foreground" : "text-fg-faint"}`}>
                           <IkonkaServisa id={service.id} imya={service.imya} />
                         </span>
-                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="flex min-w-[80px] flex-1 flex-col gap-0.5">
                           <span className="text-foreground truncate text-sm font-medium">{service.imya}</span>
                           <span className="text-fg-muted truncate text-[13px]">
-                            {explicit ? "Задано: " : "По общему режиму: "}{vkl ? "через VPN" : "напрямую"}
+                            {vkl ? "Через VPN" : "Напрямую"}
                           </span>
                         </span>
-                        <Tumbler
-                          testId={`service-${service.id}`}
-                          podpis={`${service.imya} через VPN`}
-                          vkl={vkl}
-                          aktiven={!disabled}
-                          naSmenu={(on) =>
-                            save({
-                              ...trafik,
-                              servisy: [
-                                ...services.filter((s) => s.id !== service.id),
-                                { id: service.id, marshrut: on ? "vpn" : "direct" },
-                              ],
-                            })
-                          }
-                        />
+                        <Vybor<VyborServisa> label={`Маршрут сервиса ${service.imya}`} value={explicit?.marshrut ?? "inherit"} disabled={disabled}
+                          options={[{value:"inherit",label:"По общему режиму"},{value:"vpn",label:"Через VPN"},{value:"direct",label:"Напрямую"}]}
+                          onChange={value=>save(zadatMarshrutServisa(trafik,service.id,value))}/>
                       </div>
+                      {(pereopredeleniya.get(service.id)?.length ?? 0)>0 && <p className="text-warn px-4 pb-2 text-[12px]">Есть другой маршрут в правилах сайтов</p>}
 
                       <button
                         type="button"
@@ -403,22 +405,9 @@ export function Marshruty({
                       {otkryt && (
                         <ul className="border-border flex flex-col gap-1 border-t px-4 py-3">
                           {service.domeny.map((d) => (
-                            <li key={d} className="text-fg-secondary text-[13px]">{d}</li>
+                            <li key={d} className="text-fg-secondary break-all text-[13px]">{d}</li>
                           ))}
-                          {explicit && (
-                            <li>
-                              <Knopka
-                                rang="tekst"
-                                className="mt-1"
-                                aktiven={!disabled}
-                                onClick={() =>
-                                  save({ ...trafik, servisy: services.filter((s) => s.id !== service.id) })
-                                }
-                              >
-                                Вернуть маршрут по умолчанию
-                              </Knopka>
-                            </li>
-                          )}
+                          {pereopredeleniya.get(service.id)?.map(d=><li key={`override-${d.domen}`} className="text-warn break-all text-[12px]">Правило {d.domen}: {imyaMarshruta(d.marshrut).toLowerCase()}</li>)}
                         </ul>
                       )}
                     </article>
@@ -459,13 +448,6 @@ export function Marshruty({
                   deti={
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-wrap gap-2">
-                        <Knopka
-                          rang="vtoraya"
-                          aktiven={!disabled && services.length > 0}
-                          onClick={() => save({ ...trafik, servisy: [] })}
-                        >
-                          Сбросить переключатели
-                        </Knopka>
                         <Knopka rang="vtoraya" onClick={() => setVesSpisok(!vesSpisok)}>
                           {vesSpisok ? "Скрыть весь список доменов" : "Показать весь список доменов"}
                         </Knopka>
