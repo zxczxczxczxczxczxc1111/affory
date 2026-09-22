@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Vybor } from "./Vybor";
 import { Glavnyy } from "./Glavnyy";
@@ -75,7 +75,7 @@ it("loading servers is distinct from an empty configured list", () => {
   expect(screen.getByText("Серверов пока нет")).toBeInTheDocument();
   expect(screen.queryByText("Сведения о сервере")).toBeNull();
 });
-it("Russian site policy is visible above site rules and preserves explicit routes", () => {
+it("Russian site policy is visible above site rules and preserves explicit routes", async () => {
   const send = vi.fn();
   const trafik: PravilaTrafika = { po_umolchaniyu: "vpn", domeny: [{ domen: "example.org", marshrut: "vpn" }], prilozheniya: [], servisy: [] };
   render(<Marshruty otlozheno={{}} trafik={trafik} status={{ sostoyanie: "vyklyuchen" }} pravila={{ protsessy: [], domeny: [], trafik, bez_ru_spiska: false }} naKomandu={send} />);
@@ -84,9 +84,11 @@ it("Russian site policy is visible above site rules and preserves explicit route
   expect(toggle.closest("details")).toBeNull();
   expect(toggle.compareDocumentPosition(screen.getByText("Правила сайтов")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.click(toggle);
+  expect(send).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Применить изменения" })); });
   expect(send).toHaveBeenCalledWith("setRules", { trafik, bez_ru_spiska: true });
 });
-it("application rules show names without letter avatars and still route the process family", () => {
+it("application rules show names without letter avatars and still route the process family", async () => {
   const send = vi.fn();
   const trafik: PravilaTrafika = { po_umolchaniyu: "vpn", prilozheniya: [{ put: "C:\\Games\\Steam\\steam.exe", imya: "steam.exe", potomki: true, marshrut: "direct" }], domeny: [], servisy: [] };
   const { container } = render(<Marshruty otlozheno={{}} trafik={trafik} status={{ sostoyanie: "vyklyuchen" }} pravila={{ protsessy: [], domeny: [], trafik }} naKomandu={send} />);
@@ -98,6 +100,8 @@ it("application rules show names without letter avatars and still route the proc
   expect(screen.getByTitle(String.raw`C:\Games\Steam\steam.exe`)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("combobox", { name: "Маршрут steam.exe" }));
   fireEvent.click(screen.getByRole("option", { name: "Через VPN" }));
+  expect(send).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Применить изменения" })); });
   expect(send).toHaveBeenCalledWith("setRules", expect.objectContaining({ trafik: expect.objectContaining({ prilozheniya: [{ ...trafik.prilozheniya[0], marshrut: "vpn" }] }) }));
 });
 

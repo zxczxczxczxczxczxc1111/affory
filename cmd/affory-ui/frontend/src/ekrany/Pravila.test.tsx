@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Pravila } from "./Pravila";
 import type { StatusOtvet } from "../protokol";
@@ -232,12 +232,14 @@ describe("российский список", () => {
   // Решено 08.09.2026: список российских доменов работал всегда, а в окне про
   // него не было ни строки. Человек видел, что банк открывается напрямую, и не
   // мог ни подтвердить это, ни отменить.
-  it("тумблер шлёт setRules ВМЕСТЕ с набором: служба заменяет его целиком", () => {
+  it("российский список применяется вместе с черновиком всего набора", async () => {
     const naKomandu = risovat({ otlozheno: {}, pravila: sTrafikom({}, { bez_ru_spiska: false }) });
     fireEvent.click(screen.getByRole("tab", { name: /Сайты/ }));
     const tumbler = screen.getByTestId("ru-spisok") as HTMLInputElement;
     expect(tumbler.checked).toBe(true);
     fireEvent.click(tumbler);
+    expect(naKomandu).not.toHaveBeenCalled();
+    await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Применить изменения"}));});
     expect(naKomandu).toHaveBeenCalledWith("setRules", { trafik: TRAFIK, bez_ru_spiska: true });
   });
 

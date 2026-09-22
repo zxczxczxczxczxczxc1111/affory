@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PravilaProps } from "./Pravila";
-import { imyaMarshruta, type Marshrut, type PravilaTrafika } from "../trafik";
+import { imyaMarshruta, snimokPravil, type ChernovikPravil, type Marshrut, type PravilaTrafika } from "../trafik";
 import { Flazhok, Knopka, Poisk, Pole, SegmentStolbik, Svorachivaemyy, Tumbler } from "./ui";
 import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
 import { IkonkaServisa } from "./IkonkaServisa";
@@ -72,13 +72,27 @@ const SETKA_SAYTOV = "grid grid-cols-[minmax(0,1fr)_150px_110px] items-center ga
 export function Marshruty({
   status,
   pravila,
-  trafik,
+  trafik: sohranennyyTrafik,
+  chernovik,
+  naChernovik,
   zapushchennye,
   obnovitProtsessy,
   naVyborPrilozheniya,
   naKomandu,
   zanyato = false,
 }: PravilaProps & { trafik: PravilaTrafika }) {
+  const [localDraft, setLocalDraft] = useState<ChernovikPravil | null>(null);
+  const draft = chernovik === undefined ? localDraft : chernovik;
+  const setDraft = naChernovik ?? setLocalDraft;
+  const trafik = draft?.trafik ?? sohranennyyTrafik;
+  const bezRu = draft?.bezRu ?? (pravila?.bez_ru_spiska === true);
+  const base = snimokPravil(sohranennyyTrafik, pravila?.bez_ru_spiska === true);
+  const dirty = snimokPravil(trafik, bezRu) !== base;
+  const conflict = !!draft && dirty && draft.baza !== base;
+  const [applying, setApplying] = useState(false);
+  const inFlight = useRef(false);
+  const [notice, setNotice] = useState("");
+  const [applyError, setApplyError] = useState("");
   const [tab, setTab] = useState<"services" | "apps" | "sites">("services");
   const [adding, setAdding] = useState(false);
   useEffect(() => {
@@ -99,14 +113,35 @@ export function Marshruty({
   const [raskryto, setRaskryto] = useState<Record<string, boolean>>({});
   const [vesSpisok, setVesSpisok] = useState(false);
   const disabled =
+    applying ||
     zanyato ||
     picking ||
     status.sostoyanie === "sluzhba-molchit" ||
     status.sostoyanie === "podnimaetsya" ||
     status.sostoyanie === "vosstanavlivaetsya";
-  const save = (next: PravilaTrafika, bezRu = pravila?.bez_ru_spiska) => {
-    if (!disabled)
-      naKomandu("setRules", { trafik: next, bez_ru_spiska: bezRu });
+  const save = (next: PravilaTrafika, nextBezRu = bezRu) => {
+    if (disabled || snimokPravil(next, nextBezRu) === snimokPravil(trafik, bezRu)) return false;
+    setApplyError("");
+    setNotice("");
+    setDraft(snimokPravil(next, nextBezRu) === base ? null : {trafik:next,bezRu:nextBezRu,baza:draft?.baza ?? base,reviziya:draft?.reviziya ?? pravila?.reviziya_pravil});
+    return true;
+  };
+  const apply = async () => {
+    if (disabled || inFlight.current || !dirty || conflict) return;
+    inFlight.current = true;
+    setApplying(true); setApplyError(""); setNotice("");
+    try {
+      const revision = pravila?.reviziya_pravil ?? draft?.reviziya;
+      const body = {trafik,bez_ru_spiska:bezRu,...(revision ? {reviziya_pravil:revision} : {})};
+      const ok = await naKomandu("setRules",body);
+      if (ok !== true) { setApplyError("Не удалось применить правила. Черновик сохранён; причина указана в сообщении службы."); return; }
+      setDraft(null); setPath(""); setDomain(""); setAdding(false);
+      setNotice(status.sostoyanie === "vyklyuchen" ? "Правила сохранены" : "Правила применены");
+    } catch (error: unknown) {
+      setApplyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      inFlight.current = false; setApplying(false);
+    }
   };
   const apps = trafik.prilozheniya ?? [],
     domains = trafik.domeny ?? [],
@@ -140,8 +175,10 @@ export function Marshruty({
     }
   };
   const add = () => {
+    if (disabled) return;
+    let changed = false;
     if (tab === "apps")
-      save({
+      changed = save({
         ...trafik,
         prilozheniya: [
           ...apps.filter(
@@ -157,7 +194,7 @@ export function Marshruty({
       });
     else {
       const normalized = domain.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
-      save({
+      changed = save({
         ...trafik,
         domeny: [
           ...domains.filter((d) => d.domen !== normalized),
@@ -165,13 +202,14 @@ export function Marshruty({
         ],
       });
     }
-    // Keep typed values available when validation fails; a rejected form is not amnesia.
+    setAdding(false);
+    setNotice(changed ? "Правило добавлено в черновик. Нажми «Применить изменения», когда закончишь редактирование." : "Такое правило уже есть в списке.");
   };
 
   // Что включено на вкладке, видно НЕ ЗАХОДЯ на неё. Прежде счёт был только у
   // приложений и сайтов, а «российские сайты напрямую» не показывал вообще
   // никто: чтобы узнать про них, надо было догадаться открыть «Сайты».
-  const ruSpisokVkl = pravila?.bez_ru_spiska !== true;
+  const ruSpisokVkl = !bezRu;
   // Сервисы считаются ПО ТУМБЛЕРАМ, а не по записям набора. Записей в режиме
   // «Всё через VPN» нет вовсе, и восемь включённых сервисов показывались
   // нулём; а явный маршрут пишется даже когда совпал с умолчанием (так он
@@ -226,9 +264,18 @@ export function Marshruty({
             Правила начнут работать после нажатия на сферу
           </p>
         )}
-        {zanyato && (
+        {(zanyato || applying) && (
           <p role="status" className="text-fg-secondary text-[13px]">Применяю правила</p>
         )}
+        {dirty && <div className="border-border flex flex-col gap-3 border-t pt-4" aria-label="Несохранённые правила">
+          <p className="text-fg-secondary text-sm">Есть неприменённые изменения</p>
+          {conflict ? <p role="alert" className="text-warn text-[13px]">Сохранённые правила изменились. Отмени черновик и проверь актуальный набор перед редактированием.</p>
+            : <p className="text-fg-muted text-[13px]">{status.sostoyanie === "vyklyuchen" ? "Весь набор сохранится одним действием." : "Применение всего набора вызовет одно короткое переподключение VPN."}</p>}
+          <Knopka rang="glavnaya" aktiven={!disabled && !conflict} zhdyot={applying} onClick={() => void apply()}>Применить изменения</Knopka>
+          <Knopka rang="vtoraya" aktiven={!disabled} onClick={() => {setDraft(null);setPath("");setDomain("");setAdding(false);setApplyError("");setNotice("Черновик отменён");}}>Отменить изменения</Knopka>
+        </div>}
+        {notice && <p role="status" className="text-fg-secondary text-[13px]">{notice}</p>}
+        {applyError && <p role="alert" className="text-danger text-[13px]">{applyError}</p>}
         {pravila?.trebuet_podyoma && (
           <p role="status" className="text-warn text-[13px] leading-relaxed">
             Сохранено. Нужен повторный запуск подключения
@@ -459,7 +506,7 @@ export function Marshruty({
                     testId="ru-spisok"
                     podpis="Российские сайты напрямую"
                     aktiven={!disabled && !status.kill_switch}
-                    vkl={pravila?.bez_ru_spiska !== true}
+                    vkl={!bezRu}
                     naSmenu={(v) => save(trafik, !v)}
                   />
                 </div>
@@ -580,7 +627,7 @@ export function Marshruty({
                       }
                       onClick={add}
                     >
-                      Сохранить правило
+                      Добавить в черновик
                     </Knopka>
                   </div>
                 </div>

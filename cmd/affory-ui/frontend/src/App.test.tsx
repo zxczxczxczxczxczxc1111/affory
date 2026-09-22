@@ -645,6 +645,26 @@ describe("ни один отказ не пропадает молча", () => {
   });
 });
 
+it("черновик правил переживает переход в настройки и применяется одним запросом", async()=>{
+  const most=mostProby();
+  const saved={protsessy:[],domeny:[],trafik:{po_umolchaniyu:"vpn",prilozheniya:[],domeny:[],servisy:[]}};
+  most.otvechatTelom("listRules",saved);
+  render(<App/>);
+  fireEvent.click(await screen.findByRole("tab",{name:"Правила"}));
+  fireEvent.click(await screen.findByRole("radio",{name:"Только выбранное"}));
+  fireEvent.click(screen.getByRole("tab",{name:"Настройки"}));
+  fireEvent.click(screen.getByRole("tab",{name:"Правила"}));
+  expect(screen.getByRole("radio",{name:"Только выбранное"})).toBeChecked();
+  expect(most.skolkoRaz("setRules")).toBe(0);
+  const applied={...saved,trafik:{...saved.trafik,po_umolchaniyu:"direct"}};
+  most.otvechatTelom("setRules",applied);
+  most.otvechatTelom("listRules",applied);
+  fireEvent.click(screen.getByRole("button",{name:"Применить изменения"}));
+  await waitFor(()=>expect(most.skolkoRaz("setRules")).toBe(1));
+  await screen.findByText("Правила сохранены");
+  expect(screen.getByRole("radio",{name:"Только выбранное"})).toBeChecked();
+});
+
 it("кнопка папки журналов вызывает нативный мост без команды службы", async () => {
   const most=mostProby();
   render(<App/>);

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,6 +43,7 @@ type PravilaNabora struct {
 // версии), шлёт два списка, и считать его молчание за «включить обратно»
 // значит менять маршрут российских сайтов у человека за спиной.
 type zaprosPravil struct {
+	Reviziya    string                   `json:"reviziya_pravil,omitempty"`
 	Trafik      *protokol.PravilaTrafika `json:"trafik"`
 	Protsessy   []string                 `json:"protsessy"`
 	Domeny      []string                 `json:"domeny"`
@@ -77,6 +79,9 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	// проверять по одному списку, а писать в другой.
 	var pravila PravilaNabora
 	if err := s.pravitNabor(func(n *Nabor) error {
+		if telo.Reviziya != "" && telo.Reviziya != reviziyaPravil(n.Pravila) {
+			return fmt.Errorf("%w: правила уже изменены другим запросом. Перечитай набор перед применением черновика", errPraviloNegodno)
+		}
 		// Прежнее значение выключателя берётся из набора ПОД ЗАМКОМ правки, а
 		// не читается отдельно: между чтением и записью успевает пройти чужая
 		// правка, и вернулось бы то, что уже отменили.
@@ -138,6 +143,7 @@ func teloPravil(p PravilaNabora, trebuetPodyoma, izmenyon bool) map[string]any {
 		domeny = []string{}
 	}
 	return map[string]any{
+		"reviziya_pravil": reviziyaPravil(p),
 		"trafik":          trafikPravil(p),
 		"katalog":         katalogDlyaPravil(),
 		"protsessy":       protsessy,
@@ -146,6 +152,10 @@ func teloPravil(p PravilaNabora, trebuetPodyoma, izmenyon bool) map[string]any {
 		"spisok_izmenyon": izmenyon,
 		"bez_ru_spiska":   p.BezRuSpiska,
 	}
+}
+
+func reviziyaPravil(p PravilaNabora) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(otpechatokPravil(p))))
 }
 
 // otlichaetsya сравнивает ПРИСЛАННОЕ с ПРИНЯТЫМ.

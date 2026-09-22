@@ -288,6 +288,7 @@ func podpiska(k *kanal.Klient, pod string, slova []string) {
 // трогали», и файл со списками, написанный до его появления, не должен
 // возвращать набор на место молча.
 type pravilaFayla struct {
+	Reviziya    string                   `json:"reviziya_pravil,omitempty"`
 	Trafik      *protokol.PravilaTrafika `json:"trafik,omitempty"`
 	Protsessy   []string                 `json:"protsessy"`
 	Domeny      []string                 `json:"domeny"`

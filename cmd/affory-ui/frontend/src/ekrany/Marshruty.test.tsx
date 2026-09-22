@@ -3,6 +3,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Pravila, type PravilaOtvet } from "./Pravila";
 import { Glavnyy } from "./Glavnyy";
 afterEach(cleanup);
+async function primenit() {
+  await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Применить изменения"}));});
+}
 const rules: PravilaOtvet = {
   protsessy: [],
   domeny: [],
@@ -26,13 +29,14 @@ const rules: PravilaOtvet = {
   },
 };
 
-it("повтор домена с регистром и точкой заменяет маршрут одной записи", () => {
+it("повтор домена с регистром и точкой заменяет маршрут одной записи", async () => {
   const send=vi.fn();
   render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send}/>);
   fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
   fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
   fireEvent.change(screen.getByLabelText("Домен сайта"),{target:{value:" WORK.EXAMPLE. "}});
-  fireEvent.click(screen.getByRole("button",{name:"Сохранить правило"}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить в черновик"}));
+  await primenit();
   expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({trafik:expect.objectContaining({domeny:[{domen:"work.example",marshrut:"vpn"}]})}));
 });
 
@@ -49,7 +53,7 @@ it("новая форма учитывает смену общего режим�
   view.rerender(<Pravila {...props} pravila={initial}/>);
   expect(screen.getByRole("combobox",{name:"Маршрут нового правила"})).toHaveTextContent("Напрямую");
 });
-it("service toggle sends a domain bundle route without inventing process exclusions", () => {
+it("service toggle sends a domain bundle route without inventing process exclusions", async () => {
   const send = vi.fn();
   render(
     <Pravila
@@ -62,8 +66,9 @@ it("service toggle sends a domain bundle route without inventing process exclusi
   fireEvent.click(screen.getByLabelText("YouTube через VPN"));
   // Число и слово стоят в разных строках макета, поэтому пробел между ними
   // рисует раскладка, а не текст.
-  expect(screen.getByTestId("svodka-pravil").textContent).toMatch(/1\s*правило/);
+  expect(screen.getByTestId("svodka-pravil").textContent).toMatch(/2\s*правила/);
   expect(screen.getByText("2 домена с поддоменами")).toBeInTheDocument();
+  await primenit();
   expect(send).toHaveBeenCalledWith(
     "setRules",
     expect.objectContaining({
@@ -74,7 +79,7 @@ it("service toggle sends a domain bundle route without inventing process exclusi
     }),
   );
 });
-it("changing the default preserves explicit direct domain intent", () => {
+it("changing the default preserves explicit direct domain intent", async () => {
   const send = vi.fn();
   render(
     <Pravila
@@ -85,6 +90,7 @@ it("changing the default preserves explicit direct domain intent", () => {
     />,
   );
   fireEvent.click(screen.getByRole("radio", { name: "Всё через VPN" }));
+  await primenit();
   expect(send).toHaveBeenCalledWith(
     "setRules",
     expect.objectContaining({
@@ -92,7 +98,7 @@ it("changing the default preserves explicit direct domain intent", () => {
     }),
   );
 });
-it("application picker persists the complete path and descendant scope", () => {
+it("application picker persists the complete path and descendant scope", async () => {
   const send = vi.fn();
   render(
     <Pravila
@@ -106,7 +112,8 @@ it("application picker persists the complete path and descendant scope", () => {
   fireEvent.click(screen.getByRole("tab", { name: /Приложения/ }));
   fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
   fireEvent.click(screen.getByRole("button", { name: /^Steam,/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Сохранить правило" }));
+  fireEvent.click(screen.getByRole("button", { name: "Добавить в черновик" }));
+  await primenit();
   expect(send).toHaveBeenCalledWith(
     "setRules",
     expect.objectContaining({
@@ -142,7 +149,8 @@ it("browsing the PC fills a path and waits for an explicit save", async () => {
   await waitFor(() => expect(screen.getByLabelText("Путь к приложению")).toHaveValue(path));
   expect(picker).toHaveBeenCalledOnce();
   expect(send).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Сохранить правило" }));
+  fireEvent.click(screen.getByRole("button", { name: "Добавить в черновик" }));
+  await primenit();
   expect(send).toHaveBeenCalledWith("setRules", expect.objectContaining({
     trafik: expect.objectContaining({ prilozheniya: [
       { put: path, imya: "steam.EXE", potomki: true, marshrut: "vpn" },
@@ -181,7 +189,7 @@ it("blocks duplicate dialogs and discards a selection after leaving the form", a
   fireEvent.click(screen.getByRole("button", { name: "Выбрать на ПК…" }));
   const pending = screen.getByRole("button", { name: "Выбор…" });
   expect(pending).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Сохранить правило" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Добавить в черновик" })).toBeDisabled();
   fireEvent.click(pending);
   expect(picker).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("tab", { name: /Сайты/ }));

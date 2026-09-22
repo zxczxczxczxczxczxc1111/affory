@@ -1,4 +1,4 @@
-import type { KatalogServisov, PravilaTrafika } from "../trafik";
+import type { ChernovikPravil, KatalogServisov, PravilaTrafika } from "../trafik";
 import { Marshruty } from "./Marshruty";
 import type { OtkazNaEkrane, StatusOtvet } from "../protokol";
 import type { Zapushchennyy } from "../most";
@@ -15,6 +15,7 @@ import { Knopka, Neudacha } from "./ui";
 
 /** Body of listRules: two lists, normalized process paths and domains. */
 export interface PravilaOtvet {
+  reviziya_pravil?: string;
   trafik?: PravilaTrafika;
   katalog?: KatalogServisov;
   trebuet_podyoma?: boolean;
@@ -27,6 +28,8 @@ export interface PravilaOtvet {
 }
 
 export interface PravilaProps {
+  chernovik?: ChernovikPravil | null;
+  naChernovik?: (value: ChernovikPravil | null) => void;
   zanyato?: boolean;
   status: StatusOtvet;
   /** Deferred commands with wave numbers, from hello. `null` until it answers. */
@@ -46,7 +49,7 @@ export interface PravilaProps {
   zapushchennye?: Zapushchennyy[] | null;
   obnovitProtsessy?: () => void;
   naVyborPrilozheniya?: () => Promise<string>;
-  naKomandu: (komanda: string, telo: unknown) => void;
+  naKomandu: (komanda: string, telo: unknown) => void | Promise<boolean | undefined>;
   /** Команды в полёте, для вертушки на своей кнопке. `zanyato` выше это про
    *  другое: оно гасит экран целиком на время команды, меняющей туннель. */
   zanyatyeKomandy?: Record<string, boolean>;

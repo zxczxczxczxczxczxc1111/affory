@@ -102,7 +102,7 @@ func TestPravilaIzFaylaSohranyayutSovremennyeMarshruty(t *testing.T) {
 			Prilozheniya: []protokol.PraviloPrilozheniya{{Put: `C:\Программы\app.exe`, Imya: "Приложение", Potomki: children, Marshrut: protokol.TrafikVPN}},
 			Domeny:       []protokol.PraviloDomena{{Domen: "example.org", Marshrut: protokol.TrafikVPN}},
 			Servisy:      []protokol.PraviloServisa{{Id: "youtube", Marshrut: protokol.TrafikVPN}}}
-		body, err := json.Marshal(map[string]any{"trafik": traffic, "bez_ru_spiska": true})
+		body, err := json.Marshal(map[string]any{"trafik": traffic, "bez_ru_spiska": true, "reviziya_pravil": "saved-revision"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,6 +116,9 @@ func TestPravilaIzFaylaSohranyayutSovremennyeMarshruty(t *testing.T) {
 		}
 		if parsed.Trafik == nil {
 			t.Fatal("traffic policy was silently dropped")
+		}
+		if parsed.Reviziya != "saved-revision" {
+			t.Fatal("revision was lost; stale file could overwrite newer rules")
 		}
 		got, err := json.Marshal(parsed.Trafik)
 		if err != nil {

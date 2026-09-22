@@ -20,6 +20,17 @@ export interface PravilaTrafika {
   domeny: PraviloDomena[];
   servisy: PraviloServisa[];
 }
+
+export interface ChernovikPravil {
+  trafik: PravilaTrafika;
+  bezRu: boolean;
+  baza: string;
+  reviziya?: string;
+}
+
+export function snimokPravil(trafik: PravilaTrafika, bezRu: boolean): string {
+  return JSON.stringify({trafik,bezRu});
+}
 export interface KatalogServisov {
   versiya: string;
   istochnik: string;

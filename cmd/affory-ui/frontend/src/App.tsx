@@ -1,4 +1,5 @@
 import { aktualnyeZamery } from "./zamery";
+import type { ChernovikPravil } from "./trafik";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./desktop.css";
 import { Glavnyy } from "./ekrany/Glavnyy";
@@ -235,6 +236,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const [pravilaZhdut, zadatPravilaZhdut] = useState(false);
   // Running processes for the rules form; null until the shell answers.
   const [zapushchennye, zadatZapushchennye] = useState<Zapushchennyy[] | null>(null);
+  const [chernovikPravil, zadatChernovikPravil] = useState<ChernovikPravil | null>(null);
   const [vkladka, zadatVkladku] = useState<Vkladka>("podklyuchenie");
   // Шаг идущего обновления и зов трея к нему. Оба живут здесь, а не на экране
   // настроек: события приходят в оболочку, а экран может быть не показан вовсе.
@@ -412,8 +414,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         }
       }
       if (MENYAYUT_PRAVILA.has(komanda)) {
-        await obnovitPravila();
         const t = kadr.telo;
+        if (!kadr.oshibka && t && typeof t === "object" && "trafik" in t) zadatPravila(t as PravilaOtvet);
+        await obnovitPravila();
         if (!kadr.oshibka && t && typeof t === "object") zadatPravilaZhdut((t as { trebuet_podyoma?: unknown }).trebuet_podyoma === true);
       }
       // A fresh connect reads the rules from disk: nothing waits any more.
@@ -958,6 +961,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           />
         ) : vkladka === "pravila" ? (
           <Pravila
+            chernovik={chernovikPravil}
+            naChernovik={zadatChernovikPravil}
             zanyato={busyCommand !== null}
             zanyatyeKomandy={zanyatyeKomandy}
             status={naEkrane}
@@ -969,7 +974,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             zapushchennye={zapushchennye}
             obnovitProtsessy={obnovitProtsessy}
             naVyborPrilozheniya={vybratPrilozhenie}
-            naKomandu={(komanda, telo) => void vypolnit(komanda, telo)}
+            naKomandu={(komanda, telo) => vypolnit(komanda, telo)}
           />
         ) : vkladka === "nastroyki" ? (
           <Nastroyki
