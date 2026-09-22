@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StatusOtvet } from "./protokol";
@@ -37,6 +37,10 @@ const stend = vi.hoisted(() => {
     buferLomaetsya: false,
     protsessyLomayutsya: false,
     protsessy: [] as { imya: string; put: string }[],
+    /** Ответы списка программ придерживаются до прямой отдачи: без этого
+     *  поздний ответ прошлого запроса в тесте не воспроизвести вовсе. */
+    protsessyDerzhatsya: false,
+    protsessyOchered: [] as ((spisok: { imya: string; put: string }[]) => void)[],
     arhiv: "" as string,
     arhivLomaetsya: false,
     pravaLomayutsya: null as string | null,
@@ -149,6 +153,8 @@ vi.mock("./most", () => ({
   },
   spisokProtsessov: async () => {
     if (stend.s.protsessyLomayutsya) throw new Error("список процессов не читается");
+    if (stend.s.protsessyDerzhatsya)
+      return new Promise<{ imya: string; put: string }[]>((resolve) => stend.s.protsessyOchered.push(resolve));
     return [...stend.s.protsessy];
   },
   otkrytPapkuZhurnalov: async () => { stend.s.sled.push({chto:"otkrytPapkuZhurnalov",args:[]}); },
@@ -210,6 +216,20 @@ function mostProby() {
     },
     lomatProtsessy() {
       s.protsessyLomayutsya = true;
+    },
+    /** Дальше список программ не отвечает сам: ответы отдаются по номеру
+     *  запроса, и порядок выбирает тест. */
+    derzhatProtsessy() {
+      s.protsessyDerzhatsya = true;
+    },
+    skolkoZaprosovProtsessov(): number {
+      return s.protsessyOchered.length;
+    },
+    /** Отдаёт удержанный ответ: `nomer` это порядок запроса, с нуля. */
+    otvetitProtsessami(nomer: number, spisok: { imya: string; put: string }[]) {
+      const otdat = s.protsessyOchered[nomer];
+      if (!otdat) throw new Error(`запроса списка программ №${nomer} не было`);
+      otdat(spisok);
     },
     lomatArhiv() {
       s.arhivLomaetsya = true;
@@ -291,6 +311,8 @@ beforeEach(() => {
   s.buferLomaetsya = false;
   s.protsessyLomayutsya = false;
   s.protsessy = [];
+  s.protsessyDerzhatsya = false;
+  s.protsessyOchered = [];
   s.arhiv = "";
   s.arhivLomaetsya = false;
   s.pravaLomayutsya = null;
@@ -605,12 +627,18 @@ describe("ни один отказ не пропадает молча", () => {
   });
 
   it("несписанные процессы объясняются строкой, а не исчезновением", async () => {
+    // Раньше причина уезжала в общий баннер окна: «список не читается» висело
+    // поверх всего экрана правил, хотя мешало оно одной форме. C8 перенёс её
+    // туда, где человек её и ждёт, вместе с кнопкой повтора.
     const most = mostProby();
     most.lomatProtsessy();
     render(<App />);
     await screen.findByText(/выключено/i);
     fireEvent.click(screen.getByText("Правила"));
+    fireEvent.click(await screen.findByRole("tab", { name: /Приложения/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
     await screen.findByText(/список процессов не читается/i);
+    expect(screen.getByRole("button", { name: "Повторить" })).toBeEnabled();
   });
 
   it("непонятые строки подписки доезжают до экрана, а не остаются в ответе службы", async () => {
@@ -701,6 +729,31 @@ it("кнопка папки журналов вызывает нативный �
   fireEvent.click(screen.getByRole("button",{name:"Открыть папку с логами"}));
   await waitFor(()=>expect(stend.s.sled.some(v=>v.chto==="otkrytPapkuZhurnalov")).toBe(true));
   expect(most.skolkoRaz("clearJournal")).toBe(0);
+});
+
+it("поздний ответ списка программ не перетирает свежий", async () => {
+  // Список запрашивается по открытию формы, по кнопке и по возврату фокуса в
+  // окно, поэтому два запроса в полёте это обычное дело. Без номера запроса
+  // медленный первый ответ приходил последним и возвращал в форму снимок,
+  // который человек уже обновил вручную.
+  const most = mostProby();
+  most.derzhatProtsessy();
+  render(<App />);
+  await screen.findByText(/выключено/i);
+  fireEvent.click(screen.getByText("Правила"));
+  fireEvent.click(await screen.findByRole("tab", { name: /Приложения/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
+  await waitFor(() => expect(most.skolkoZaprosovProtsessov()).toBeGreaterThan(0));
+  const staryy = most.skolkoZaprosovProtsessov() - 1;
+  // Второй запрос приходит от возврата фокуса в окно: кнопка на время чтения
+  // занята, а окно за это время могли свернуть и развернуть.
+  fireEvent.focus(window);
+  await waitFor(() => expect(most.skolkoZaprosovProtsessov()).toBe(staryy + 2));
+  await act(async () => { most.otvetitProtsessami(staryy + 1, [{ imya: "Свежий", put: "C:\\Fresh.exe" }]); });
+  expect(await screen.findByRole("button", { name: /^Свежий,/ })).toBeInTheDocument();
+  await act(async () => { most.otvetitProtsessami(staryy, [{ imya: "Прошлый", put: "C:\\Stale.exe" }]); });
+  expect(screen.queryByRole("button", { name: /^Прошлый,/ })).toBeNull();
+  expect(screen.getByRole("button", { name: /^Свежий,/ })).toBeInTheDocument();
 });
 
 it("настройки получают сохранённые прямые маршруты и не отправляют включение блокировки",async()=>{

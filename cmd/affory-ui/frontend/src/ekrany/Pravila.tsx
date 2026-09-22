@@ -47,9 +47,16 @@ export interface PravilaProps {
   obnovitPravila?: () => void;
   /** setRules answered trebuet_podyoma: the core has no hot reload of rules. */
   zhdutPodyoma?: boolean;
-  /** Running processes of this session for the picker; `null` until loaded
-   *  (or when the shell could not list them), and then the path field alone. */
+  /** Running processes of this session for the picker; `null` until the shell
+   *  has answered at least once. Пустой массив это ИЗМЕРЕННЫЙ ноль, и он не
+   *  равен неудаче чтения: у неудачи ниже своё поле. */
   zapushchennye?: Zapushchennyy[] | null;
+  /** Запрос списка в полёте. Нужен отдельно от `zapushchennye`: при повторном
+   *  чтении список на руках уже есть, и «читаю» относится только к кнопке. */
+  protsessyChitayutsya?: boolean;
+  /** Почему список не удалось прочитать. Пустая строка значит «претензий нет»,
+   *  а не «список пуст». */
+  protsessyOtkaz?: string;
   obnovitProtsessy?: () => void;
   naVyborPrilozheniya?: () => Promise<string>;
   naKomandu: (komanda: string, telo: unknown) => void | Promise<boolean | undefined>;

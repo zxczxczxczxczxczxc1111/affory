@@ -238,6 +238,12 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const [pravilaZhdut, zadatPravilaZhdut] = useState(false);
   // Running processes for the rules form; null until the shell answers.
   const [zapushchennye, zadatZapushchennye] = useState<Zapushchennyy[] | null>(null);
+  // Три состояния вместо одного `null`: идёт чтение, оболочка отказала, ответ
+  // получен. До этого пустой ответ и неудача давали в форме одну строку «Не
+  // найдено», то есть провал выглядел ровно как отсутствие запущенных программ.
+  const [protsessyChitayutsya, zadatProtsessyChitayutsya] = useState(false);
+  const [protsessyOtkaz, zadatProtsessyOtkaz] = useState("");
+  const nomerProtsessov = useRef(0);
   const [chernovikPravil, zadatChernovikPravil] = useState<ChernovikPravil | null>(null);
   const [vkladka, zadatVkladku] = useState<Vkladka>("podklyuchenie");
   // Шаг идущего обновления и зов трея к нему. Оба живут здесь, а не на экране
@@ -288,12 +294,32 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     zadatOtkaz({ kod: KOD_OBOLOCHKI, tekst: `${chto}: ${e instanceof Error ? e.message : String(e)}` });
   }, []);
 
+  // Номер запроса, как у listServers и listRules: форма зовёт это и по
+  // открытию, и по кнопке, и по возврату фокуса в окно, поэтому поздний ответ
+  // прошлого запроса обязан молчать, а не перетирать свежий список.
   const obnovitProtsessy = useCallback(() => {
-    void spisokProtsessov().then(zadatZapushchennye).catch((e: unknown) => {
-      zadatZapushchennye(null);
-      zhaloba("spisokProtsessov", e);
+    const nomer = ++nomerProtsessov.current;
+    zadatProtsessyChitayutsya(true);
+    void spisokProtsessov().then((spisok) => {
+      if (nomer !== nomerProtsessov.current) return;
+      zadatZapushchennye(spisok);
+      zadatProtsessyOtkaz("");
+      zadatProtsessyChitayutsya(false);
+    }).catch((e: unknown) => {
+      if (nomer !== nomerProtsessov.current) return;
+      zadatProtsessyChitayutsya(false);
+      // Мёртвая труба это история экрана связи; своего баннера ей тут не нужно.
+      if (e instanceof KanalNedostupen) {
+        zadatSvyaz("net");
+        return;
+      }
+      // Прошлый снимок НЕ стирается: форма покажет его с пометкой, что
+      // обновить не удалось. Стереть значит обменять устаревший список на
+      // пустой. Общий баннер тоже не поднимается: путь можно ввести руками
+      // или выбрать на ПК, и список запущенных программ этому не мешает.
+      zadatProtsessyOtkaz(e instanceof Error ? e.message : String(e));
     });
-  }, [zhaloba]);
+  }, []);
 
   const obnovitSpisok = useCallback(async () => {
     const nomer = ++nomerSpiska.current;
@@ -984,6 +1010,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             obnovitPravila={() => void obnovitPravila()}
             zhdutPodyoma={pravilaZhdut && naEkrane.sostoyanie !== "vyklyuchen"}
             zapushchennye={zapushchennye}
+            protsessyChitayutsya={protsessyChitayutsya}
+            protsessyOtkaz={protsessyOtkaz}
             obnovitProtsessy={obnovitProtsessy}
             naVyborPrilozheniya={vybratPrilozhenie}
             naKomandu={(komanda, telo) => vypolnit(komanda, telo)}

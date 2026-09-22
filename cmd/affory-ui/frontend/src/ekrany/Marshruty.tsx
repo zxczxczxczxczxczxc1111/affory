@@ -84,6 +84,8 @@ export function Marshruty({
   chernovik,
   naChernovik,
   zapushchennye,
+  protsessyChitayutsya = false,
+  protsessyOtkaz = "",
   obnovitProtsessy,
   naVyborPrilozheniya,
   naKomandu,
@@ -160,6 +162,20 @@ export function Marshruty({
   const candidates = (zapushchennye ?? []).filter((p) =>
     `${p.imya} ${p.put}`.toLowerCase().includes(query.toLowerCase()),
   );
+  // Разные ответы вместо одного «Не найдено»: идёт чтение, чтение провалилось,
+  // запущенных программ действительно ноль, запрос ничего не отобрал, ответа
+  // ещё не было вовсе. Ноль в непустом ответе это ИЗМЕРЕННЫЙ ноль, а провал и
+  // отсутствие ответа мерили не программы человека, а нашу связь с оболочкой.
+  //
+  // Список на руках старше отказа: он остаётся с пометкой сверху, потому что
+  // устаревший снимок полезнее пустоты, а путь можно ввести и руками.
+  const spisokEst = !!zapushchennye;
+  const sostoyanieSpiska: "chitaetsya" | "otkaz" | "pusto" | "bezSovpadeniy" | "netOtveta" | "est" =
+    candidates.length > 0 ? "est"
+    : spisokEst ? (zapushchennye.length > 0 ? "bezSovpadeniy" : "pusto")
+    : protsessyChitayutsya ? "chitaetsya"
+    : protsessyOtkaz !== "" ? "otkaz"
+    : "netOtveta";
   const changeTab = (next: typeof tab) => {
     pickerEpoch.current++;
     setPicking(false);
@@ -532,12 +548,33 @@ export function Marshruty({
                 <div className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-4">
                   {tab === "apps" ? (
                     <>
-                      <Poisk
-                        aria-label="Поиск приложения"
-                        znachenie={query}
-                        naVvod={setQuery}
-                        placeholder="Найти среди запущенных"
-                      />
+                      <div className="flex items-center gap-3">
+                        <Poisk
+                          aria-label="Поиск приложения"
+                          znachenie={query}
+                          naVvod={setQuery}
+                          placeholder="Найти среди запущенных"
+                        />
+                        {/* Список запрашивается заново и по открытию формы, и
+                            по возврату фокуса в окно. Кнопка тут для случая,
+                            когда программу запустили при открытой форме: без
+                            неё оставалось только закрыть форму и открыть. */}
+                        <Knopka
+                          rang="vtoraya"
+                          zhdyot={protsessyChitayutsya}
+                          aktiven={!disabled && !!obnovitProtsessy}
+                          onClick={() => obnovitProtsessy?.()}
+                        >
+                          {protsessyChitayutsya ? "Читаю" : "Обновить"}
+                        </Knopka>
+                      </div>
+                      {/* Отказ при списке на руках: снимок остаётся, но он
+                          больше не выдаётся за свежий. */}
+                      {protsessyOtkaz !== "" && spisokEst && (
+                        <p role="status" className="text-warn text-[13px]">
+                          Список мог устареть, обновить его не удалось: {protsessyOtkaz}
+                        </p>
+                      )}
                       <div className="border-border flex max-h-[220px] flex-col overflow-y-auto rounded-lg border" aria-label="Запущенные приложения">
                         {candidates.map((p) => (
                           <button
@@ -554,9 +591,42 @@ export function Marshruty({
                             <span className="text-fg-muted truncate text-[13px]" title={p.put}>{sokratitPut(p.put)}</span>
                           </button>
                         ))}
-                        {candidates.length === 0 && (
+                        {sostoyanieSpiska === "chitaetsya" && (
+                          <p role="status" className="text-fg-muted px-3 py-6 text-center text-[13px]">
+                            Читаю запущенные программы
+                          </p>
+                        )}
+                        {sostoyanieSpiska === "otkaz" && (
+                          <div role="alert" className="flex flex-col items-center gap-2 px-3 py-6 text-center">
+                            <p className="text-danger text-[13px]">
+                              Не удалось прочитать запущенные программы: {protsessyOtkaz}
+                            </p>
+                            <p className="text-fg-muted text-[13px]">
+                              Выбери приложение на ПК или укажи путь ниже
+                            </p>
+                            <Knopka
+                              rang="vtoraya"
+                              zhdyot={protsessyChitayutsya}
+                              aktiven={!disabled && !!obnovitProtsessy}
+                              onClick={() => obnovitProtsessy?.()}
+                            >
+                              Повторить
+                            </Knopka>
+                          </div>
+                        )}
+                        {sostoyanieSpiska === "pusto" && (
                           <p className="text-fg-muted px-3 py-6 text-center text-[13px]">
-                            Не найдено. Выбери приложение на ПК или укажи путь ниже
+                            Запущенных программ не видно. Выбери приложение на ПК или укажи путь ниже
+                          </p>
+                        )}
+                        {sostoyanieSpiska === "bezSovpadeniy" && (
+                          <p className="text-fg-muted px-3 py-6 text-center text-[13px]">
+                            Совпадений нет. Выбери приложение на ПК или укажи путь ниже
+                          </p>
+                        )}
+                        {sostoyanieSpiska === "netOtveta" && (
+                          <p className="text-fg-muted px-3 py-6 text-center text-[13px]">
+                            Список запущенных программ пока не получен. Выбери приложение на ПК или укажи путь ниже
                           </p>
                         )}
                       </div>

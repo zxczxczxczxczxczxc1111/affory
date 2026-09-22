@@ -281,3 +281,62 @@ it("журнал перенесён из правил в настройки", ()
   expect(screen.queryByTestId("diagnostika")).toBeNull();
   expect(screen.queryByTestId("razdel-zhurnal")).toBeNull();
 });
+
+// C8. Пустой ответ оболочки и неудачное чтение рисовались ОДНОЙ строкой «Не
+// найдено»: провал выглядел ровно как машина без запущенных программ, и
+// повторить чтение было нечем, кроме закрытия формы.
+function otkrytFormuPrilozheniy(props: Partial<Parameters<typeof Pravila>[0]> = {}) {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={vi.fn()} {...props}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+}
+
+it("чтение списка программ не выдаётся за пустой список", () => {
+  otkrytFormuPrilozheniy({zapushchennye:null,protsessyChitayutsya:true,obnovitProtsessy:vi.fn()});
+  expect(screen.getByText(/Читаю запущенные программы/)).toBeInTheDocument();
+  expect(screen.queryByText(/не видно/)).toBeNull();
+  // Путь руками остаётся доступен всё это время: список программ удобство, а
+  // не единственный способ завести правило.
+  expect(screen.getByLabelText("Путь к приложению")).toBeEnabled();
+});
+
+it("неудачное чтение списка программ объясняется и повторяется по кнопке", () => {
+  const obnovit = vi.fn();
+  otkrytFormuPrilozheniy({zapushchennye:null,protsessyOtkaz:"канал оболочки закрыт",obnovitProtsessy:obnovit});
+  const soobshchenie = screen.getByRole("alert");
+  expect(soobshchenie).toHaveTextContent(/Не удалось прочитать запущенные программы/);
+  expect(soobshchenie).toHaveTextContent("канал оболочки закрыт");
+  expect(screen.queryByText(/не видно/)).toBeNull();
+  expect(screen.getByLabelText("Путь к приложению")).toBeEnabled();
+  obnovit.mockClear();
+  fireEvent.click(screen.getByRole("button",{name:"Повторить"}));
+  expect(obnovit).toHaveBeenCalledTimes(1);
+});
+
+it("измеренный ноль программ отличается от отсутствия совпадений", () => {
+  otkrytFormuPrilozheniy({zapushchennye:[],obnovitProtsessy:vi.fn()});
+  expect(screen.getByText(/Запущенных программ не видно/)).toBeInTheDocument();
+  cleanup();
+  otkrytFormuPrilozheniy({zapushchennye:[{imya:"Steam",put:"C:\\Games\\steam.exe"}],obnovitProtsessy:vi.fn()});
+  fireEvent.change(screen.getByLabelText("Поиск приложения"),{target:{value:"discord"}});
+  expect(screen.getByText(/Совпадений нет/)).toBeInTheDocument();
+  expect(screen.queryByText(/Запущенных программ не видно/)).toBeNull();
+});
+
+it("отказ при списке на руках оставляет снимок с пометкой, а не пустоту", () => {
+  otkrytFormuPrilozheniy({
+    zapushchennye:[{imya:"Steam",put:"C:\\Games\\steam.exe"}],
+    protsessyOtkaz:"оболочка не ответила",
+    obnovitProtsessy:vi.fn(),
+  });
+  expect(screen.getByRole("button",{name:/^Steam,/})).toBeInTheDocument();
+  expect(screen.getByText(/Список мог устареть/)).toHaveTextContent("оболочка не ответила");
+});
+
+it("кнопка обновления перечитывает список при открытой форме", () => {
+  const obnovit = vi.fn();
+  otkrytFormuPrilozheniy({zapushchennye:[],obnovitProtsessy:obnovit});
+  obnovit.mockClear();
+  fireEvent.click(screen.getByRole("button",{name:"Обновить"}));
+  expect(obnovit).toHaveBeenCalledTimes(1);
+});
