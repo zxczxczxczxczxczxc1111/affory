@@ -67,7 +67,7 @@ export function sokratitPut(put: string, predel = 58): string {
 
 // Колонки таблиц задаются ОДНОЙ строкой на вид и переиспользуются шапкой и
 // строками: две раскладки рядом это два места, где колонки разъезжаются.
-const SETKA_PRILOZHENIY = "grid grid-cols-[minmax(0,1fr)_190px_150px_110px] items-center gap-x-4";
+const SETKA_PRILOZHENIY = "grid grid-cols-[minmax(0,1fr)_150px_80px] min-[1100px]:grid-cols-[minmax(0,1fr)_190px_150px_110px] items-center gap-x-4 gap-y-2";
 const SETKA_SAYTOV = "grid grid-cols-[minmax(0,1fr)_150px_110px] items-center gap-x-4";
 
 export function Marshruty({
@@ -157,14 +157,16 @@ export function Marshruty({
           },
         ],
       });
-    else
+    else {
+      const normalized = domain.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
       save({
         ...trafik,
         domeny: [
-          ...domains.filter((d) => d.domen !== domain.trim().toLowerCase()),
-          { domen: domain.trim(), marshrut: route },
+          ...domains.filter((d) => d.domen !== normalized),
+          { domen: normalized, marshrut: route },
         ],
       });
+    }
     // Keep typed values available when validation fails; a rejected form is not amnesia.
   };
 
@@ -481,7 +483,13 @@ export function Marshruty({
                   bolshaya
                   aria-expanded={adding}
                   aktiven={!disabled}
-                  onClick={() => { pickerEpoch.current++; setPickerError(""); setPicking(false); setAdding(!adding); }}
+                  onClick={() => {
+                    pickerEpoch.current++;
+                    setPickerError("");
+                    setPicking(false);
+                    if (!adding) setRoute(trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn");
+                    setAdding(!adding);
+                  }}
                 >
                   <IkPlyus className="h-4 w-4" />
                   {adding ? "Закрыть" : "Добавить"}
@@ -590,7 +598,7 @@ export function Marshruty({
                 </div>
               ) : tab === "apps" ? (
                 <div>
-                  <div className={`${SETKA_PRILOZHENIY} border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
+                  <div className={`${SETKA_PRILOZHENIY} max-[1099px]:hidden border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
                     <span>Приложение</span>
                     <span>Дочерние процессы</span>
                     <span>Маршрут</span>
@@ -599,7 +607,7 @@ export function Marshruty({
                   <ul>
                     {apps.map((app) => (
                       <li key={app.put} className={`${SETKA_PRILOZHENIY} border-border hover:bg-surface-hover border-b px-3 py-2.5 transition-colors`}>
-                        <span className="flex min-w-0 flex-col gap-0.5">
+                        <span className="col-span-3 min-[1100px]:col-span-1 flex min-w-0 flex-col gap-0.5">
                           <span className="text-foreground truncate text-sm font-medium">{app.imya}</span>
                           {/* Длинный путь теряет СЕРЕДИНУ, а не хвост: диск говорит, где
                               файл живёт, имя говорит, что это за файл, а папки посередине

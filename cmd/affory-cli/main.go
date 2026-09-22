@@ -282,16 +282,16 @@ func podpiska(k *kanal.Klient, pod string, slova []string) {
 	}
 }
 
-// pravilaFayla это тело setRules, как оно лежит в файле: два списка и
-// выключатель российского набора.
+// pravilaFayla принимает современную политику маршрутов и прежние два списка.
 //
 // Выключатель указателем, а не bool: служба различает «выключить» и «не
 // трогали», и файл со списками, написанный до его появления, не должен
 // возвращать набор на место молча.
 type pravilaFayla struct {
-	Protsessy   []string `json:"protsessy"`
-	Domeny      []string `json:"domeny"`
-	BezRuSpiska *bool    `json:"bez_ru_spiska,omitempty"`
+	Trafik      *protokol.PravilaTrafika `json:"trafik,omitempty"`
+	Protsessy   []string                 `json:"protsessy"`
+	Domeny      []string                 `json:"domeny"`
+	BezRuSpiska *bool                    `json:"bez_ru_spiska,omitempty"`
 }
 
 // pravilaIzFayla читает правила из файла. Файл, а не argv: список путей на
@@ -330,7 +330,7 @@ func pravila(k *kanal.Klient, pod, otkuda string) {
 		pechat(k.Zvat("listRules", nil))
 	case "set":
 		if otkuda == "" {
-			vyhod("rules set ждёт --in <файл с {\"protsessy\":[],\"domeny\":[],\"bez_ru_spiska\":false}>")
+			vyhod("rules set ждёт --in <JSON-файл с trafik или прежними protsessy/domeny>")
 		}
 		p, err := pravilaIzFayla(otkuda)
 		if err != nil {

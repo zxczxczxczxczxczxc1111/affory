@@ -25,6 +25,30 @@ const rules: PravilaOtvet = {
     ],
   },
 };
+
+it("повтор домена с регистром и точкой заменяет маршрут одной записи", () => {
+  const send=vi.fn();
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  fireEvent.change(screen.getByLabelText("Домен сайта"),{target:{value:" WORK.EXAMPLE. "}});
+  fireEvent.click(screen.getByRole("button",{name:"Сохранить правило"}));
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({trafik:expect.objectContaining({domeny:[{domen:"work.example",marshrut:"vpn"}]})}));
+});
+
+it("новая форма учитывает смену общего режима, открытая сохраняет выбранный маршрут", () => {
+  const initial:PravilaOtvet={...rules,trafik:{...rules.trafik!,po_umolchaniyu:"vpn"}};
+  const props={status:{sostoyanie:"vyklyuchen" as const},otlozheno:{},naKomandu:vi.fn()};
+  const view=render(<Pravila {...props} pravila={initial}/>);
+  view.rerender(<Pravila {...props} pravila={rules}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  expect(screen.getByRole("combobox",{name:"Маршрут нового правила"})).toHaveTextContent("Через VPN");
+  fireEvent.click(screen.getByRole("combobox",{name:"Маршрут нового правила"}));
+  fireEvent.click(screen.getByRole("option",{name:"Напрямую"}));
+  view.rerender(<Pravila {...props} pravila={initial}/>);
+  expect(screen.getByRole("combobox",{name:"Маршрут нового правила"})).toHaveTextContent("Напрямую");
+});
 it("service toggle sends a domain bundle route without inventing process exclusions", () => {
   const send = vi.fn();
   render(

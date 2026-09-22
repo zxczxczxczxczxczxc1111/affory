@@ -96,6 +96,41 @@ func TestPravilaIzFaylaChitayutsyaKakEst(t *testing.T) {
 	}
 }
 
+func TestPravilaIzFaylaSohranyayutSovremennyeMarshruty(t *testing.T) {
+	for _, children := range []bool{false, true} {
+		traffic := protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikPryamo,
+			Prilozheniya: []protokol.PraviloPrilozheniya{{Put: `C:\Программы\app.exe`, Imya: "Приложение", Potomki: children, Marshrut: protokol.TrafikVPN}},
+			Domeny:       []protokol.PraviloDomena{{Domen: "example.org", Marshrut: protokol.TrafikVPN}},
+			Servisy:      []protokol.PraviloServisa{{Id: "youtube", Marshrut: protokol.TrafikVPN}}}
+		body, err := json.Marshal(map[string]any{"trafik": traffic, "bez_ru_spiska": true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "rules.json")
+		if err := os.WriteFile(path, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := pravilaIzFayla(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Trafik == nil {
+			t.Fatal("traffic policy was silently dropped")
+		}
+		got, err := json.Marshal(parsed.Trafik)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := json.Marshal(traffic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(want) || parsed.BezRuSpiska == nil || !*parsed.BezRuSpiska {
+			t.Fatal("modern policy changed before transmission")
+		}
+	}
+}
+
 func TestPravilaSBOMChitayutsya(t *testing.T) {
 	// PowerShell's Set-Content -Encoding UTF8 writes a BOM, and so does
 	// Notepad. Found on the stand 03.09.2026: the file was written the most
