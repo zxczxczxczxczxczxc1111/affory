@@ -133,7 +133,9 @@ const pravila = {
     po_umolchaniyu: "vpn",
     prilozheniya: [
       { put: "C:\\Program Files\\Mozilla Firefox\\firefox.exe", imya: "firefox.exe", potomki: true, marshrut: "direct" },
-      { put: "C:\\Users\\home\\AppData\\Local\\Steam\\steam.exe", imya: "steam.exe", potomki: true, marshrut: "direct" },
+      // Свои программы, а не программы сервисов: правило на steam.exe служба
+      // снимает при обновлении, этой программой теперь управляет карточка.
+      { put: "C:\\Program Files\\Epic Games\\Fortnite\\FortniteClient-Win64-Shipping.exe", imya: "FortniteClient-Win64-Shipping.exe", potomki: true, marshrut: "direct" },
       { put: "C:\\Program Files\\qBittorrent\\qbittorrent.exe", imya: "qbittorrent.exe", potomki: false, marshrut: "vpn" },
     ],
     domeny: [
@@ -148,19 +150,26 @@ const pravila = {
     ],
   },
   // Каталог повторяет встроенный (internal/katalog/servisy.json): те же
-  // восемь сервисов и те же домены, иначе снимок врёт о содержимом выпуска.
+  // сервисы, те же домены и те же имена клиентов, иначе снимок врёт о
+  // содержимом выпуска. Пять последних живут без доменов: набора в iplist для
+  // них нет, и маршрут держится на программе.
   katalog: {
     versiya: "2026.09.08",
     istochnik: "https://iplist.opencck.org/ru/",
     servisy: [
-      { id: "youtube", imya: "YouTube", domeny: ["youtube.com", "youtu.be", "googlevideo.com"], istochnik: "https://github.com/rekryt/iplist/" },
-      { id: "discord", imya: "Discord", domeny: ["discord.com", "discord.gg", "discord.media"], istochnik: "https://github.com/rekryt/iplist/" },
-      { id: "chatgpt", imya: "ChatGPT", domeny: ["chatgpt.com", "openai.com", "oaistatic.com"], istochnik: "https://github.com/rekryt/iplist/" },
-      { id: "instagram", imya: "Instagram", domeny: ["instagram.com", "cdninstagram.com"], istochnik: "https://github.com/rekryt/iplist/" },
-      { id: "claude", imya: "Claude", domeny: ["claude.ai", "claude.com", "anthropic.com"], istochnik: "https://github.com/rekryt/iplist/" },
-      { id: "telegram", imya: "Telegram", domeny: ["telegram.org", "telegram.me", "t.me"], istochnik: "https://github.com/rekryt/iplist/" },
-      { id: "spotify", imya: "Spotify", domeny: ["spotify.com", "scdn.co", "spotifycdn.com"], istochnik: "https://github.com/rekryt/iplist/" },
-      { id: "soundcloud", imya: "SoundCloud", domeny: ["soundcloud.com", "sndcdn.com", "snd.sc"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "youtube", imya: "YouTube", domeny: ["youtube.com", "youtu.be", "googlevideo.com"], programmy: [], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "discord", imya: "Discord", domeny: ["discord.com", "discord.gg", "discord.media"], programmy: ["Discord.exe", "DiscordPTB.exe", "DiscordCanary.exe"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "chatgpt", imya: "ChatGPT", domeny: ["chatgpt.com", "openai.com", "oaistatic.com"], programmy: ["ChatGPT.exe"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "instagram", imya: "Instagram", domeny: ["instagram.com", "cdninstagram.com"], programmy: [], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "claude", imya: "Claude", domeny: ["claude.ai", "claude.com", "anthropic.com"], programmy: ["Claude.exe"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "telegram", imya: "Telegram", domeny: ["telegram.org", "telegram.me", "t.me"], programmy: ["Telegram.exe", "Telegram Desktop.exe"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "spotify", imya: "Spotify", domeny: ["spotify.com", "scdn.co", "spotifycdn.com"], programmy: ["Spotify.exe"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "soundcloud", imya: "SoundCloud", domeny: ["soundcloud.com", "sndcdn.com", "snd.sc"], programmy: ["SoundCloud.exe"], istochnik: "https://github.com/rekryt/iplist/" },
+      { id: "steam", imya: "Steam", domeny: [], programmy: ["steam.exe"] },
+      { id: "epicgames", imya: "Epic Games", domeny: [], programmy: ["EpicGamesLauncher.exe"] },
+      { id: "battlenet", imya: "Battle.net", domeny: [], programmy: ["Battle.net.exe"] },
+      { id: "riot", imya: "Riot Client", domeny: [], programmy: ["RiotClientServices.exe"] },
+      { id: "ubisoft", imya: "Ubisoft Connect", domeny: [], programmy: ["UbisoftConnect.exe", "upc.exe"] },
     ],
   },
 };
@@ -365,11 +374,24 @@ function izvestit(imya: string, data: unknown): void {
   for (const o of podpischiki.get(imya) ?? []) o({ data });
 }
 
+// Пути настоящего вида: у Discord в нём номер сборки, у Steam диск установки.
+// Ровно поэтому путь и не угадывается в самом окне.
+const ZAPUSHCHENNYE = [
+  { imya: "Discord", put: "C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe" },
+  { imya: "Steam", put: "C:\\Program Files (x86)\\Steam\\steam.exe" },
+  { imya: "Telegram", put: "C:\\Users\\home\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe" },
+  { imya: "Браузер", put: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" },
+];
+
 export const Call = {
   async ByName(imya: string, ...args: unknown[]): Promise<unknown> {
     if (imya === "main.most.VybratPrilozhenie") throw new Error("В браузерном стенде выбор файла недоступен. В установленном Affory откроется окно выбора приложения.");
     if (imya === "main.most.OtkrytPapkuZhurnalov") throw new Error("В браузерном стенде Проводник недоступен. В установленном Affory кнопка открывает папку журналов.");
     if (imya === "main.most.SluzhbaUstanovlena") return true;
+    // Запущенные программы стенда. Без них карточки сервисов с клиентом
+    // выглядели бы «не запущено» на всех снимках, а у Steam маршрут вовсе
+    // нельзя было бы выбрать: путь берётся среди запущенных.
+    if (imya === "main.most.SpisokProtsessov") return ZAPUSHCHENNYE;
     if (imya === "main.most.Zvat") {
       const komanda = String(args[0]);
       // Тело запроса приезжает вторым доводом строкой JSON (см. most.ts).

@@ -33,6 +33,14 @@ type PravilaNabora struct {
 	// не знают, и при разборе оно станет false, то есть «список на месте»: так
 	// обновление никому не меняет поведение молча.
 	BezRuSpiska bool `json:"bez_ru_spiska,omitempty"`
+	// StaryeProgrammySnyaty значит «правила приложений на программы сервисов уже
+	// сняты» (D2, 22.09.2026). Поле положительное: набор с диска этого поля не
+	// знает, при разборе оно станет false, и чистка случится ровно один раз - на
+	// первом чтении после обновления.
+	//
+	// Без флага чистка повторялась бы на каждом чтении и снимала правило,
+	// которое человек завёл руками уже после обновления.
+	StaryeProgrammySnyaty bool `json:"starye_programmy_snyaty,omitempty"`
 }
 
 // zaprosPravil это ТЕЛО команды setRules, а не то, что ложится в набор.
@@ -90,7 +98,10 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 		// Прежнее значение выключателя берётся из набора ПОД ЗАМКОМ правки, а
 		// не читается отдельно: между чтением и записью успевает пройти чужая
 		// правка, и вернулось бы то, что уже отменили.
-		vhod := PravilaNabora{Protsessy: telo.Protsessy, Domeny: telo.Domeny, BezRuSpiska: n.Pravila.BezRuSpiska}
+		vhod := PravilaNabora{Protsessy: telo.Protsessy, Domeny: telo.Domeny, BezRuSpiska: n.Pravila.BezRuSpiska,
+			// Флаг чистки берётся из НАБОРА: окно про него не знает и слать его
+			// не будет, а потеря флага вернула бы чистку на каждую правку.
+			StaryeProgrammySnyaty: n.Pravila.StaryeProgrammySnyaty}
 		vhod.Trafik = n.Pravila.Trafik
 		if telo.Trafik != nil {
 			vhod.Trafik = telo.Trafik
@@ -200,7 +211,8 @@ func otlichaetsya(prislano zaprosPravil, prinyato PravilaNabora) bool {
 // процесса), но не делает негодным список. Отказ rule-invalid остаётся ровно
 // для правил, которых в наборе ещё не было, и называет конкретное правило.
 func proveritPravila(t PravilaNabora, bylo PravilaNabora) (PravilaNabora, error) {
-	itog := PravilaNabora{Protsessy: []string{}, Domeny: []string{}, BezRuSpiska: t.BezRuSpiska}
+	itog := PravilaNabora{Protsessy: []string{}, Domeny: []string{}, BezRuSpiska: t.BezRuSpiska,
+		StaryeProgrammySnyaty: t.StaryeProgrammySnyaty}
 	if t.Trafik != nil {
 		trafik, err := proveritTrafik(*t.Trafik, trafikPravil(bylo))
 		if err != nil {

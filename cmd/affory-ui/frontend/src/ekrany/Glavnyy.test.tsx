@@ -189,22 +189,17 @@ describe("главный экран: имя несущего и четыре п�
   });
 });
 
-describe("подпись под переключателем режима", () => {
-  // Задача И1 научила службу применять режим на ЖИВОМ ядре через clash_api:
-  // переподъём больше не нужен. Подпись при этом продолжала обещать обратное,
-  // и человек, переключивший режим на поднятом туннеле, ждал бы переподключения
-  // ради уже случившегося. Подпись обязана зависеть от того, поднят ли туннель.
-  it("на поднятом туннеле обещает применение сразу", () => {
-    render(<Glavnyy status={{ sostoyanie: "podnyat", rezhim_marshruta: "ruchnoy" }} />);
-    const podskazka = screen.getByTestId("podskazka-rezhima").textContent ?? "";
-    expect(podskazka).not.toContain("следующего подключения");
-    expect(podskazka).toContain("сразу");
-  });
-
-  it("на опущенном туннеле честно говорит про следующее подключение", () => {
-    // Зеркало: без него проверка выше зелена на подписи, которая молчит всегда.
-    render(<Glavnyy status={{ sostoyanie: "vyklyuchen", rezhim_marshruta: "ruchnoy" }} />);
-    expect(screen.getByTestId("podskazka-rezhima")).toHaveTextContent("Нажми на сервер, чтобы подключиться к нему");
+describe("переключатель режима", () => {
+  // Подпись под ним снята 22.09.2026: она пересказывала сам переключатель.
+  // Сторож остаётся от прежней истории (задача И1): служба применяет режим на
+  // ЖИВОМ ядре через clash_api, и подпись, обещающая переподъём, отправляла бы
+  // человека ждать уже случившегося.
+  it("не обещает применение на следующем подключении", () => {
+    for (const sostoyanie of ["podnyat", "vyklyuchen"] as const) {
+      render(<Glavnyy status={{ sostoyanie, rezhim_marshruta: "ruchnoy" }} />);
+      expect(document.body.textContent ?? "").not.toContain("следующем подключении");
+      cleanup();
+    }
   });
 });
 

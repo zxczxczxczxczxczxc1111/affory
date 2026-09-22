@@ -23,8 +23,19 @@ const rules: PravilaOtvet = {
         id: "youtube",
         imya: "YouTube",
         domeny: ["youtube.com", "googlevideo.com"],
+        programmy: [],
         istochnik: "https://example.org",
       },
+      // Сервис с сайтами И клиентом.
+      {
+        id: "discord",
+        imya: "Discord",
+        domeny: ["discord.com"],
+        programmy: ["Discord.exe", "DiscordPTB.exe"],
+        istochnik: "https://example.org",
+      },
+      // Сервис, у которого набора сайтов нет вовсе: маршрут держится на клиенте.
+      { id: "steam", imya: "Steam", domeny: [], programmy: ["steam.exe"] },
     ],
   },
 };
@@ -341,48 +352,54 @@ it("кнопка обновления перечитывает список пр
   expect(obnovit).toHaveBeenCalledTimes(1);
 });
 
-// C6. Частые приложения. Карточка сервиса это набор доменов, нативный клиент
-// она не накрывает, а путь к .exe угадывать нельзя: у Discord в нём номер
-// сборки, у лаунчеров - диск установки.
-it("пресет берёт фактический путь запущенной программы, а не угаданный", async () => {
+// D2. Карточка сервиса это сайты И приложение сразу. Путь к .exe угадывать
+// нельзя: у Discord в нём номер сборки, у лаунчеров - диск установки, поэтому
+// имя файла из каталога ищется среди запущенных программ.
+it("карточка сервиса берёт фактический путь запущенного клиента", async () => {
+  const put = "C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe";
   const send = vi.fn().mockResolvedValue(true);
   render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send}
-    zapushchennye={[
-      {imya:"Discord",put:"C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe"},
-      {imya:"Steam",put:"C:\\Games\\Steam\\steam.exe"},
-    ]} obnovitProtsessy={vi.fn()}/>);
-  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
-  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
-  fireEvent.click(screen.getByRole("button",{name:"Discord: запущено"}));
-  expect(screen.getByLabelText("Путь к приложению")).toHaveValue("C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe");
-  fireEvent.click(screen.getByRole("button",{name:"Добавить в черновик"}));
+    zapushchennye={[{imya:"Discord",put}]} obnovitProtsessy={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("combobox",{name:"Маршрут сервиса Discord"}));
+  fireEvent.click(screen.getByRole("option",{name:"Через VPN"}));
   await primenit();
   expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
-    trafik: expect.objectContaining({prilozheniya:[{
-      put:"C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe",
-      imya:"Discord.exe", potomki:true, marshrut:"vpn",
-    }]}),
+    trafik: expect.objectContaining({servisy:[{id:"discord",marshrut:"vpn",programmy:[put]}]}),
   }));
 });
 
-it("незапущенное приложение не превращается в выдуманное правило", () => {
-  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={vi.fn()}
+it("незапущенный клиент не превращается в выдуманный путь", async () => {
+  const send = vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send}
     zapushchennye={[]} obnovitProtsessy={vi.fn()}/>);
-  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
-  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
-  const chip = screen.getByRole("button",{name:"Telegram: не запущено"});
-  expect(chip).toBeDisabled();
-  fireEvent.click(chip);
-  expect(screen.getByLabelText("Путь к приложению")).toHaveValue("");
+  // На карточке, которую человек не трогал, строки нет: предупреждать не о чем.
+  expect(screen.queryByTestId("klient-discord")).toBeNull();
+  fireEvent.click(screen.getByRole("combobox",{name:"Маршрут сервиса Discord"}));
+  fireEvent.click(screen.getByRole("option",{name:"Через VPN"}));
+  // А на включённой сказано прямо: сайты накрыты, приложение нет.
+  expect(screen.getByTestId("klient-discord")).toHaveTextContent("Приложение не запущено");
+  await primenit();
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
+    trafik: expect.objectContaining({servisy:[{id:"discord",marshrut:"vpn"}]}),
+  }));
 });
 
-it("пресет с уже заведённым правилом не предлагает завести его второй раз", () => {
-  const steam = {put:"C:\\Games\\Steam\\steam.exe",imya:"steam.exe",potomki:true,marshrut:"vpn" as const};
-  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={{...rules,trafik:{...rules.trafik!,prilozheniya:[steam]}}}
-    otlozheno={{}} naKomandu={vi.fn()} zapushchennye={[{imya:"Steam",put:steam.put}]} obnovitProtsessy={vi.fn()}/>);
-  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
-  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
-  expect(screen.getByRole("button",{name:"Steam: правило уже есть"})).toBeDisabled();
+it("карточке без сайтов и без запущенного клиента маршрут выбрать нечему", () => {
+  // Правило вышло бы пустым, а карточка выглядела бы работающей.
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={vi.fn()}
+    zapushchennye={[]} obnovitProtsessy={vi.fn()}/>);
+  expect(screen.getByRole("combobox",{name:"Маршрут сервиса Steam"})).toBeDisabled();
+  expect(screen.getByTestId("klient-steam")).toHaveTextContent("Запусти его");
+});
+
+it("включённая карточка говорит, что накрывает и приложение", () => {
+  const put = "C:\\Games\\Steam\\steam.exe";
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} otlozheno={{}} naKomandu={vi.fn()}
+    pravila={{...rules,trafik:{...rules.trafik!,servisy:[{id:"steam",marshrut:"vpn",programmy:[put]}]}}}
+    zapushchennye={[]} obnovitProtsessy={vi.fn()}/>);
+  expect(screen.getByTestId("klient-steam")).toHaveTextContent("и программы, которые оно запускает");
+  // Выбор остаётся: путь уже в правиле, и снять маршрут человек должен уметь.
+  expect(screen.getByRole("combobox",{name:"Маршрут сервиса Steam"})).toBeEnabled();
 });
 
 // C3. Поиск, фильтр и групповые действия по уже сохранённым правилам: лимиты

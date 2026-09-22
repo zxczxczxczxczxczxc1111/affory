@@ -52,3 +52,22 @@ it("не выдаёт конфликт блокировки за примени�
   const valid={...trafik,po_umolchaniyu:"vpn" as const,domeny:[]};
   expect(obyasnitMarshrut({...base,trafik:valid,killSwitch:true,bezRu:false}).dns.marshrut).toBe("vpn");
 });
+
+// D2. Карточка сервиса накрывает и клиента. Проба, знающая только свои
+// правила приложений, сказала бы «подходящего правила нет» при работающем
+// правиле - и человек пошёл бы заводить второе, уже руками.
+it("программа включённого сервиса объясняется как правило приложения",()=>{
+  const steam="C:\\Games\\Steam\\steam.exe";
+  const s:PravilaTrafika={...trafik,prilozheniya:[],servisy:[{id:"test",marshrut:"vpn",programmy:[steam]}]};
+  const p=obyasnitMarshrut({...base,trafik:s,put:steam,domen:"unknown.org"});
+  expect(p.dannye.marshrut).toBe("vpn");
+  expect(p.dannye.prichina).toContain("steam.exe");
+  // И DNS уходит в туннель: имена программы иначе остались бы на местном.
+  expect(p.dns.marshrut).toBe("vpn");
+});
+
+it("незапущенный клиент сервиса не добавляет правила приложения",()=>{
+  const s:PravilaTrafika={...trafik,prilozheniya:[],servisy:[{id:"test",marshrut:"vpn"}]};
+  const p=obyasnitMarshrut({...base,trafik:s,put:"C:\\Games\\Steam\\steam.exe",domen:"unknown.org"});
+  expect(p.dannye.prichina).not.toContain("steam.exe");
+});

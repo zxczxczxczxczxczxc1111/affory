@@ -75,7 +75,10 @@ func trafikDNSFinal(v Vhod) string {
 	}
 	// Shared Windows DNS has no reliable originating app identity. Resolve through
 	// VPN when an app needs it, so a poisoned local answer cannot defeat that rule.
-	for _, a := range v.Trafik.Prilozheniya {
+	//
+	// Программы сервисов считаются наравне с ручными правилами (D2): иначе
+	// карточка Steam через VPN оставляла бы его имена на местном разрешении.
+	for _, a := range programmyTrafika(v) {
 		if a.Marshrut == protokol.TrafikVPN {
 			return TegTunnel
 		}
@@ -92,14 +95,21 @@ func trafikPravila(v Vhod, dns bool) []any {
 	if !dns {
 		// Every explicit executable wins before any inherited route, including
 		// entries which also cover the programs they launch.
+		//
+		// Правила приложений и программы сервисов это ОДИН слой (D2,
+		// 22.09.2026): карточка сервиса с клиентом обязана давать тот же охват,
+		// что ручное правило на тот же exe, иначе «Discord» в сервисах молча
+		// слабее «Discord» в приложениях. Ручные идут первыми: у них тот же вес,
+		// а при совпадении путей человек переопределяет карточку точечно.
+		programmy := programmyTrafika(v)
 		var roots []string
-		for _, a := range v.Trafik.Prilozheniya {
+		for _, a := range programmy {
 			p = append(p, map[string]any{"process_path": []string{a.Put}, key: tegMarshruta(a.Marshrut, false)})
 			if a.Potomki {
 				roots = append(roots, a.Put)
 			}
 		}
-		for _, a := range v.Trafik.Prilozheniya {
+		for _, a := range programmy {
 			if a.Potomki {
 				p = append(p, map[string]any{"process_path_tree": []string{a.Put}, "process_path_tree_roots": roots, key: tegMarshruta(a.Marshrut, false)})
 			}
@@ -118,7 +128,30 @@ func trafikPravila(v Vhod, dns bool) []any {
 		if err != nil {
 			continue
 		} // Validation happens before generation; no invented domain fallback.
+		// Сервис без доменов это законная запись (D2): у Steam и Epic Games
+		// набора доменов нет вовсе, маршрут у них держится на программе. Пустой
+		// domain_suffix ядро принимает, но такое правило не совпадает ни с чем и
+		// читается в конфиге как забытая строка.
+		if len(domains) == 0 {
+			continue
+		}
 		p = append(p, map[string]any{"domain_suffix": domains, key: tegMarshruta(s.Marshrut, dns)})
 	}
 	return p
+}
+
+// programmyTrafika сводит ручные правила приложений и программы включённых
+// сервисов в один список в порядке применения.
+func programmyTrafika(v Vhod) []protokol.PraviloPrilozheniya {
+	itog := append([]protokol.PraviloPrilozheniya(nil), v.Trafik.Prilozheniya...)
+	for _, s := range v.Trafik.Servisy {
+		for _, put := range s.Programmy {
+			// Потомки у сервиса включены ВСЕГДА: карточка Steam это лаунчер и
+			// игры, которые он запускает, а галочки на карточке нет. Правило,
+			// накрывающее лаунчер и не накрывающее игру, человек прочитал бы как
+			// сломанное.
+			itog = append(itog, protokol.PraviloPrilozheniya{Put: put, Marshrut: s.Marshrut, Potomki: true})
+		}
+	}
+	return itog
 }

@@ -96,6 +96,72 @@ func marshrutGoden(r protokol.MarshrutTrafika) bool {
 	return r == protokol.TrafikVPN || r == protokol.TrafikPryamo
 }
 
+// programmNaServis это запас на ветки выпуска и вторую копию программы, а не
+// место для списка: у Discord три ветки, и восьми путей на карточку хватает с
+// избытком. Без границы 64 карточки дали бы конфиг, который никто не прочитает.
+const programmNaServis = 8
+
+// programmyServisa проверяет пути клиента сервиса.
+//
+// Имя файла обязано быть в каталоге у ЭТОГО сервиса. Без сверки карточка
+// «Steam» вела бы маршрут для любого exe, который окно в неё положило, и это
+// была бы не карточка сервиса, а правило приложения под чужой подписью.
+//
+// Поблажка для уже принятого пути та же, что у приложений: программу снесли с
+// диска - правило перестаёт совпадать, но список остаётся годным. Иначе
+// удалить осиротевшее правило нельзя, а это уже стоило продукту тупика.
+func programmyServisa(s protokol.PraviloServisa, bylo protokol.PravilaTrafika) ([]string, error) {
+	if len(s.Programmy) == 0 {
+		return nil, nil
+	}
+	if len(s.Programmy) > programmNaServis {
+		return nil, fmt.Errorf("%w: у сервиса %q слишком много программ", errPraviloNegodno, s.Id)
+	}
+	imena, err := katalog.Programmy(s.Id)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errPraviloNegodno, err)
+	}
+	znakomo := map[string]bool{}
+	for _, i := range imena {
+		znakomo[strings.ToLower(i)] = true
+	}
+	prezhnie := prezhniiProgrammy(s.Id, bylo)
+	itog := []string{}
+	vidno := map[string]bool{}
+	for _, syroy := range s.Programmy {
+		put := strings.TrimSpace(syroy)
+		if !filepath.IsAbs(put) || !strings.EqualFold(filepath.Ext(put), ".exe") {
+			return nil, fmt.Errorf("%w: у сервиса %q нужен полный путь к файлу .exe", errPraviloNegodno, s.Id)
+		}
+		if !znakomo[strings.ToLower(filepath.Base(put))] {
+			return nil, fmt.Errorf("%w: %s не похож на программу сервиса %q", errPraviloNegodno, filepath.Base(put), s.Id)
+		}
+		norm, err := normalizovatPut(put)
+		if err != nil {
+			prinyatoRanee, est := sredi(prezhnie, put)
+			if !est {
+				return nil, fmt.Errorf("%w: программа сервиса %q не найдена: %s", errPraviloNegodno, s.Id, put)
+			}
+			norm = prinyatoRanee
+		}
+		if vidno[strings.ToLower(norm)] {
+			continue
+		}
+		vidno[strings.ToLower(norm)] = true
+		itog = append(itog, norm)
+	}
+	return itog, nil
+}
+
+func prezhniiProgrammy(id string, bylo protokol.PravilaTrafika) []string {
+	for _, s := range bylo.Servisy {
+		if s.Id == id {
+			return s.Programmy
+		}
+	}
+	return nil
+}
+
 func proveritTrafik(p protokol.PravilaTrafika, bylo protokol.PravilaTrafika) (protokol.PravilaTrafika, error) {
 	bad := func(reason string) (protokol.PravilaTrafika, error) {
 		return p, fmt.Errorf("%w: %s", errPraviloNegodno, reason)
@@ -184,6 +250,11 @@ func proveritTrafik(p protokol.PravilaTrafika, bylo protokol.PravilaTrafika) (pr
 			}
 			continue
 		}
+		puti, err := programmyServisa(service, bylo)
+		if err != nil {
+			return p, err
+		}
+		service.Programmy = puti
 		services[service.Id] = service.Marshrut
 		r.Servisy = append(r.Servisy, service)
 	}

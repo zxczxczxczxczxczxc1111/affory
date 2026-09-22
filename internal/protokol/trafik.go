@@ -22,6 +22,14 @@ type PraviloDomena struct {
 type PraviloServisa struct {
 	Id       string          `json:"id"`
 	Marshrut MarshrutTrafika `json:"marshrut"`
+	// Programmy это ПУТИ клиента сервиса, найденные окном среди запущенных
+	// программ (D2, 22.09.2026). В каталоге лежат только имена файлов: у
+	// Discord в пути номер сборки, у лаунчеров диск установки, и прибитый путь
+	// дал бы правило на несуществующий файл.
+	//
+	// Путей несколько, когда запущены ветки выпуска (Discord и Discord PTB) или
+	// две копии одной программы. Маршрут у них общий: он у карточки один.
+	Programmy []string `json:"programmy,omitempty"`
 }
 
 type PravilaTrafika struct {

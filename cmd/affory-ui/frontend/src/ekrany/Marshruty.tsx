@@ -8,7 +8,7 @@ import { IkonkaServisa } from "./IkonkaServisa";
 import { Vybor } from "./Vybor";
 import { slovoPosleChisla } from "../chisla";
 import { razobratVvodDomenov } from "../domeny";
-import { imyaFayla, naydennyePuti, PRESETY } from "../presety";
+import { naydennyePuti } from "../programmy";
 import { sleduyushchayaVkladka } from "./klavishi-vkladok";
 import { OhvatPravil } from "./OhvatPravil";
 
@@ -130,7 +130,9 @@ export function Marshruty({
   const knopkaDobavit = useRef<HTMLButtonElement | null>(null);
   const pervoePoleFormy = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (adding && tab === "apps") obnovitProtsessy?.();
+    // И на вкладке сервисов: карточка с клиентом берёт его путь среди
+    // запущенных программ, а без списка она не знает, есть ли он вообще.
+    if ((adding && tab === "apps") || tab === "services") obnovitProtsessy?.();
   }, [adding, tab, obnovitProtsessy]);
   // Курсор в первое поле открытой формы: иначе после нажатия «Добавить» надо
   // было ещё дойти до поля табом через всю полосу вкладок.
@@ -482,7 +484,7 @@ export function Marshruty({
             <div className="flex flex-col gap-5">
               <header>
                 <h3 className="text-foreground text-[17px] font-semibold leading-tight">Популярные сервисы</h3>
-                <p className="text-fg-muted mt-1 text-[13px]">Маршрут доменов и поддоменов. «По общему режиму» следует настройке слева.</p>
+                <p className="text-fg-muted mt-1 text-[13px]">Маршрут сайтов сервиса и его приложения. «По общему режиму» следует настройке слева.</p>
               </header>
               {(katalog.length>0 || services.length>0) && <div className="flex flex-wrap items-center justify-between gap-3">
                 {katalog.length>0 && <div className="text-fg-muted text-[13px]" aria-label="Маршруты сервисов">
@@ -512,6 +514,16 @@ export function Marshruty({
                   const effective = explicit?.marshrut ?? trafik.po_umolchaniyu;
                   const vkl = effective === "vpn";
                   const otkryt = raskryto[service.id] ?? false;
+                  // Клиент сервиса. Имена файлов знает каталог, путь - только
+                  // машина, поэтому он ищется среди запущенных программ.
+                  const estKlient = (service.programmy?.length ?? 0) > 0;
+                  const putiKlienta = naydennyePuti(service.programmy, zapushchennye);
+                  const klientVPravile = explicit?.programmy?.length ?? 0;
+                  // Карточка без доменов держится на одном клиенте. Пока его не
+                  // запустили, выбирать ей маршрут нечему: правило вышло бы
+                  // пустым, а на экране выглядело бы работающим.
+                  const nechemuMarshrut = estKlient && service.domeny.length === 0
+                    && putiKlienta.length === 0 && klientVPravile === 0;
                   return (
                     <article key={service.id} className="border-border bg-surface flex flex-col overflow-hidden rounded-xl border">
                       <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
@@ -524,10 +536,31 @@ export function Marshruty({
                             {vkl ? "Через VPN" : "Напрямую"}
                           </span>
                         </span>
-                        <Vybor<VyborServisa> label={`Маршрут сервиса ${service.imya}`} value={explicit?.marshrut ?? "inherit"} disabled={disabled}
+                        <Vybor<VyborServisa> label={`Маршрут сервиса ${service.imya}`} value={explicit?.marshrut ?? "inherit"} disabled={disabled || nechemuMarshrut}
                           options={[{value:"inherit",label:"По общему режиму",disabled:status.kill_switch && trafik.po_umolchaniyu==="direct"},{value:"vpn",label:"Через VPN"},{value:"direct",label:"Напрямую",disabled:status.kill_switch}]}
-                          onChange={value=>save(zadatMarshrutServisa(trafik,service.id,value))}/>
+                          onChange={value=>save(zadatMarshrutServisa(trafik,service.id,value,putiKlienta))}/>
                       </div>
+                      {/* Строка про клиента говорит ровно тогда, когда человеку
+                          есть что с ней делать. На карточке, которую он не
+                          включал, предупреждение это шум: оранжевая строка на
+                          каждой второй карточке перестаёт читаться вовсе. */}
+                      {estKlient && explicit && klientVPravile===0 && (
+                        <p className="text-warn px-4 pb-2 text-[12px]" data-testid={`klient-${service.id}`}>
+                          {putiKlienta.length>0
+                            ? "Приложение запущено: выбери маршрут заново, и правило накроет его тоже"
+                            : "Приложение не запущено: правило накроет только сайты"}
+                        </p>
+                      )}
+                      {estKlient && klientVPravile>0 && (
+                        <p className="text-fg-muted px-4 pb-2 text-[12px]" data-testid={`klient-${service.id}`}>
+                          Правило накрывает и приложение, и программы, которые оно запускает
+                        </p>
+                      )}
+                      {estKlient && !explicit && nechemuMarshrut && (
+                        <p className="text-fg-muted px-4 pb-2 text-[12px]" data-testid={`klient-${service.id}`}>
+                          Приложение не запущено. Запусти его, и маршрут можно будет выбрать
+                        </p>
+                      )}
                       {(pereopredeleniya.get(service.id)?.length ?? 0)>0 && <p className="text-warn px-4 pb-2 text-[12px]">Есть другой маршрут в правилах сайтов</p>}
 
                       <button
@@ -538,15 +571,29 @@ export function Marshruty({
                       >
                         <IkTreugolnik className={`text-fg-muted h-3 w-3 shrink-0 transition-transform ${otkryt ? "rotate-90" : ""}`} />
                         <span className="text-fg-muted group-hover:text-fg-secondary text-[13px]">
-                          {service.domeny.length} {slovoPosleChisla(service.domeny.length, "домен", "домена", "доменов")} с поддоменами
+                          {service.domeny.length>0
+                            ? `${service.domeny.length} ${slovoPosleChisla(service.domeny.length, "домен", "домена", "доменов")} с поддоменами`
+                            : "Только приложение, без сайтов"}
+                          {estKlient && service.domeny.length>0 ? " и приложение" : ""}
                         </span>
                       </button>
 
                       {otkryt && (
                         <ul className="border-border flex flex-col gap-1 border-t px-4 py-3">
+                          {/* Пути, а не имена файлов: человек видит, какая
+                              именно копия программы накрыта, и замечает чужую. */}
+                          {(explicit?.programmy ?? putiKlienta).map((put) => (
+                            <li key={put} className="text-fg-secondary break-all text-[13px]" title={put}>{sokratitPut(put)}</li>
+                          ))}
                           {service.domeny.map((d) => (
                             <li key={d} className="text-fg-secondary break-all text-[13px]">{d}</li>
                           ))}
+                          {/* Пустой раскрытый список читается как поломка. Так
+                              выглядит карточка без сайтов, клиент которой не
+                              запущен: показывать нечего, и это надо сказать. */}
+                          {service.domeny.length===0 && (explicit?.programmy ?? putiKlienta).length===0 && (
+                            <li className="text-fg-muted text-[13px]">Путь к приложению появится, когда оно будет запущено</li>
+                          )}
                           {pereopredeleniya.get(service.id)?.map(d=><li key={`override-${d.domen}`} className="text-warn break-all text-[12px]">Правило {d.domen}: {imyaMarshruta(d.marshrut).toLowerCase()}</li>)}
                         </ul>
                       )}
@@ -556,10 +603,10 @@ export function Marshruty({
               </div>
 
               <p className="text-fg-muted text-[13px]">
-                Здесь задан маршрут доменов сервиса. Правило приложения или отдельного сайта может его изменить.
+                Здесь задан маршрут сайтов сервиса и его приложения. Своё правило приложения или отдельного сайта может его изменить.
               </p>
               <p className="text-fg-muted text-[13px]">
-                Приложение обращается напрямую к IP? Добавь его во вкладке «Приложения»
+                Своё приложение, которого здесь нет? Добавь его во вкладке «Приложения»
               </p>
 
               <div className="flex flex-col">
@@ -677,40 +724,6 @@ export function Marshruty({
                   className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-4">
                   {tab === "apps" ? (
                     <>
-                      {/* Частые приложения. Путь НЕ угадывается: имя файла
-                          ищется среди запущенных программ, и в поле уезжает
-                          фактический путь. Не запущено - так и написано. */}
-                      <div className="flex flex-col gap-2" data-testid="presety-prilozheniy">
-                        <p className="text-fg-muted text-[13px]">
-                          Частые приложения. Карточка сервиса на вкладке «Сервисы» это только набор доменов и нативный клиент не накрывает
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {PRESETY.map((preset) => {
-                            const puti = naydennyePuti(preset, zapushchennye);
-                            const uzheEst = puti.length > 0 && puti.every((p) => apps.some((a) => a.put.toLowerCase() === p.toLowerCase()));
-                            const sostoyanie = uzheEst ? "правило уже есть" : puti.length > 1 ? `найдено ${puti.length}` : puti.length === 1 ? "запущено" : "не запущено";
-                            return (
-                              <Knopka
-                                key={preset.id}
-                                rang="vtoraya"
-                                aktiven={!disabled && puti.length > 0 && !uzheEst}
-                                aria-label={`${preset.imya}: ${sostoyanie}`}
-                                title={puti.length > 0 ? `${preset.poyasnenie}. ${puti.join(", ")}` : `${preset.poyasnenie}. Запусти приложение или выбери файл на ПК`}
-                                onClick={() => {
-                                  // Имя файла в поиск, фактический путь в поле:
-                                  // человек видит, что именно выбрано, и может
-                                  // взять вторую копию из списка ниже.
-                                  setQuery(imyaFayla(puti[0]).replace(/\.exe$/, ""));
-                                  setPath(puti[0]);
-                                }}
-                              >
-                                {preset.imya}
-                                <span className="text-fg-muted">· {sostoyanie}</span>
-                              </Knopka>
-                            );
-                          })}
-                        </div>
-                      </div>
                       <div className="flex items-center gap-3">
                         <Poisk
                           aria-label="Поиск приложения"

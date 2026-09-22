@@ -121,6 +121,12 @@ func (s *Sluzhba) naborIzHranilishcha() (Nabor, error) {
 	for _, p := range n.PrivestiPravila() {
 		skazatRedko("набор починен на чтении: " + p)
 	}
+	// Чистка старых правил приложений идёт ПОСЛЕ снятия сирот и по той же
+	// причине: список приложений и список сервисов слились, и один Discord не
+	// должен лежать в обоих сразу. Чистка однократная, флаг внутри.
+	for _, p := range n.snyatPravilaStavshieServisami() {
+		skazatRedko("набор починен на чтении: " + p)
+	}
 	n.Servery = aktualnyeServery(n.Servery)
 	for i := range n.Podpiski {
 		n.Podpiski[i].Servery = aktualnyeServery(n.Podpiski[i].Servery)

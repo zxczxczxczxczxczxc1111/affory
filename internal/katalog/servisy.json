@@ -26,7 +26,12 @@
         "discordapp.com",
         "discordapp.net"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/discord/discord.com.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/discord/discord.com.json",
+      "programmy": [
+        "Discord.exe",
+        "DiscordPTB.exe",
+        "DiscordCanary.exe"
+      ]
     },
     {
       "id": "chatgpt",
@@ -37,7 +42,10 @@
         "oaistatic.com",
         "oaiusercontent.com"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/ai/chatgpt.com.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/ai/chatgpt.com.json",
+      "programmy": [
+        "ChatGPT.exe"
+      ]
     },
     {
       "id": "instagram",
@@ -57,7 +65,10 @@
         "anthropic.com",
         "claudeusercontent.com"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/ai/claude.ai.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/ai/claude.ai.json",
+      "programmy": [
+        "Claude.exe"
+      ]
     },
     {
       "id": "telegram",
@@ -68,7 +79,11 @@
         "t.me",
         "cdn-telegram.org"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/messengers/telegram.org.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/messengers/telegram.org.json",
+      "programmy": [
+        "Telegram.exe",
+        "Telegram Desktop.exe"
+      ]
     },
     {
       "id": "spotify",
@@ -78,7 +93,10 @@
         "scdn.co",
         "spotifycdn.com"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/music/spotify.com.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/music/spotify.com.json",
+      "programmy": [
+        "Spotify.exe"
+      ]
     },
     {
       "id": "soundcloud",
@@ -88,7 +106,46 @@
         "sndcdn.com",
         "snd.sc"
       ],
-      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/music/soundcloud.com.json"
+      "istochnik": "https://github.com/rekryt/iplist/blob/b8bc7025266f7cff00e2dffd42914ab3441ff87c/config/music/soundcloud.com.json",
+      "programmy": [
+        "SoundCloud.exe"
+      ]
+    },
+    {
+      "id": "steam",
+      "imya": "Steam",
+      "programmy": [
+        "steam.exe"
+      ]
+    },
+    {
+      "id": "epicgames",
+      "imya": "Epic Games",
+      "programmy": [
+        "EpicGamesLauncher.exe"
+      ]
+    },
+    {
+      "id": "battlenet",
+      "imya": "Battle.net",
+      "programmy": [
+        "Battle.net.exe"
+      ]
+    },
+    {
+      "id": "riot",
+      "imya": "Riot Client",
+      "programmy": [
+        "RiotClientServices.exe"
+      ]
+    },
+    {
+      "id": "ubisoft",
+      "imya": "Ubisoft Connect",
+      "programmy": [
+        "UbisoftConnect.exe",
+        "upc.exe"
+      ]
     }
   ]
 }
