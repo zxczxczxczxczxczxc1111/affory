@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 )
 
 var (
@@ -26,6 +27,33 @@ var (
 	ErrPodpiskaVelika     = errors.New("тело подписки больше потолка")
 	ErrPonizhenieTLS      = errors.New("перенаправление понижает https до http")
 )
+
+// OtkazZagruzki это отказ загрузки вместе с ШАГОМ, на котором он случился.
+//
+// До 22.09.2026 всё, что мешало забрать список, приезжало одной строкой
+// «подписка недоступна»: не разрешившееся имя, закрытый порт, сорванное
+// рукопожатие TLS, молчание в срок и отказ панели по праву доступа выглядели
+// одинаково и вели человека в одну сторону, хотя лечатся они по-разному.
+//
+// Оборачивает ErrPodpiskaNedostupna, поэтому все прежние errors.Is продолжают
+// работать: код разбирается по виду только там, где совет от него зависит.
+type OtkazZagruzki struct {
+	Vid sboi.Vid
+	err error
+}
+
+func (o OtkazZagruzki) Error() string { return o.err.Error() }
+func (o OtkazZagruzki) Unwrap() error { return o.err }
+
+// OtkazSVidom помечает отказ шагом, на котором он случился. Наружу ради
+// подставных загрузчиков: тест обязан уметь построить тот же отказ, иначе
+// проверяется не то, что приезжает из сети.
+func OtkazSVidom(vid sboi.Vid, err error) error {
+	if vid == sboi.Neyasno {
+		return err
+	}
+	return OtkazZagruzki{Vid: vid, err: fmt.Errorf("%w (%s)", err, vid.Opisanie())}
+}
 
 // Потолок тела. Подписка на тысячу серверов это примерно двести килобайт, так
 // что мегабайта хватает с запасом, а вот скачивать чужой дистрибутив, потому
@@ -196,14 +224,16 @@ func (z *Zagruzchik) Zagruzit(ctx context.Context, adres string) (Razbor, error)
 		if errors.Is(err, ErrPonizhenieTLS) {
 			return Razbor{}, ErrPonizhenieTLS
 		}
-		return Razbor{}, fmt.Errorf("%w: %s", ErrPodpiskaNedostupna, bezAdresa(err, adres))
+		return Razbor{}, OtkazSVidom(sboi.Klassifitsirovat(err),
+			fmt.Errorf("%w: %s", ErrPodpiskaNedostupna, bezAdresa(err, adres)))
 	}
 	defer otvet.Body.Close()
 
 	if otvet.StatusCode != http.StatusOK {
 		// Только код. Тело чужое, и печатать его целиком значит однажды
 		// напечатать в журнал то, что панель туда положила.
-		return Razbor{}, fmt.Errorf("%w: код ответа %d", ErrPodpiskaNedostupna, otvet.StatusCode)
+		return Razbor{}, OtkazSVidom(sboi.PoKoduOtveta(otvet.StatusCode),
+			fmt.Errorf("%w: код ответа %d", ErrPodpiskaNedostupna, otvet.StatusCode))
 	}
 
 	// Потолок+1 и сравнение, а НЕ LimitReader на потолок: второй усекает молча,

@@ -375,6 +375,22 @@ func TestZaderzhkaNazyvaetOtvergnutyyServerSvoimImenem(t *testing.T) {
 	}
 }
 
+// 504 это не отказ, а молчание: проба не уложилась в срок. A7, 22.09.2026.
+// Пока код схлопывался в отвергнутое рукопожатие, не ответивший сервер вёл
+// человека проверять ключи и подписку, с которыми всё в порядке.
+func TestSrokProbyNeSchitaetsyaOtvergnutymRukopozhatiem(t *testing.T) {
+	adres := podstavnoyKlash(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGatewayTimeout)
+	})
+	_, err := Zaderzhka(context.Background(), adres, "sekret", "srv-1")
+	if !errors.Is(err, ErrProbaNeUspela) {
+		t.Fatalf("504 не назван сроком пробы: %v", err)
+	}
+	if errors.Is(err, ErrServerOtvergKlyuchi) {
+		t.Fatalf("504 всё ещё считается отвергнутым рукопожатием: %v", err)
+	}
+}
+
 // Обратная сторона: 401 и 403 это НЕ отвергнутый сервер, а не принятый секрет
 // или чужой клиент на нашем порту. Один признак на оба случая отправил бы
 // человека обновлять подписку там, где виноват сосед по порту.

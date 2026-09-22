@@ -37,7 +37,7 @@ const VSE_DEYSTVIYA: Deystvie[] = [
 describe("экраны отказов", () => {
   const kody = kodyIzGo().filter((k) => !BEZ_EKRANA.has(k));
 
-  it("коды прочитаны из kody.go, и их сорок", () => {
+  it("коды прочитаны из kody.go, и их сорок три", () => {
     // Pinning the count is deliberate: a new code must fail here until the
     // screen for it exists, and an empty read must not pass as "all covered".
     // Тридцать восьмой это internal-error, заведён 04.09.2026 полосой З:
@@ -48,7 +48,11 @@ describe("экраны отказов", () => {
     // request-invalid про форму запроса. Оба отдельные потому, что чинятся
     // по-разному, а прежний общий код отправлял человека переустанавливать
     // исправную программу.
-    expect(kody.length).toBe(40);
+    // Сорок первый, сорок второй и сорок третий заведены 22.09.2026 (A7):
+    // probe-timeout, subscription-timeout и subscription-auth-failed. Все три
+    // отделяют «не успели» от «отказали»: прежде таймаут пробы назывался
+    // отказом ключа и отправлял чинить исправную подписку.
+    expect(kody.length).toBe(43);
   });
 
   it.each(kody)("у кода %s есть свой текст и действие из словаря", (kod) => {

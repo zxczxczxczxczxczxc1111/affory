@@ -18,6 +18,7 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
@@ -155,6 +156,15 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 			return ssylki.Razbor{}, ssylki.ErrPodpiskaPusta
 		case strings.Contains(adres, "/nedostupno"):
 			return ssylki.Razbor{}, ssylki.ErrPodpiskaNedostupna
+		// Шаги, на которых срывается загрузка, ведут человека в разные
+		// стороны: не успевший ответ лечится повтором, отказ панели по праву
+		// доступа - исправлением ссылки (A7).
+		case strings.Contains(adres, "/molchit"):
+			return ssylki.Razbor{}, ssylki.OtkazSVidom(sboi.Srok,
+				fmt.Errorf("%w: ответа нет", ssylki.ErrPodpiskaNedostupna))
+		case strings.Contains(adres, "/chuzhaya"):
+			return ssylki.Razbor{}, ssylki.OtkazSVidom(sboi.Dostup,
+				fmt.Errorf("%w: код ответа 403", ssylki.ErrPodpiskaNedostupna))
 		case strings.Contains(adres, "/zhivaya"):
 			return ssylki.Razbor{Servery: []protokol.Server{vtoroyServer()}}, nil
 		default:

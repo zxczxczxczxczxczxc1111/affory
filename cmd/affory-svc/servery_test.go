@@ -282,6 +282,29 @@ func TestPustayaPodpiskaSohranyaetPrezhniySpisok(t *testing.T) {
 	}
 }
 
+// A7, 22.09.2026. Шаг, на котором сорвалась загрузка, ведёт человека в разные
+// стороны: не успевший ответ лечится повтором и панель может быть исправна, а
+// 403 это единственный случай, когда чинить надо именно ссылку. До этого оба
+// приезжали как «подписка недоступна, обнови подписку».
+func TestShagOtkazaPodpiskiRazvoditSovety(t *testing.T) {
+	s := podstavnaya(t, nil)
+	sluchai := []struct {
+		adres string
+		kod   string
+	}{
+		{"https://panel.example/molchit", protokol.KodPodpiskaSrok},
+		{"https://panel.example/chuzhaya", protokol.KodPodpiskaDostup},
+		{"https://panel.example/nedostupno", protokol.KodSubscriptionUnreach},
+	}
+	for _, sl := range sluchai {
+		zadatPodpisku(t, s, sl.adres)
+		o := vypolnit(t, s, "refreshSubscription", nil)
+		if o.Oshib == nil || o.Oshib.Kod != sl.kod {
+			t.Errorf("%s дал %v, ожидался %s", sl.adres, o.Oshib, sl.kod)
+		}
+	}
+}
+
 // --- пересборка правил при включённом режиме ---
 
 func TestDobavlenieServeraPriVklyuchennomRezhimePeresobiraetPravila(t *testing.T) {

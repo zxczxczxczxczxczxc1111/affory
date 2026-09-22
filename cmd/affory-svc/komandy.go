@@ -16,6 +16,7 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
@@ -375,6 +376,10 @@ func NovayaSluzhba() *Sluzhba {
 	// интересна как раз она.
 	if f, err := zhurnaly.Otkryt(sostoyanie.KatalogZhurnalov(), diagnostika.ImyaZhurnala); err == nil {
 		s.zhurnalDiag = diagnostika.NovyyZhurnal(f)
+		// Отпечаток сборки в каждой строке операции: журнал живой машины без
+		// него не отвечает на вопрос, та ли это версия, в которой дефект
+		// чинили (A7).
+		s.zhurnalDiag.ZadatSborku(diagnostika.Sborka(versiyaProgrammy))
 	} else {
 		log.Printf("подробный журнал не открыт: %v", err)
 	}
@@ -646,7 +651,7 @@ func (s *Sluzhba) Connect(ctx context.Context) error {
 	return s.connect(ctx, nil)
 }
 
-func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
+func (s *Sluzhba) connect(ctx context.Context, expected *int) (itogErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -739,6 +744,38 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 	// jumping straight to podnyat makes the app look frozen for four seconds.
 	s.postavit(protokol.SostPodnimaetsya, nil)
 
+	// Контекст операции подъёма (A7). Одним defer, а не записью на каждой
+	// ветке: веток выхода ниже десять, и одиннадцатая однажды забыла бы
+	// записать себя. Отсюда, а не с начала функции: выше нет ни сервера, ни
+	// поколения, то есть нечего называть операцией.
+	//
+	// Идентификатор сервера идёт в журнал отпечатком: две строки одного
+	// сервера сходятся между собой и не сходятся ни с чем снаружи.
+	shagPodyoma := "podgotovka"
+	defer func() {
+		itog, shag := "ok", ""
+		switch {
+		case itogErr == nil:
+		case errors.Is(itogErr, errPodyomOtmenyon), errors.Is(itogErr, context.Canceled):
+			// Отмена это НЕ отказ. Записать её кодом отказа значит потом
+			// считать нажатие «отключить» аварией подъёма.
+			itog, shag = "otmena", string(sboi.Otmena)
+		default:
+			// Тот же ответ, что уйдёт человеку: код берётся у
+			// kodPodklyucheniya, а не собирается здесь заново. Иначе журнал и
+			// экран однажды назвали бы один отказ по-разному.
+			itog, shag = kodPodklyucheniya(itogErr, s.Status().Oshib), shagPodyoma
+		}
+		_ = s.zhurnalDiag.SobytieOperatsii(diagnostika.Operatsiya{
+			Vid:        "podklyuchenie",
+			Pokolenie:  uint64(moyo),
+			Dlitelnost: time.Since(nach),
+			Itog:       itog,
+			Shag:       shag,
+			Uzel:       diagnostika.Obezlichit(srv.Id),
+		})
+	}()
+
 	s.mu.Lock()
 	// Только ВЫБОР, и только из n.Vybran как есть. srv это VybrannyyServer(), а
 	// он при пустом Vybran отдаёт Servery[0]: для подъёма это верно, человеку с
@@ -793,6 +830,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 		// пробовать ДО подъёма умеет лишь тот путь, что идёт мимо туннеля, а он
 		// меряет не то, чем трафик пойдёт. Теперь от ne-neset защищает не порядок, а
 		// откат: замер идёт по живому туннелю, и его провал туннель опускает.
+		shagPodyoma = "tunnel"
 		a, err := s.podnyatTunnel(vnutr)
 		if err != nil {
 			// Отмена это НЕ отказ подъёма, и спрашиваем мы об этом ДО того, как
@@ -850,6 +888,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 		// Порядок из задачи 2.5: адаптер есть -> правило IPv6 -> (дальше
 		// разрешающие правила и политика). Раньше адаптера ставить нечего, позже уже
 		// поздно: промежуток между поднятым туннелем и глушением v6 это окно утечки.
+		shagPodyoma = "brandmauer"
 		if err := s.glushitIPv6(); err != nil {
 			s.Disconnect()
 			s.postavit(protokol.SostOtkaz, &protokol.Oshibka{
@@ -860,6 +899,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 		adres, sekret := s.dostupKKlash()
 		// Ядро отвечает не мгновенно, и спросить его сразу после старта значит
 		// измерить пустоту.
+		shagPodyoma = "yadro"
 		if err := s.zhdatKlash(vnutr, adres, sekret); err != nil {
 			// Не KodTunCreateFailed: адаптер к этому моменту создан, молчит
 			// ядро. Прежний код отправлял человека чинить исправный туннель.
@@ -883,6 +923,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 		// В авто перебивается ровно так же и хуже: кэш держит КОНКРЕТНЫЙ
 		// сервер, и автоматический режим молча выродился бы в один навсегда
 		// выбранный.
+		shagPodyoma = "vybor"
 		if err := s.navyazatVybor(vnutr, adres, sekret); err != nil {
 			// Отказ закрытый: поднятый туннель через ЧУЖОЙ сервер хуже
 			// неподнятого. Человек выбрал страну, и отдать ему другую молча
@@ -900,6 +941,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) error {
 		// и полсотни это разные диагнозы: первое значит, что ядро думает над
 		// каждой, второе, что контекст уже отменён и они возвращаются мгновенно.
 		// Различить их можно только по числу строк, поэтому строк не жалеем.
+		shagPodyoma = "proba"
 		nomer := 0
 		for time.Now().Before(srok) {
 			// Отмена замечается на БЛИЖАЙШЕЙ итерации, а не через пятнадцать
@@ -1081,8 +1123,11 @@ func kodPodyomaTunnelya(err error) string {
 // kodPodklyucheniya для ответа команды, и разные ответы на один вопрос это
 // экран, который спорит сам с собой.
 func kodNepodnyavshegosya(poslednyaya error) string {
-	if errors.Is(poslednyaya, yadra.ErrServerOtvergKlyuchi) {
+	switch {
+	case errors.Is(poslednyaya, yadra.ErrServerOtvergKlyuchi):
 		return protokol.KodServerAuthFailed
+	case errors.Is(poslednyaya, yadra.ErrProbaNeUspela):
+		return protokol.KodProbaNeUspela
 	}
 	return protokol.KodAllServersDown
 }

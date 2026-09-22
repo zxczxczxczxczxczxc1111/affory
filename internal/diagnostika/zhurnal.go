@@ -26,6 +26,8 @@ type Zhurnal struct {
 	mu      sync.Mutex
 	kuda    io.Writer
 	seychas func() time.Time
+	// Отпечаток сборки для строк операций: см. operatsiya.go.
+	sborka string
 }
 
 func NovyyZhurnal(kuda io.Writer) *Zhurnal {

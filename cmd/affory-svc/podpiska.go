@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
@@ -82,8 +84,32 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 		}
 		muNabor.Unlock()
 	}()
+	// Контекст операции для подробного журнала (A7). Адрес подписки это
+	// пропуск, поэтому в строку идёт только его обезличенный отпечаток: две
+	// записи одной подписки сходятся между собой и не сходятся ни с чем
+	// снаружи.
+	nachalo := s.seychas()
+	zapisatOperatsiyu := func(itog string, err error) {
+		// Шаг берётся у самого отказа, если он его несёт: загрузчик уже
+		// разобрался, а повторная классификация обёрнутой ошибки дала бы тот
+		// же ответ более длинным путём.
+		shag := sboi.Klassifitsirovat(err)
+		var zagruzka ssylki.OtkazZagruzki
+		if errors.As(err, &zagruzka) {
+			shag = zagruzka.Vid
+		}
+		_ = s.zhurnalDiag.SobytieOperatsii(diagnostika.Operatsiya{
+			Vid:        "podpiska",
+			Pokolenie:  pokolenie,
+			Dlitelnost: s.seychas().Sub(nachalo),
+			Itog:       itog,
+			Shag:       string(shag),
+			Istochnik:  diagnostika.Obezlichit(adres),
+		})
+	}
 	r, err := s.zagruzitPodpisku(ctx, adres)
 	if err != nil {
+		zapisatOperatsiyu("otkaz", err)
 		muNabor.Lock()
 		defer muNabor.Unlock()
 		if s.obnovleniyaPodpisok[id] != pokolenie {
@@ -128,6 +154,7 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 		n.OtmetitObnovlenie(id, teper)
 		return nil
 	}); err != nil {
+		zapisatOperatsiyu("otkaz-zapisi", err)
 		return r, 0, oshibkaSohraneniya{err}
 	}
 	if aktivnaya {
@@ -137,6 +164,7 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 		}
 		muNabor.Unlock()
 	}
+	zapisatOperatsiyu("ok", nil)
 	return r, serverov, nil
 }
 

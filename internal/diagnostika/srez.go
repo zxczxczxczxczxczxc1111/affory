@@ -67,6 +67,18 @@ type Srez struct {
 	// Sobytie заполняется только у строк, которые пишутся не по таймеру:
 	// разрыв, смена несущего, перезапуск ядра.
 	Sobytie string `json:"sobytie,omitempty"`
+
+	// Поля операции (A7). Заполняются только у строк SobytieOperatsii: у
+	// посекундного среза операции нет, и пустые поля в каждой строке стоили бы
+	// трети объёма журнала. Подробности в operatsiya.go.
+	OpId           string  `json:"op_id,omitempty"`
+	OpPokolenie    uint64  `json:"op_pokolenie,omitempty"`
+	OpDlitelnostMs float64 `json:"op_dlitelnost_ms,omitempty"`
+	OpItog         string  `json:"op_itog,omitempty"`
+	OpShag         string  `json:"op_shag,omitempty"`
+	OpIstochnik    string  `json:"op_istochnik,omitempty"`
+	OpUzel         string  `json:"op_uzel,omitempty"`
+	Sborka         string  `json:"sborka,omitempty"`
 }
 
 // Snyat собирает срез. Ошибок не возвращает намеренно: см. шапку пакета.

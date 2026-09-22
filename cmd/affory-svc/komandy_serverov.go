@@ -14,6 +14,7 @@ import (
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
@@ -242,6 +243,20 @@ func otkazPodpiski(k protokol.Kadr, r ssylki.Razbor, err error) protokol.Kadr {
 	case errors.As(err, &sohr):
 		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
 	}
+	// Шаг, на котором сорвалась загрузка, меняет совет: не успевший ответ и
+	// отказ панели по праву доступа лечатся по-разному, а до 22.09.2026 оба
+	// приезжали как «подписка недоступна, обнови подписку».
+	var zagruzka ssylki.OtkazZagruzki
+	if errors.As(err, &zagruzka) {
+		switch zagruzka.Vid {
+		case sboi.Srok:
+			return otkaz(k.Id, k.Imya, protokol.KodPodpiskaSrok, err.Error())
+		case sboi.Dostup:
+			return otkaz(k.Id, k.Imya, protokol.KodPodpiskaDostup, err.Error())
+		}
+	}
+	// Остальные шаги (dns, tcp, tls) ведут в одну сторону - проверить сеть и
+	// повторить, - поэтому код общий, а сам шаг назван в тексте отказа.
 	return otkaz(k.Id, k.Imya, protokol.KodSubscriptionUnreach, err.Error())
 }
 
@@ -656,6 +671,10 @@ func kodPereklyucheniya(err error) string {
 	// подписки отвергнут ровно так же.
 	case errors.Is(err, yadra.ErrServerOtvergKlyuchi):
 		return protokol.KodServerAuthFailed
+	// А вот здесь другой сервер как раз осмыслен: этот не ответил в срок, и
+	// отказа от него не приходило.
+	case errors.Is(err, yadra.ErrProbaNeUspela):
+		return protokol.KodProbaNeUspela
 	case errors.Is(err, ErrNovyyVyborNeNesyot):
 		return protokol.KodNovyyNeNesyot
 	// Отдельно от предыдущего: тот обещает целое подключение, этот его уже не

@@ -24,7 +24,10 @@ export interface ZapisOtkaza {
 export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "dns-resolve-failed": { deystvie: "povtorit", tekst: "не удалось найти сервер по имени" },
   "server-auth-failed": { deystvie: "obnovit-podpisku", tekst: "сервер не принял ключ, проверь подписку" },
+  "probe-timeout": { deystvie: "povtorit", tekst: "сервер не ответил вовремя, попробуй ещё раз или выбери другой" },
   "subscription-unreachable": { deystvie: "obnovit-podpisku", tekst: "подписка недоступна, работают серверы из прошлого обновления" },
+  "subscription-timeout": { deystvie: "povtorit", tekst: "подписка не ответила вовремя, работают серверы из прошлого обновления" },
+  "subscription-auth-failed": { deystvie: "obnovit-podpisku", tekst: "панель подписки не приняла ссылку, проверь её" },
   "subscription-malformed": { deystvie: "obnovit-podpisku", tekst: "подписка отдала непонятное" },
   "subscription-expired": { deystvie: "obnovit-podpisku", tekst: "подписка отдала сообщение вместо серверов" },
   "selected-server-gone": { deystvie: "otkryt-servery", tekst: "выбранного сервера больше нет в подписке" },

@@ -497,6 +497,10 @@ func kodPodklyucheniya(err error, sost *protokol.Oshibka) string {
 	// исправной сети, а чинить надо подписку.
 	case errors.Is(err, yadra.ErrServerOtvergKlyuchi):
 		return protokol.KodServerAuthFailed
+	// Проба не уложилась в срок: сервер не отказывал, он не ответил. Совет
+	// «проверь подписку» тут ложный ровно так же, как all-servers-down выше.
+	case errors.Is(err, yadra.ErrProbaNeUspela):
+		return protokol.KodProbaNeUspela
 	}
 	if sost != nil && sost.Kod != "" {
 		return sost.Kod

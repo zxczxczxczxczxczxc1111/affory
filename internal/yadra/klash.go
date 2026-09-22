@@ -76,8 +76,12 @@ func zaderzhkaURL(ctx context.Context, adres, sekret, teg, cel string) (time.Dur
 	// 504 это единственный код, у которого причина одна: проба не уложилась в
 	// срок. Тег человек видит рядом, в строке сервера, а номер кода не значит
 	// для него ничего, поэтому в тексте остаётся срок и больше ничего.
+	//
+	// Отдельным признаком с 22.09.2026: пока срок и отвергнутое рукопожатие
+	// были одной ошибкой, не ответивший сервер вёл человека проверять ключи и
+	// подписку, с которыми всё в порядке. Вид сбоя тут ровно sboi.Srok.
 	case kod == http.StatusGatewayTimeout:
-		return 0, fmt.Errorf("%w: не отвечает дольше %s", ErrServerOtvergKlyuchi, SrokZamera)
+		return 0, fmt.Errorf("%w: не отвечает дольше %s", ErrProbaNeUspela, SrokZamera)
 	case kod != http.StatusOK:
 		return 0, fmt.Errorf("%w: ядро отклонило пробу (код %d)", ErrServerOtvergKlyuchi, kod)
 	}
@@ -107,6 +111,14 @@ func zaderzhkaURL(ctx context.Context, adres, sekret, teg, cel string) (time.Dur
 // НЕ покрывает 401 и 403: там отвечает не наш сервер, а не принявший секрет
 // clash_api или чужой клиент на нашем порту, и человеку туда идти незачем.
 var ErrServerOtvergKlyuchi = errors.New("сервер не принял рукопожатие")
+
+// ErrProbaNeUspela значит: ядро живо, исходящий существует, а ответа в срок не
+// пришло. Причина может быть где угодно по пути, и ключи тут ни при чём.
+//
+// Разница с ErrServerOtvergKlyuchi не косметическая: там сервер ОТВЕТИЛ отказом
+// и чинить надо подписку, здесь не ответил никто и осмысленны повтор и другой
+// сервер. До 22.09.2026 оба случая схлопывались в отказ ключей.
+var ErrProbaNeUspela = errors.New("проба не уложилась в срок")
 
 // sekretNePrinyat объясняет 401 и 403 от clash_api.
 //
