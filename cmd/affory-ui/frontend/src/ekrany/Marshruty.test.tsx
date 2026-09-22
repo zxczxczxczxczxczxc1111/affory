@@ -341,6 +341,84 @@ it("кнопка обновления перечитывает список пр
   expect(obnovit).toHaveBeenCalledTimes(1);
 });
 
+// C3. Поиск, фильтр и групповые действия по уже сохранённым правилам: лимиты
+// в 256 приложений и 1024 сайта делают скролл негодным способом что-то найти.
+const mnogoPravil: PravilaOtvet = {
+  ...rules,
+  trafik: {
+    ...rules.trafik!,
+    prilozheniya: [
+      {put:"C:\\Games\\steam.exe",imya:"steam.exe",potomki:true,marshrut:"vpn"},
+      {put:"C:\\Games\\launcher.exe",imya:"launcher.exe",potomki:true,marshrut:"direct"},
+      {put:"C:\\Work\\zoom.exe",imya:"zoom.exe",potomki:false,marshrut:"direct"},
+    ],
+  },
+};
+
+it("поиск и фильтр маршрута сужают список и честно считают показанное", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={mnogoPravil} otlozheno={{}} naKomandu={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.change(screen.getByLabelText("Поиск среди правил приложений"),{target:{value:"games"}});
+  expect(screen.getByRole("button",{name:"Удалить правило steam.exe"})).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Удалить правило zoom.exe"})).toBeNull();
+  expect(screen.getByText("Показано 2 из 3")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Поиск среди правил приложений"),{target:{value:""}});
+  fireEvent.click(screen.getByRole("combobox",{name:"Показывать маршруты"}));
+  fireEvent.click(screen.getByRole("option",{name:"Только напрямую"}));
+  expect(screen.queryByRole("button",{name:"Удалить правило steam.exe"})).toBeNull();
+  expect(screen.getByText("Показано 2 из 3")).toBeInTheDocument();
+});
+
+it("групповая смена маршрута трогает только отмеченные и уходит одним применением", async () => {
+  const send = vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={mnogoPravil} otlozheno={{}} naKomandu={send}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Отметить steam.exe"}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Отметить zoom.exe"}));
+  expect(screen.getByTestId("gruppovye-deystviya")).toHaveTextContent("Отмечено 2 из 3");
+  fireEvent.click(screen.getByRole("button",{name:"Напрямую"}));
+  await primenit();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
+    trafik: expect.objectContaining({prilozheniya:[
+      {put:"C:\\Games\\steam.exe",imya:"steam.exe",potomki:true,marshrut:"direct"},
+      {put:"C:\\Games\\launcher.exe",imya:"launcher.exe",potomki:true,marshrut:"direct"},
+      {put:"C:\\Work\\zoom.exe",imya:"zoom.exe",potomki:false,marshrut:"direct"},
+    ]}),
+  }));
+});
+
+it("скрытое фильтром не попадает под групповое удаление", async () => {
+  const send = vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={mnogoPravil} otlozheno={{}} naKomandu={send}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  // Отмечено всё, затем список сужен поиском: групповое действие применяется
+  // к тому, что человек видит, а не к прошлой отметке.
+  fireEvent.click(screen.getByRole("checkbox",{name:"Отметить все показанные правила"}));
+  fireEvent.change(screen.getByLabelText("Поиск среди правил приложений"),{target:{value:"zoom"}});
+  expect(screen.getByTestId("gruppovye-deystviya")).toHaveTextContent("Отмечено 1 из 1");
+  fireEvent.click(screen.getByRole("button",{name:"Удалить отмеченные"}));
+  await primenit();
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
+    trafik: expect.objectContaining({prilozheniya:[
+      {put:"C:\\Games\\steam.exe",imya:"steam.exe",potomki:true,marshrut:"vpn"},
+      {put:"C:\\Games\\launcher.exe",imya:"launcher.exe",potomki:true,marshrut:"direct"},
+    ]}),
+  }));
+});
+
+it("отметка всех показанных берёт только показанное, а смена вкладки её снимает", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={mnogoPravil} otlozheno={{}} naKomandu={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.change(screen.getByLabelText("Поиск среди правил приложений"),{target:{value:"games"}});
+  fireEvent.click(screen.getByRole("checkbox",{name:"Отметить все показанные правила"}));
+  expect(screen.getByTestId("gruppovye-deystviya")).toHaveTextContent("Отмечено 2 из 2");
+  fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  expect(screen.queryByTestId("gruppovye-deystviya")).toBeNull();
+  expect(screen.getByLabelText("Поиск среди правил приложений")).toHaveValue("");
+});
+
 // C4. Поле сайта принимало одно готовое имя: адрес из браузера служба
 // отвергала целиком, кириллица не принималась, список добавлялся по одному.
 function otkrytFormuSaytov(props: Partial<Parameters<typeof Pravila>[0]> = {}) {

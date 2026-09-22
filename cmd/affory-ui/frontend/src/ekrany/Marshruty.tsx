@@ -74,8 +74,14 @@ export function sokratitPut(put: string, predel = 58): string {
 
 // Колонки таблиц задаются ОДНОЙ строкой на вид и переиспользуются шапкой и
 // строками: две раскладки рядом это два места, где колонки разъезжаются.
-const SETKA_PRILOZHENIY = "grid grid-cols-[minmax(0,1fr)_150px_80px] min-[1100px]:grid-cols-[minmax(0,1fr)_190px_150px_110px] items-center gap-x-4 gap-y-2";
-const SETKA_SAYTOV = "grid grid-cols-[minmax(0,1fr)_150px_110px] items-center gap-x-4";
+const SETKA_PRILOZHENIY = "grid grid-cols-[minmax(0,1fr)_150px_80px] min-[1100px]:grid-cols-[minmax(0,1fr)_190px_150px_110px] items-center gap-x-4 gap-y-2 min-w-0 flex-1";
+const SETKA_SAYTOV = "grid grid-cols-[minmax(0,1fr)_150px_110px] items-center gap-x-4 min-w-0 flex-1";
+
+/** Строка списка правил: отметка для группового действия слева, дальше своя
+ *  сетка колонок. Отметка ВНЕ сетки намеренно: приложения на узком окне
+ *  переносят имя на отдельную строку, и лишняя колонка в самой сетке уводила
+ *  бы флажок охвата под чужой заголовок. */
+const STROKA_S_VYBOROM = "flex items-center gap-3";
 
 /** Столько правил сайтов принимает служба (cmd/affory-svc/trafik.go). Набор
  *  сверх предела отвергается ЦЕЛИКОМ, поэтому счёт ведётся и здесь. */
@@ -146,6 +152,13 @@ export function Marshruty({
     !status.kill_switch && trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn",
   );
   const [remove, setRemove] = useState<string | null>(null);
+  // Поиск и фильтр по сохранённым правилам: списки упираются в 256 приложений
+  // и 1024 сайта, и на второй сотне скролл перестаёт быть способом что-то
+  // найти. Выбор строк живёт рядом с ними: групповое действие применяется
+  // ровно к тому, что человек видит и отметил.
+  const [poiskPravil, setPoiskPravil] = useState("");
+  const [filtrMarshruta, setFiltrMarshruta] = useState<"vse" | Marshrut>("vse");
+  const [vybrannye, setVybrannye] = useState<string[]>([]);
   const [raskryto, setRaskryto] = useState<Record<string, boolean>>({});
   const [vesSpisok, setVesSpisok] = useState(false);
   const disabled =
@@ -171,7 +184,7 @@ export function Marshruty({
       const body = {trafik,bez_ru_spiska:bezRu,...(revision ? {reviziya_pravil:revision} : {})};
       const ok = await naKomandu("setRules",body);
       if (ok !== true) { setApplyError("Не удалось применить правила. Черновик сохранён; причина указана в сообщении службы."); return; }
-      setDraft(null); setPath(""); setDomain(""); setAdding(false);
+      setDraft(null); setPath(""); setDomain(""); setAdding(false); setVybrannye([]);
       // Кнопка «Применить изменения» после успеха гаснет вместе со всей
       // полосой черновика, поэтому фокус с неё уходит к действию, с которого
       // редактирование и начинается.
@@ -188,6 +201,47 @@ export function Marshruty({
     services = trafik.servisy ?? [];
   const katalog = pravila?.katalog?.servisy ?? [];
   const ruleCount = apps.length + domains.length + services.length;
+  // Что показано на вкладке после поиска и фильтра. Ключ строки это путь для
+  // приложения и домен для сайта: он же ключ выбора, он же ключ удаления.
+  const zapros = poiskPravil.trim().toLowerCase();
+  const vidimyePrilozheniya = apps.filter(
+    (a) => (filtrMarshruta === "vse" || a.marshrut === filtrMarshruta) &&
+      (zapros === "" || `${a.imya} ${a.put}`.toLowerCase().includes(zapros)),
+  );
+  const vidimyeDomeny = domains.filter(
+    (d) => (filtrMarshruta === "vse" || d.marshrut === filtrMarshruta) &&
+      (zapros === "" || d.domen.includes(zapros)),
+  );
+  const vidimyeKlyuchi = tab === "apps" ? vidimyePrilozheniya.map((a) => a.put) : vidimyeDomeny.map((d) => d.domen);
+  // Отмеченное, но скрытое фильтром, в групповое действие НЕ идёт: человек
+  // отмечает то, что видит, и «удалить выбранные» после смены фильтра иначе
+  // унесло бы строки, которых на экране уже нет.
+  const otmecheno = vybrannye.filter((k) => vidimyeKlyuchi.includes(k));
+  const vsegoNaVkladke = tab === "apps" ? apps.length : domains.length;
+  const otfiltrovano = zapros !== "" || filtrMarshruta !== "vse";
+  /** Групповая правка выбранных строк: один черновик, одно применение. */
+  const gruppoy = (deystvie: "vpn" | "direct" | "udalit") => {
+    if (disabled || otmecheno.length === 0) return;
+    const naboru = new Set(otmecheno);
+    const izmenyon = tab === "apps"
+      ? { ...trafik, prilozheniya: deystvie === "udalit"
+          ? apps.filter((a) => !naboru.has(a.put))
+          : apps.map((a) => (naboru.has(a.put) ? { ...a, marshrut: deystvie } : a)) }
+      : { ...trafik, domeny: deystvie === "udalit"
+          ? domains.filter((d) => !naboru.has(d.domen))
+          : domains.map((d) => (naboru.has(d.domen) ? { ...d, marshrut: deystvie } : d)) };
+    const skolko = otmecheno.length;
+    if (!save(izmenyon)) return;
+    setVybrannye([]);
+    setRemove(null);
+    if (deystvie === "udalit") {
+      // Строки вместе со своими кнопками сейчас исчезнут.
+      knopkaDobavit.current?.focus();
+      setNotice(`${skolko} ${slovoPosleChisla(skolko, "правило", "правила", "правил")} удалено в черновике. Нажми «Применить изменения», когда закончишь редактирование.`);
+      return;
+    }
+    setNotice(`Маршрут изменён у ${skolko} ${slovoPosleChisla(skolko, "правила", "правил", "правил")} в черновике. Нажми «Применить изменения», когда закончишь редактирование.`);
+  };
   const candidates = (zapushchennye ?? []).filter((p) =>
     `${p.imya} ${p.put}`.toLowerCase().includes(query.toLowerCase()),
   );
@@ -212,6 +266,11 @@ export function Marshruty({
     setTab(next);
     setAdding(false);
     setRemove(null);
+    // Поиск, фильтр и отметки принадлежат списку, а не окну: перенести их на
+    // соседнюю вкладку значит показать там пустой список и объяснять, почему.
+    setPoiskPravil("");
+    setFiltrMarshruta("vse");
+    setVybrannye([]);
   };
   const browse = async () => {
     if (disabled || !naVyborPrilozheniya) return;
@@ -810,6 +869,63 @@ export function Marshruty({
                 </form>
               )}
 
+              {vsegoNaVkladke > 0 && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Poisk
+                      aria-label={tab === "apps" ? "Поиск среди правил приложений" : "Поиск среди правил сайтов"}
+                      znachenie={poiskPravil}
+                      naVvod={(v) => { setPoiskPravil(v); setRemove(null); }}
+                      placeholder={tab === "apps" ? "Найти правило по имени или пути" : "Найти правило по имени сайта"}
+                    />
+                    <div className="w-[190px]">
+                      <Vybor<"vse" | Marshrut>
+                        label="Показывать маршруты"
+                        value={filtrMarshruta}
+                        disabled={disabled}
+                        options={[
+                          { value: "vse", label: "Любой маршрут" },
+                          { value: "vpn", label: "Только через VPN" },
+                          { value: "direct", label: "Только напрямую" },
+                        ]}
+                        onChange={(v) => { setFiltrMarshruta(v); setRemove(null); }}
+                      />
+                    </div>
+                  </div>
+                  {otfiltrovano && (
+                    <p role="status" className="text-fg-muted text-[13px]">
+                      {/* Счёт показанного нужен именно при фильтре: иначе «правил
+                          три» на вкладке и три строки на экране выглядят как
+                          весь набор, хотя остальные просто скрыты. */}
+                      Показано {vidimyeKlyuchi.length} из {vsegoNaVkladke}
+                      {vidimyeKlyuchi.length === 0 && " · ни одно правило не подходит"}
+                    </p>
+                  )}
+                  {/* Полоса группового действия появляется вместе с первой
+                      отметкой: пустая полоса «выбрано 0» занимала бы место
+                      всегда и не говорила бы ничего. */}
+                  {otmecheno.length > 0 && (
+                    <div className="border-border bg-surface flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3" data-testid="gruppovye-deystviya">
+                      <span className="text-foreground text-[13px] font-medium">
+                        Отмечено {otmecheno.length} из {vidimyeKlyuchi.length}
+                      </span>
+                      <span className="flex-1" />
+                      <Knopka rang="vtoraya" aktiven={!disabled} onClick={() => gruppoy("vpn")}>Через VPN</Knopka>
+                      <Knopka
+                        rang="vtoraya"
+                        aktiven={!disabled && !status.kill_switch}
+                        title={status.kill_switch ? "Блокировка сети вне VPN включена" : undefined}
+                        onClick={() => gruppoy("direct")}
+                      >
+                        Напрямую
+                      </Knopka>
+                      <Knopka rang="opasnaya" aktiven={!disabled} onClick={() => gruppoy("udalit")}>Удалить отмеченные</Knopka>
+                      <Knopka rang="tekst" aktiven={!disabled} onClick={() => setVybrannye([])}>Снять отметки</Knopka>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {(tab === "apps" ? apps.length : domains.length) === 0 ? (
                 <div className="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center">
                   <IkSsylka className="text-fg-faint h-7 w-7" />
@@ -820,15 +936,34 @@ export function Marshruty({
                 </div>
               ) : tab === "apps" ? (
                 <div>
-                  <div className={`${SETKA_PRILOZHENIY} max-[1099px]:hidden border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
-                    <span>Приложение</span>
-                    <span>Запущенные программы</span>
-                    <span>Маршрут</span>
-                    <span className="text-right">Действие</span>
+                  <div className={`${STROKA_S_VYBOROM} max-[1099px]:hidden border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
+                    <Flazhok
+                      podpis="Отметить все показанные правила"
+                      golos="Отметить все показанные правила"
+                      skrytPodpis
+                      aktiven={!disabled && vidimyeKlyuchi.length > 0}
+                      vkl={vidimyeKlyuchi.length > 0 && otmecheno.length === vidimyeKlyuchi.length}
+                      naSmenu={(v) => setVybrannye(v ? vidimyeKlyuchi : [])}
+                    />
+                    <div className={SETKA_PRILOZHENIY}>
+                      <span>Приложение</span>
+                      <span>Запущенные программы</span>
+                      <span>Маршрут</span>
+                      <span className="text-right">Действие</span>
+                    </div>
                   </div>
                   <ul>
-                    {apps.map((app) => (
-                      <li key={app.put} className={`${SETKA_PRILOZHENIY} border-border hover:bg-surface-hover border-b px-3 py-2.5 transition-colors`}>
+                    {vidimyePrilozheniya.map((app) => (
+                      <li key={app.put} className={`${STROKA_S_VYBOROM} border-border hover:bg-surface-hover border-b px-3 py-2.5 transition-colors`}>
+                        <Flazhok
+                          podpis={`Отметить ${app.imya}`}
+                          golos={`Отметить ${app.imya}`}
+                          skrytPodpis
+                          aktiven={!disabled}
+                          vkl={vybrannye.includes(app.put)}
+                          naSmenu={(v) => setVybrannye(v ? [...vybrannye, app.put] : vybrannye.filter((k) => k !== app.put))}
+                        />
+                        <div className={SETKA_PRILOZHENIY}>
                         <span className="col-span-3 min-[1100px]:col-span-1 flex min-w-0 flex-col gap-0.5">
                           <span className="text-foreground truncate text-sm font-medium">{app.imya}</span>
                           {/* Длинный путь теряет СЕРЕДИНУ, а не хвост: диск говорит, где
@@ -879,20 +1014,40 @@ export function Marshruty({
                             {remove === app.put ? "Подтвердить" : "Удалить"}
                           </Knopka>
                         </div>
+                        </div>
                       </li>
                     ))}
                   </ul>
                 </div>
               ) : (
                 <div>
-                  <div className={`${SETKA_SAYTOV} border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
-                    <span>Домен</span>
-                    <span>Маршрут</span>
-                    <span className="text-right">Действие</span>
+                  <div className={`${STROKA_S_VYBOROM} border-border text-fg-muted border-b px-3 pb-2.5 text-[13px]`}>
+                    <Flazhok
+                      podpis="Отметить все показанные правила"
+                      golos="Отметить все показанные правила"
+                      skrytPodpis
+                      aktiven={!disabled && vidimyeKlyuchi.length > 0}
+                      vkl={vidimyeKlyuchi.length > 0 && otmecheno.length === vidimyeKlyuchi.length}
+                      naSmenu={(v) => setVybrannye(v ? vidimyeKlyuchi : [])}
+                    />
+                    <div className={SETKA_SAYTOV}>
+                      <span>Домен</span>
+                      <span>Маршрут</span>
+                      <span className="text-right">Действие</span>
+                    </div>
                   </div>
                   <ul>
-                    {domains.map((d) => (
-                      <li key={d.domen} className={`${SETKA_SAYTOV} border-border hover:bg-surface-hover border-b px-3 py-2.5 transition-colors`}>
+                    {vidimyeDomeny.map((d) => (
+                      <li key={d.domen} className={`${STROKA_S_VYBOROM} border-border hover:bg-surface-hover border-b px-3 py-2.5 transition-colors`}>
+                        <Flazhok
+                          podpis={`Отметить ${d.domen}`}
+                          golos={`Отметить ${d.domen}`}
+                          skrytPodpis
+                          aktiven={!disabled}
+                          vkl={vybrannye.includes(d.domen)}
+                          naSmenu={(v) => setVybrannye(v ? [...vybrannye, d.domen] : vybrannye.filter((k) => k !== d.domen))}
+                        />
+                        <div className={SETKA_SAYTOV}>
                         <span className="flex min-w-0 items-center gap-3">
                           <span className="border-border bg-elevated text-fg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border">
                             <IkSayt className="h-4 w-4" />
@@ -930,6 +1085,7 @@ export function Marshruty({
                           >
                             {remove === d.domen ? "Подтвердить" : "Удалить"}
                           </Knopka>
+                        </div>
                         </div>
                       </li>
                     ))}

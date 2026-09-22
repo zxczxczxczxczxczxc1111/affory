@@ -127,7 +127,7 @@ describe("правила: четыре состояния списка", () => {
     // Строки считаются по разметке, а не через getAllByRole: доступное имя
     // каждой кнопки на пятистах строках считается две с половиной минуты, и
     // это цена ЗАПРОСА, а не экрана (рендер тех же строк занимает 90 мс).
-    expect(document.querySelectorAll("li[class*='grid']")).toHaveLength(500);
+    expect(document.querySelectorAll("ul > li[class*='border-b']")).toHaveLength(500);
     // Прокручивается область вкладок, а не окно: иначе шапка с вкладками
     // уезжает вверх и вернуться к ним можно только колесом.
     const oblast = screen.getByRole("tablist").parentElement as HTMLElement;
