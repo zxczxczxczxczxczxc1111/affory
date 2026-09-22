@@ -482,9 +482,9 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                 ].filter(Boolean).join(" · ")}
                 aktiven={aktiven}
               >
-                <Knopka rang="vtoraya" testId={p.aktivnaya ? "obnovit-podpisku" : `obnovit-podpisku-${p.id}`} zhdyot={zhdyot("refreshSubscription")}
+                <Knopka rang="vtoraya" testId={p.aktivnaya ? "obnovit-podpisku" : `obnovit-podpisku-${p.id}`} zhdyot={(zhdyot("refreshSubscription") || zhdyot(`refreshSubscription:${p.id}`))}
                         aktiven={aktiven} onClick={() => naKomandu("refreshSubscription", podpiski.length ? { id: p.id } : {})}>
-                  {zhdyot("refreshSubscription") ? "Спрашиваю" : <><Obnovit />Обновить</>}
+                  {(zhdyot("refreshSubscription") || zhdyot(`refreshSubscription:${p.id}`)) ? "Спрашиваю" : <><Obnovit />Обновить</>}
                 </Knopka>
                 {/* Удаление в два нажатия, как у сервера: подписка уносит с
                     собой весь список ключей, а отмены у этого действия нет. */}

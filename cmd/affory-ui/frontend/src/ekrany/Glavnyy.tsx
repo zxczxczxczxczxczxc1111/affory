@@ -32,6 +32,7 @@ export interface GlavnyyProps {
   podpiski?: PodpiskaNaEkrane[];
   naObnovitPodpisku?: (id: string) => void;
   obnovlenieIdet?: boolean;
+  obnovlyaemyePodpiski?: string[];
   pravila?: PravilaOtvet | null;
   zaderzhki?: ZamerZaderzhki[];
   zanyato?: boolean;
@@ -123,6 +124,7 @@ export function Glavnyy({
   podpiski = [],
   naObnovitPodpisku,
   obnovlenieIdet = false,
+  obnovlyaemyePodpiski = [],
   status,
   statistika = null,
   servery,
@@ -358,7 +360,7 @@ export function Glavnyy({
               servery={izvestnye} podpiski={podpiski} uzel={spisok?.podpiska_uzel} zapros={query}
               zaderzhki={zaderzhki} nesushchiy={status.nesushchiy_id} vybran={selected} podnyat={podnyat}
               disabled={molchit || busy || zanyato} naVybor={naVyborServera}
-              naObnovit={naObnovitPodpisku} obnovlyaetsya={obnovlenieIdet}
+              naObnovit={naObnovitPodpisku} obnovlyaetsya={obnovlenieIdet} obnovlyaemyePodpiski={obnovlyaemyePodpiski}
             />}
             <ul>
               {loading && (

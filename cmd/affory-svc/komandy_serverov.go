@@ -183,7 +183,12 @@ func (s *Sluzhba) setSubscription(ctx context.Context, k protokol.Kadr) protokol
 	})
 }
 
+// Ручное обновление должно успеть ответить до минутного таймаута канала.
+const srokRuchnogoObnovleniya = 25 * time.Second
+
 func (s *Sluzhba) refreshSubscription(ctx context.Context, k protokol.Kadr) protokol.Kadr {
+	ctx, cancel := context.WithTimeout(ctx, srokRuchnogoObnovleniya)
+	defer cancel()
 	// За всеми подписками сразу: «Обновить» означает «сходи за свежим», и
 	// запасная тут ничем не хуже активной. Наверх поднимается только отказ
 	// активной, отказы запасных лежат в их строках.

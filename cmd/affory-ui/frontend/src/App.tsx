@@ -368,7 +368,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const vypolnit = useCallback(async (komanda: string, telo: unknown = {}) => {
     const blocksControls = ["connect", "disconnect", "setRules", "setRouteMode", "setServer", "setActiveSubscription"].includes(komanda);
     if (blocksControls) setBusyCommand(komanda);
-    otmetit(komanda, 1);
+    const idPodpiski = komanda === "refreshSubscription" && typeof telo === "object" && telo !== null && "id" in telo && typeof telo.id === "string" ? telo.id : "";
+    const ozhidanie = idPodpiski ? `${komanda}:${idPodpiski}` : komanda;
+    otmetit(ozhidanie, 1);
     try {
       const kadr = await zvat(komanda, telo);
       // A frame came back, refusal or not: the pipe is alive.
@@ -460,7 +462,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       return false;
     } finally {
       if (blocksControls) setBusyCommand(current => current === komanda ? null : current);
-      otmetit(komanda, -1);
+      otmetit(ozhidanie, -1);
     }
   }, [obnovitSpisok, obnovitPravila, otmetit]);
 
@@ -893,6 +895,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             podpiski={podpiski}
             naObnovitPodpisku={id => void vypolnit("refreshSubscription", { id })}
             obnovlenieIdet={zanyatyeKomandy["refreshSubscription"] === true}
+            obnovlyaemyePodpiski={Object.keys(zanyatyeKomandy).filter(k => k.startsWith("refreshSubscription:")).map(k => k.slice("refreshSubscription:".length))}
             naProverit={() => void vypolnit("measureDelays", {})}
             // measureDelays в пятёрку busyCommand не входит и входить не
             // должен: замер задержек не трогает туннель. Вертушка ему всё

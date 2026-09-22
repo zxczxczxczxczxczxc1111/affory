@@ -495,6 +495,25 @@ describe("ни один отказ не пропадает молча", () => {
     expect(screen.getByText("333 мс")).toBeTruthy();
   });
 
+  it("ожидание обновления относится к одной подписке и снимается после сетевого отказа", async () => {
+    const most = mostProby();
+    most.otvechatTelom("listSubscriptions", { podpiski: [
+      { id: "a", uzel: "a.example", aktivnaya: true },
+      { id: "b", uzel: "b.example", aktivnaya: false },
+    ] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Управлять" }));
+    await screen.findByTestId("obnovit-podpisku-b");
+    most.otvechatMedlenno(120);
+    most.otvechatOtkazom("refreshSubscription", "subscription-unreachable", "TLS handshake timeout");
+    fireEvent.click(screen.getByTestId("obnovit-podpisku"));
+    expect(screen.getByTestId("obnovit-podpisku")).toBeDisabled();
+    expect(screen.getByTestId("obnovit-podpisku-b")).toBeEnabled();
+    await waitFor(() => expect(screen.getByTestId("obnovit-podpisku")).toBeEnabled());
+    expect(screen.queryByText("Спрашиваю")).toBeNull();
+    expect(most.skolkoRaz("refreshSubscription")).toBe(1);
+  });
+
   it("служба без listSubscriptions не даёт баннера", async () => {
     const most = mostProby();
     most.otvechatOtkazom("listSubscriptions", "protocol-mismatch");

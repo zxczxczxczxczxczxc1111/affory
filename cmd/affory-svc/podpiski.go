@@ -517,12 +517,18 @@ func (s *Sluzhba) otmetitOtkazPodpiski(id string, prichina error) {
 	if id == "" || prichina == nil {
 		return
 	}
-	if err := s.pravitNabor(func(n *Nabor) error {
+	// Меняется только текст ошибки. Пересборка брандмауэра здесь не нужна
+	// и задерживала возврат уже завершившегося сетевого запроса.
+	muNabor.Lock()
+	defer muNabor.Unlock()
+	n, err := s.nabor()
+	if err == nil {
 		if z := n.zapisPodpiski(id); z != nil {
 			z.Otkaz = prichina.Error()
+			err = s.zapisatNabor(n)
 		}
-		return nil
-	}); err != nil {
+	}
+	if err != nil {
 		log.Printf("причина отказа подписки не записана: %v", err)
 	}
 }

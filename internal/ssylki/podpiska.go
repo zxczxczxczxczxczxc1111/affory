@@ -184,7 +184,6 @@ func NovyyZagruzchik() *Zagruzchik {
 		Klient:  &http.Client{Timeout: 30 * time.Second},
 		Potolok: PotolokPoUmolchaniyu,
 		Chasy:   nastoyashchieChasy{},
-		Spat:    time.Sleep,
 	}
 }
 
@@ -345,7 +344,17 @@ func (z *Zagruzchik) ZagruzitSPovtorami(ctx context.Context, adres string, popyt
 		}
 		posledn = err
 		if i < popytok-1 {
-			z.Spat(pauza)
+			if z.Spat != nil {
+				z.Spat(pauza)
+			} else {
+				timer := time.NewTimer(pauza)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return Razbor{}, ctx.Err()
+				case <-timer.C:
+				}
+			}
 			pauza *= 2
 		}
 	}

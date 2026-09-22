@@ -40,10 +40,10 @@ interface Props {
   servery: Server[]; podpiski: PodpiskaNaEkrane[]; uzel?: string; zapros: string;
   zaderzhki: ZamerZaderzhki[]; nesushchiy?: string; vybran?: string; podnyat: boolean; disabled: boolean;
   naVybor?: (id: string, podpiska?: string) => void;
-  naObnovit?: (id: string) => void; obnovlyaetsya?: boolean;
+  naObnovit?: (id: string) => void; obnovlyaetsya?: boolean; obnovlyaemyePodpiski?: string[];
 }
 
-export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, nesushchiy, vybran, podnyat, disabled, naVybor, naObnovit, obnovlyaetsya }: Props) {
+export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, nesushchiy, vybran, podnyat, disabled, naVybor, naObnovit, obnovlyaetsya, obnovlyaemyePodpiski = [] }: Props) {
   const [state, setState] = useState(chitatVid);
   const [pokazatSkrytye, setPokazatSkrytye] = useState(false);
   const { vid } = state;
@@ -92,6 +92,7 @@ export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, ne
     const rows = strokiGrupp.filter(r => r.g.id === g.id && !vid.zakrepleny.includes(r.key) && sovpadaet(r));
     naydeno += rows.length;
     if (z && !rows.length) return null;
+    const zhdyot = obnovlyaetsya || obnovlyaemyePodpiski.includes(g.id);
     const svernuta = vid.svernuty.includes(g.id) && !z;
     return <section key={g.id} aria-label={g.imya} className="border-border border-t pt-1">
       <div className="flex min-h-10 items-center gap-1">
@@ -100,7 +101,7 @@ export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, ne
           <span className="truncate font-medium" title={g.imya}>{g.imya}</span><span className="text-fg-muted text-xs">{g.servery.length}</span>
         </button>
         {g.podpiska && <>
-          <button type="button" disabled={disabled || obnovlyaetsya || !naObnovit} aria-label={`Обновить ${g.imya}`} title="Обновить подписку" onClick={() => naObnovit?.(g.id)} className="text-fg-muted rounded p-2 hover:bg-fill disabled:opacity-40"><IkObnovit className={`h-4 w-4 ${obnovlyaetsya ? "animate-spin" : ""}`} /></button>
+          <button type="button" aria-busy={zhdyot} disabled={disabled || zhdyot || !naObnovit} aria-label={`Обновить ${g.imya}`} title="Обновить подписку" onClick={() => naObnovit?.(g.id)} className="text-fg-muted rounded p-2 hover:bg-fill disabled:opacity-40"><IkObnovit className={`h-4 w-4 ${zhdyot ? "animate-spin" : ""}`} /></button>
           <button type="button" onClick={() => pomenyat("skryty", g.id)} title="Скрыть из списка. VPN продолжит работать, закреплённые останутся видны." className="text-fg-muted rounded px-2 py-2 text-xs hover:bg-fill" aria-label={`Скрыть подписку ${g.imya}`}>Скрыть</button>
         </>}
       </div>

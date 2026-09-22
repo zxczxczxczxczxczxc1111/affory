@@ -325,6 +325,21 @@ func TestPerenapravlenieVnutriHttpsRabotaet(t *testing.T) {
 	}
 }
 
+func TestOtmenaPreryvaetPauzuPovtora(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "offline", 503) }))
+	defer s.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := ssylki.NovyyZagruzchik().ZagruzitSPovtorami(ctx, s.URL, 5)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("отмена не дошла: %v", err)
+	}
+	if time.Since(start) > 800*time.Millisecond {
+		t.Fatal("отмена ждала секундную паузу повторной попытки")
+	}
+}
+
 func TestPovtoryPriPervoyZagruzke(t *testing.T) {
 	// The service starts Automatic, which is earlier than the network comes up.
 	// Without retries a freshly installed client would sit up to twelve hours on
