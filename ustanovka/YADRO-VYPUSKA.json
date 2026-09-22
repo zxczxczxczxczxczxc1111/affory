@@ -4,18 +4,23 @@
   "kommit": "1ac1a339cb1223e9c70eae14c44411c75033c02d",
   "process_family": {
     "patch": "cd0f0037d193a9916b482851fe2c6dedd8e3ff1e5602d1cd0e9c295851e597f3",
+    "go.mod": "a4dff51c14efe81f899922e37fc379898b5c986f37e2f04c8250bbfada58126e",
+    "go.sum": "11cd59b4eb375e59f76457e876ed383072b70ecd25e4f23dd3034072c5aaa47e",
+    "events_cleanup_windows.go": "792207e1af97c3ae2e859d77c949b98b38130cfc814d494ee6781ca4a8f7b8f2",
+    "events_windows_test.go": "6b9c68b04302e6cf19b409686514978e1ecda5c86a860b3a1e581de385facf51",
+    "events_windows.go": "efb9467b5a4b59ffc89f7ba638f30c2a2193cf148b583a48f01922b5405a34ee",
     "family_test.go": "1e371db80194596f8b654716504affc037e3af11bfb94bed745e5ca4f1fd2af4",
-    "family.go": "243da069143a29e67a40efe6d766f100ebf2f1e139a4a7192a6b890783608a3a",
+    "family.go": "912d72b75d81cef701876a54f9d73f1e8337627df35825bbcb959f760c91fd3f",
     "shared_windows_test.go": "c50e6fb77fff48d8a43d098b9f0ae12f3e00a1430caa9ade099f67befc02031a",
-    "shared_windows.go": "4b650eead47ebf204c2f20ea0fc11757a5f76afd9e320f7c95b767ed8a073fb9",
+    "shared_windows.go": "735cc98458b5a93ff581de70385ab7acc05bd6e100781a944604167648d9a5c2",
     "watcher_windows_test.go": "f4c2b0cd8531ea9c858b655651b8cdcf0fd01921c68d2f7c8251d4900c32be90",
-    "watcher_windows.go": "129ef943631430f0fe476c19bebf2797823c0d19ded2772d19e9149b0056be14"
+    "watcher_windows.go": "39103c9940187a8934638b4985316ca03355950c49ba5c0a205b7c000650b520"
   },
-  "versiya": "1.14.1-affory-family.3",
+  "versiya": "1.14.1-affory-family.4",
   "tegi": "with_gvisor,with_quic,with_utls,with_clash_api",
   "go": "go version go1.26.8 windows/amd64",
-  "sha256": "2fda278dc2295ae02ac7693bb3f232131c5709b26202f5abc9237dd7e11cfccd",
-  "bayt": 44270080,
-  "sobrano": "2026-09-22T14:23:04.0742594+03:00",
+  "sha256": "a5b045d25f6f987d19fbb32ec5d62c05da29d43ca7bab47abe24f33d4d4d3992",
+  "bayt": 44459520,
+  "sobrano": "2026-09-22T15:09:25.8505196+03:00",
   "vypusk": "1.4.2"
 }

@@ -189,7 +189,7 @@ try {
     if ($opisanie -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)$') {
         throw "версия не выводится: describe дал '$opisanie', а ждали vX.Y.Z"
     }
-    $ver = "$($Matches[1])-affory-family.3"
+    $ver = "$($Matches[1])-affory-family.4"
     $sobrannyy = "$(Nativno { & git rev-parse HEAD } 'коммит форка не прочитался')".Trim()
     if (-not $sobrannyy) { throw 'коммит форка пуст: отпечаток был бы враньём' }
     # Заказанный коммит сверяется с тем, что реально лежит в дереве.
@@ -217,11 +217,15 @@ try {
     $familyTarget = Join-Path $put 'common\afforyprocess'
     New-Item -ItemType Directory -Force -Path $familyTarget | Out-Null
     Get-ChildItem -LiteralPath $familySource -Filter '*.go' | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $familyTarget -Force }
+    # Привязки ETW без CGO; та же закреплённая версия указана в локальном модуле.
+    if ((Get-Content (Join-Path $familySource 'go.mod') -Raw) -notmatch 'github.com/0xrawsec/golang-etw v1\.6\.2\b') { throw 'ETW dependency pin differs from processfamily module' }
+    Nativno { & go get 'github.com/0xrawsec/golang-etw/etw@v1.6.2' } 'ETW dependency preparation failed'
     $changedSources = @(Select-String -LiteralPath $patch -Pattern '^\+\+\+ b/(.+\.go)$' | ForEach-Object { Join-Path $put $_.Matches[0].Groups[1].Value })
     $toolchainRoot = "$(Nativno { & go env GOROOT } 'Go root not found')".Trim()
     $formatter = Join-Path $toolchainRoot 'bin\gofmt.exe'
     Nativno { & $formatter -w $changedSources } 'core source normalization failed'
     $extensionHashes = [ordered]@{ patch = (Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLower() }
+    foreach ($moduleFile in @('go.mod','go.sum')) { $extensionHashes[$moduleFile] = (Get-FileHash -LiteralPath (Join-Path $familySource $moduleFile) -Algorithm SHA256).Hash.ToLower() }
     Get-ChildItem -LiteralPath $familySource -Filter '*.go' | Sort-Object Name | ForEach-Object {
         $extensionHashes[$_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower()
     }

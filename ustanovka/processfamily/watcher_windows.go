@@ -13,19 +13,38 @@ import (
 
 type Watcher struct {
 	graph  *Graph
+	events *processEvents
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
 func NewWatcher(report func(error)) (*Watcher, error) {
+	return newWatcher(report, false)
+}
+
+func NewEventWatcher(report func(error)) (*Watcher, error) { return newWatcher(report, true) }
+
+func newWatcher(report func(error), withEvents bool) (*Watcher, error) {
 	g := NewGraph()
+	var events *processEvents
+	var err error
+	if withEvents {
+		events, err = newProcessEvents(g, report)
+		if err != nil {
+			return nil, err
+		}
+	}
+	at := clockTicks()
 	initial, err := snapshot(g)
 	if err != nil {
+		if events != nil {
+			events.Close()
+		}
 		return nil, err
 	}
-	g.Observe(initial, clockTicks())
+	g.Observe(initial, at)
 	ctx, cancel := context.WithCancel(context.Background())
-	w := &Watcher{graph: g, cancel: cancel, done: make(chan struct{})}
+	w := &Watcher{graph: g, events: events, cancel: cancel, done: make(chan struct{})}
 	go func() {
 		defer close(w.done)
 		ticker := time.NewTicker(250 * time.Millisecond)
@@ -36,6 +55,10 @@ func NewWatcher(report func(error)) (*Watcher, error) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if events != nil {
+					events.flush()
+				}
+				at := clockTicks()
 				processes, err := snapshot(g)
 				if err != nil {
 					if !failed && report != nil {
@@ -45,7 +68,7 @@ func NewWatcher(report func(error)) (*Watcher, error) {
 					continue
 				}
 				failed = false
-				g.Observe(processes, clockTicks())
+				g.Observe(processes, at)
 			}
 		}
 	}()
@@ -55,19 +78,32 @@ func NewWatcher(report func(error)) (*Watcher, error) {
 func (w *Watcher) Close() error {
 	w.cancel()
 	<-w.done
+	if w.events != nil {
+		return w.events.Close()
+	}
 	return nil
 }
 
 func (w *Watcher) Find(pid uint32) ([]string, error) {
+	if w.events != nil {
+		if err := w.events.Err(); err != nil {
+			return nil, err
+		}
+	}
 	p, err := readProcess(pid)
 	if err != nil {
 		return nil, err
 	}
-	return w.find(p), nil
+	return w.resolve(p)
 }
 
 // FindIdentity is used across core restarts. A PID alone is not an identity.
 func (w *Watcher) FindIdentity(pid uint32, created uint64) ([]string, error) {
+	if w.events != nil {
+		if err := w.events.Err(); err != nil {
+			return nil, err
+		}
+	}
 	p, err := readProcess(pid)
 	if err != nil {
 		return nil, err
@@ -75,14 +111,57 @@ func (w *Watcher) FindIdentity(pid uint32, created uint64) ([]string, error) {
 	if p.Created != created {
 		return nil, errors.New("process identity changed")
 	}
-	return w.find(p), nil
+	return w.resolve(p)
+}
+
+func (w *Watcher) resolve(p Process) ([]string, error) {
+	if w.events != nil {
+		if err := w.events.Err(); err != nil {
+			return nil, err
+		}
+	}
+	paths := w.find(p)
+	if w.events == nil {
+		return paths, nil
+	}
+	paths, settled := w.graph.PathsSince(p, w.events.started)
+	if settled {
+		return paths, nil
+	}
+	// Give an already queued start/exit pair time to reach the consumer. A
+	// vanished launcher cannot be recovered by another live-process snapshot.
+	w.events.flush()
+	deadline := time.NewTimer(750 * time.Millisecond)
+	defer deadline.Stop()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if err := w.events.Err(); err != nil {
+			return nil, err
+		}
+		if paths, settled = w.graph.PathsSince(p, w.events.started); settled {
+			return paths, nil
+		}
+		select {
+		case <-w.done:
+			return nil, fmt.Errorf("%w: watcher stopped", ErrSharedUnavailable)
+		case <-deadline.C:
+			if paths, settled = w.graph.PathsSince(p, w.events.started); settled {
+				return paths, nil
+			}
+			return nil, fmt.Errorf("%w: process launch information is not confirmed yet", ErrSharedUnavailable)
+		case <-tick.C:
+		}
+	}
 }
 
 func (w *Watcher) find(p Process) []string {
 	if paths := w.graph.Paths(p); len(paths) > 1 {
+		w.graph.Observe([]Process{p}, p.observed)
 		return paths
 	}
 	chain := []Process{p}
+	at := clockTicks()
 	child := p
 	for len(chain) < maxDepth && child.Parent != 0 && child.Parent != child.PID {
 		parent, err := readProcess(child.Parent)
@@ -92,7 +171,7 @@ func (w *Watcher) find(p Process) []string {
 		chain = append(chain, parent)
 		child = parent
 	}
-	w.graph.Observe(chain, clockTicks())
+	w.graph.Observe(chain, at)
 	return w.graph.Paths(p)
 }
 
@@ -100,7 +179,10 @@ func clockTicks() uint64 {
 	return uint64(time.Now().UnixNano()/100) + 116444736000000000
 }
 
+var errProcessExited = errors.New("process has exited")
+
 func readProcess(pid uint32) (Process, error) {
+	observed := clockTicks()
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
 		return Process{}, err
@@ -115,13 +197,16 @@ func readProcess(pid uint32) (Process, error) {
 	if err := windows.GetProcessTimes(h, &created, &exited, &kernel, &user); err != nil {
 		return Process{}, err
 	}
+	if exited.HighDateTime != 0 || exited.LowDateTime != 0 {
+		return Process{}, errProcessExited
+	}
 	buf := make([]uint16, windows.MAX_LONG_PATH)
 	n := uint32(len(buf))
 	if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &n); err != nil {
 		return Process{}, err
 	}
 	return Process{PID: pid, Parent: uint32(basic.InheritedFromUniqueProcessId),
-		Created: uint64(created.HighDateTime)<<32 | uint64(created.LowDateTime), Path: windows.UTF16ToString(buf[:n])}, nil
+		Created: uint64(created.HighDateTime)<<32 | uint64(created.LowDateTime), Path: windows.UTF16ToString(buf[:n]), observed: observed}, nil
 }
 
 func snapshot(g *Graph) ([]Process, error) {
@@ -148,7 +233,7 @@ func snapshot(g *Graph) ([]Process, error) {
 			return nil, fmt.Errorf("invalid process snapshot offset %d", offset)
 		}
 		info := (*windows.SYSTEM_PROCESS_INFORMATION)(unsafe.Pointer(&buf[offset]))
-		if info.UniqueProcessID > 4 && info.CreateTime > 0 {
+		if info.UniqueProcessID > 4 && info.CreateTime > 0 && info.NumberOfThreads > 0 {
 			pid, created := uint32(info.UniqueProcessID), uint64(info.CreateTime)
 			path := g.KnownPath(pid, created)
 			if path == "" {

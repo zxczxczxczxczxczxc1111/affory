@@ -78,8 +78,18 @@ func TestSharedTrackerHelper(t *testing.T) {
 }
 
 func TestSharedTrackerKeepsRunningApplicationAcrossCoreRestart(t *testing.T) {
+	for _, events := range []bool{false, true} {
+		t.Run(fmt.Sprintf("events=%v", events), func(t *testing.T) { checkSharedTrackerRestart(t, events) })
+	}
+}
+
+func checkSharedTrackerRestart(t *testing.T, events bool) {
 	Storozhit(t)
-	w, err := afforyprocess.NewWatcher(nil)
+	newWatcher := afforyprocess.NewWatcher
+	if events {
+		newWatcher = afforyprocess.NewEventWatcher
+	}
+	w, err := newWatcher(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +122,11 @@ func TestSharedTrackerKeepsRunningApplicationAcrossCoreRestart(t *testing.T) {
 	listener.(*net.TCPListener).SetDeadline(time.Now().Add(5 * time.Second))
 	cmd := exec.Command(launcher, "-test.run=^TestSharedTrackerHelper$", "-test.timeout=30s")
 	cmd.Env = append(os.Environ(), "AFFORY_SHARED_MODE=launcher", "AFFORY_SHARED_LEAF="+leaf, "AFFORY_SHARED_EXIT="+exitFile, "AFFORY_SHARED_CONTROL="+listener.Addr().String())
+	if events {
+		if err := os.WriteFile(exitFile, []byte("exit immediately"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -137,17 +152,24 @@ func TestSharedTrackerKeepsRunningApplicationAcrossCoreRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Observe the verified live chain, then let the launcher exit naturally.
-	paths, err := w.Find(uint32(pid))
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, path := range paths {
-		found = found || strings.EqualFold(path, launcher)
-	}
-	if !found {
-		t.Fatalf("live chain not captured: %v", paths)
+	if events {
+		if err := cmd.Wait(); err != nil {
+			t.Fatal(err)
+		}
+		launcherExited = true
+	} else {
+		// Polling-only control deliberately observes the launcher while alive.
+		paths, err := w.Find(uint32(pid))
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, path := range paths {
+			found = found || strings.EqualFold(path, launcher)
+		}
+		if !found {
+			t.Fatalf("live chain not captured: %v", paths)
+		}
 	}
 	target := NovayaMishen(t, "shared-target")
 	startCore := func(shared bool, finalDirect bool) *Yadro {
@@ -180,8 +202,10 @@ func TestSharedTrackerKeepsRunningApplicationAcrossCoreRestart(t *testing.T) {
 	if err := os.WriteFile(exitFile, []byte("exit"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.Wait(); err != nil {
-		t.Fatal(err)
+	if !launcherExited {
+		if err := cmd.Wait(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	launcherExited = true
 	second := startCore(true, false)

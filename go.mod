@@ -15,6 +15,11 @@ require (
 )
 
 require (
+	github.com/0xrawsec/golang-etw v1.6.2 // indirect
+	github.com/0xrawsec/golang-utils v1.3.1 // indirect
+)
+
+require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/coder/websocket v1.8.14 // indirect

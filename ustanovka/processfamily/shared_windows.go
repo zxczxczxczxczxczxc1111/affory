@@ -86,6 +86,10 @@ func NewSharedServer(find func(uint32, uint64) ([]string, error)) (*SharedServer
 			return
 		}
 		paths, err := find(q.PID, q.Created)
+		if errors.Is(err, ErrSharedUnavailable) {
+			http.Error(w, "tracker unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		// An exited/reused/protected process is unknown. Never return paths from
 		// the previous owner of the same PID or an executable-name guess.
 		response := identityResponse{Paths: paths, Unknown: err != nil}

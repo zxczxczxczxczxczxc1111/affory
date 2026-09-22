@@ -14,6 +14,7 @@ type Process struct {
 	PID, Parent uint32
 	Created     uint64
 	Path        string
+	observed    uint64
 }
 
 type identity struct {
@@ -21,9 +22,11 @@ type identity struct {
 	created uint64
 }
 type record struct {
-	process Process
-	paths   []string
-	seen    uint64
+	process    Process
+	paths      []string
+	seen       uint64
+	exited     uint64
+	unresolved uint64
 }
 
 // Graph retains observed lineage, never an executable-name approximation.
@@ -57,17 +60,26 @@ func (g *Graph) Observe(processes []Process, at uint64) {
 		k := key(p)
 		r, known := g.records[k]
 		paths := []string{p.Path}
-		if known {
+		unresolved := p.Created
+		if p.Parent <= 4 {
+			unresolved = 0
+		}
+		if known && len(r.paths) > 0 {
 			paths = slices.Clone(r.paths)
 			paths[0] = p.Path
+			unresolved = r.unresolved
 		}
 		if len(paths) == 1 && p.Parent != 0 && p.Parent != p.PID {
-			if parent, ok := g.records[g.latest[p.Parent]]; ok &&
-				parent.process.Created <= p.Created && parent.seen >= p.Created {
+			if parent, ok := g.parentAt(p.Parent, p.Created); ok {
 				paths = append(paths, parent.paths[:min(len(parent.paths), maxDepth-1)]...)
+				unresolved = parent.unresolved
 			}
 		}
-		g.records[k] = record{process: p, paths: paths, seen: at}
+		observed := at
+		if p.observed != 0 {
+			observed = min(observed, p.observed)
+		}
+		g.records[k] = record{process: p, paths: paths, seen: max(r.seen, observed, p.Created), exited: r.exited, unresolved: unresolved}
 		if old, exists := g.latest[p.PID]; !exists || old.created <= p.Created {
 			g.latest[p.PID] = k
 		}
@@ -93,6 +105,91 @@ func (g *Graph) Observe(processes []Process, at uint64) {
 			}
 		}
 	}
+}
+
+// A start event supplies identity and path, not a promise that the process is
+// still alive when a delayed ETW buffer is delivered.
+func (g *Graph) Started(p Process) {
+	g.Observe([]Process{p}, p.Created)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.relink()
+}
+func (g *Graph) Exited(pid uint32, created, exited uint64) {
+	if created == 0 || exited < created {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	k := identity{pid, created}
+	r, ok := g.records[k]
+	if !ok {
+		if len(g.records) >= maxRecords {
+			return
+		}
+		r = record{process: Process{PID: pid, Created: created}}
+	}
+	r.exited = exited
+	r.seen = max(r.seen, exited)
+	g.records[k] = r
+	g.relink()
+}
+func (g *Graph) parentAt(pid uint32, created uint64) (record, bool) {
+	valid := func(r record) bool {
+		return len(r.paths) > 0 && r.process.Created <= created && r.seen >= created && (r.exited == 0 || r.exited >= created)
+	}
+	if r, ok := g.records[g.latest[pid]]; ok && valid(r) {
+		return r, true
+	}
+	// Late events can refer to an older, already exited instance of this PID.
+	var best record
+	for k, r := range g.records {
+		if k.pid == pid && valid(r) && r.process.Created > best.process.Created {
+			best = r
+		}
+	}
+	return best, len(best.paths) > 0
+}
+func (g *Graph) relink() {
+	ordered := make([]identity, 0, len(g.records))
+	for k := range g.records {
+		ordered = append(ordered, k)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].created < ordered[j].created })
+	for _, k := range ordered {
+		r := g.records[k]
+		if r.process.Path == "" {
+			continue
+		}
+		if r.process.Parent == 0 || r.process.Parent == r.process.PID {
+			continue
+		}
+		if parent, ok := g.parentAt(r.process.Parent, r.process.Created); ok {
+			paths := append([]string{r.process.Path}, parent.paths[:min(len(parent.paths), maxDepth-1)]...)
+			if len(paths) > len(r.paths) || (len(paths) == len(r.paths) && parent.unresolved < r.unresolved) {
+				r.paths = paths
+				r.unresolved = parent.unresolved
+				g.records[k] = r
+			}
+		}
+	}
+}
+
+// A gap predating the tracker cannot be repaired by its event stream. A newer
+// gap may still have a queued exit event, even when one launcher is known.
+func (g *Graph) Settled(p Process, since uint64) bool {
+	_, settled := g.PathsSince(p, since)
+	return settled
+}
+
+func (g *Graph) PathsSince(p Process, since uint64) ([]string, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	r, ok := g.records[key(p)]
+	if !ok {
+		return []string{p.Path}, false
+	}
+	return slices.Clone(r.paths), r.unresolved == 0 || r.unresolved < since
 }
 
 func (g *Graph) Paths(p Process) []string {

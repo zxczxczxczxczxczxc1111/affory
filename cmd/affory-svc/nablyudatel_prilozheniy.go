@@ -14,7 +14,7 @@ type nablyudatelPrilozheniy struct {
 }
 
 func novyyNablyudatelPrilozheniy() (*nablyudatelPrilozheniy, error) {
-	w, err := afforyprocess.NewWatcher(func(err error) {
+	w, err := afforyprocess.NewEventWatcher(func(err error) {
 		log.Printf("наблюдение за запусками приложений: %v", err)
 	})
 	if err != nil {

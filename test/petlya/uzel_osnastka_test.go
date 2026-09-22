@@ -346,7 +346,7 @@ func vmessovyy(t *testing.T, set, put string) Uzel {
 // Shadowsocks: ни TLS, ни пина, вся подлинность в общем секрете.
 func Shadowsocks(t *testing.T) Uzel {
 	t.Helper()
-	port := SvobodnyyPort(t)
+	port := SvobodnyyPortTCPUDP(t)
 	metod := "aes-128-gcm"
 	// Ключ ss это base64 нужной длины, а не произвольная строка: ядро отвергает
 	// короткий ключ отказом всего конфига.
@@ -399,6 +399,30 @@ func SvobodnyyPortUDP(t *testing.T) int {
 	}
 	defer c.Close()
 	return c.LocalAddr().(*net.UDPAddr).Port
+}
+
+// Shadowsocks открывает оба протокола. Windows может резервировать UDP-порт,
+// даже когда такой же номер свободен для TCP (например, рядом с Hyper-V).
+func SvobodnyyPortTCPUDP(t *testing.T) int {
+	t.Helper()
+	var last error
+	for attempt := 0; attempt < 64; attempt++ {
+		udp, err := net.ListenPacket("udp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := udp.LocalAddr().(*net.UDPAddr).Port
+		tcp, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			tcp.Close()
+			udp.Close()
+			return port
+		}
+		last = err
+		udp.Close()
+	}
+	t.Fatalf("общий порт TCP/UDP не найден: %v", last)
+	return 0
 }
 
 // paraReality отдаёт пару ключей x25519 в том написании, которое ждут обе
