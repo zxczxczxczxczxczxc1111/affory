@@ -473,6 +473,18 @@ describe("ни один отказ не пропадает молча", () => {
     expect(most.skolkoRaz("connect")).toBe(0);
   });
 
+  it("после активации подключается по новому ID профиля, а не к ручному одноимённому", async () => {
+    const most=mostProby();
+    most.otvechatTelom("listSubscriptions", {podpiski:[
+      {id:"aaa",uzel:"a.example",aktivnaya:true},
+      {id:"bbb",uzel:"b.example",aktivnaya:false,servery:[{id:"shared",imya:"Другой профиль",transport:"trojan",host:"node.example",port:443,iz_podpiski:true}]},
+    ]});
+    most.otvechatTelom("setActiveSubscription", {aktivnaya:"bbb",server_ids:{shared:"unique"}});
+    render(<App/>);
+    fireEvent.click(await screen.findByRole("button",{name:"Подключиться к Другой профиль"}));
+    await waitFor(()=>expect(most.teloKomandy("connect")).toEqual({server:"unique"}));
+  });
+
   it("обновление подписки сохраняет незатронутые замеры на главном экране", async () => {
     const most = mostProby();
     const servers = ["a", "b", "manual"].map(id => ({ id, imya: id, host: `${id}.example`, port: 443, transport: "trojan", iz_podpiski: id !== "manual" }));

@@ -114,13 +114,13 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	// нужен ровно тогда, когда старые правила держит живое ядро, а не тогда,
 	// когда на экране написано что-то кроме «выключен».
 	adres, _ := s.dostupKKlash()
-	if telo.Trafik != nil && adres != "" {
+	if telo.Trafik != nil && adres != "" && s.pravilaOzhidayut(pravila) {
 		if err := s.perepodklyuchit(ctx); err != nil {
 			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.Status().Oshib), "Правила сохранены. Переподключение не завершено: "+err.Error())
 		}
 		return otvet(k.Id, k.Imya, teloPravil(pravila, s.pravilaOzhidayut(pravila), true))
 	}
-	return otvet(k.Id, k.Imya, teloPravil(pravila, adres != "", otlichaetsya(telo, pravila)))
+	return otvet(k.Id, k.Imya, teloPravil(pravila, s.pravilaOzhidayut(pravila), otlichaetsya(telo, pravila)))
 }
 
 // teloPravil отдаёт пустые списки как `[]`, а не `null`: null на экране это

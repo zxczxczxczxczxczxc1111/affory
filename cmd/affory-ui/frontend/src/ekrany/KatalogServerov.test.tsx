@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { KatalogServerov } from "./KatalogServerov";
+import { KatalogServerov, perenestiIdServerov } from "./KatalogServerov";
 import type { Server } from "../protokol";
 
 const server = (id: string, podpiska = true): Server => ({ id, imya: id, host: `${id}.example`, port: 443, transport: "trojan", iz_podpiski: podpiska });
@@ -11,6 +11,15 @@ const props = {
 };
 beforeEach(() => localStorage.clear());
 afterEach(cleanup);
+
+it("миграция конфликтующего ID сохраняет закрепление своего источника", () => {
+  localStorage.setItem("affory.server-view.v1", JSON.stringify({zakrepleny:["B:b","ruchnye:b"],skryty:["A"],svernuty:["B"]}));
+  const view=render(<KatalogServerov {...props}/>);
+  act(()=>perenestiIdServerov("B",{b:"new-b"}));
+  view.rerender(<KatalogServerov {...props} podpiski={[props.podpiski[0],{...props.podpiski[1],servery:[{...server("b"),id:"new-b"}]}]}/>);
+  expect(screen.getByRole("button",{name:"Открепить b"})).toBeTruthy();
+  expect(JSON.parse(localStorage.getItem("affory.server-view.v1")!)).toEqual({zakrepleny:["B:new-b","ruchnye:b"],skryty:["A"],svernuty:["B"]});
+});
 
 it("ручные отдельно, старые не видны, закрепление не дублирует строку и переживает перезапуск", () => {
   const first = render(<KatalogServerov {...props} />);

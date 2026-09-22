@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
 
 // Nabor это всё, что служба помнит про серверы между запусками.
@@ -165,35 +164,4 @@ func dlyaEkrana(s protokol.Server) protokol.Server {
 		NebezopasnyyIgnorirovan: s.NebezopasnyyIgnorirovan,
 		SPinom:                  s.Pin != "",
 	}
-}
-
-// dobavitServer кладёт сервер в набор, заменяя одноимённый.
-//
-// Замена, а не второй экземпляр: повторное добавление той же ссылки это обычное
-// «человек скопировал ещё раз», и список из двух одинаковых серверов ему только
-// мешает. Ключи при замене обновляются без хранения прежнего поколения.
-func dobavitServer(n Nabor, novyy protokol.Server) Nabor {
-	n.Servery = ssylki.Slit(n.Servery, dopolnit(n.Servery, novyy))
-	return n
-}
-
-// dopolnit строит «новый список» для Slit: прежние плюс добавляемый.
-//
-// Slit убирает из подписки то, чего в новом списке нет, поэтому передать ему
-// один добавляемый сервер значило бы стереть все остальные.
-func dopolnit(bylo []protokol.Server, novyy protokol.Server) []protokol.Server {
-	out := make([]protokol.Server, 0, len(bylo)+1)
-	zamenili := false
-	for _, s := range bylo {
-		if s.Id == novyy.Id {
-			out = append(out, novyy)
-			zamenili = true
-			continue
-		}
-		out = append(out, s)
-	}
-	if !zamenili {
-		out = append(out, novyy)
-	}
-	return out
 }

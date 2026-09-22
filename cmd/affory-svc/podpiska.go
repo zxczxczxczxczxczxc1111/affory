@@ -15,6 +15,7 @@ import (
 const otstupPodpiski = 30 * time.Minute
 
 var errPodpiskaNeZadana = errors.New("подписка не задана")
+var errObnovlenieZameneno = errors.New("обновление заменено более новым запросом")
 
 // oshibkaNabora и oshibkaSohraneniya отделяют «не смогли прочитать секреты» и
 // «не смогли записать» от «панель не ответила». Без разделения все три отказа
@@ -46,24 +47,72 @@ func (s *Sluzhba) obnovitPodpisku(ctx context.Context) (ssylki.Razbor, int, erro
 // Ответ сети принадлежит исходной подписке, даже если за время загрузки
 // человек переключился на другую. Удалённую запись ответ не воскрешает.
 func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Razbor, int, error) {
+	ctx, otmena := context.WithCancel(ctx)
+	defer otmena()
+	if s.fonCtx != nil {
+		stop := context.AfterFunc(s.fonCtx, otmena)
+		defer stop()
+	}
+	if err := ctx.Err(); err != nil {
+		return ssylki.Razbor{}, 0, err
+	}
+	muNabor.Lock()
 	n, err := s.nabor()
 	if err != nil {
+		muNabor.Unlock()
 		return ssylki.Razbor{}, 0, oshibkaNabora{err}
 	}
 	z := n.zapisPodpiski(id)
 	if z == nil {
+		muNabor.Unlock()
 		return ssylki.Razbor{}, 0, errPodpiskaNeZadana
 	}
 	adres := z.Adres
+	s.nomerObnovleniya++
+	pokolenie := s.nomerObnovleniya
+	if s.obnovleniyaPodpisok == nil {
+		s.obnovleniyaPodpisok = make(map[string]uint64)
+	}
+	s.obnovleniyaPodpisok[id] = pokolenie
+	muNabor.Unlock()
+	defer func() {
+		muNabor.Lock()
+		if s.obnovleniyaPodpisok[id] == pokolenie {
+			delete(s.obnovleniyaPodpisok, id)
+		}
+		muNabor.Unlock()
+	}()
 	r, err := s.zagruzitPodpisku(ctx, adres)
 	if err != nil {
-		s.otmetitOtkazPodpiski(id, err)
+		muNabor.Lock()
+		defer muNabor.Unlock()
+		if s.obnovleniyaPodpisok[id] != pokolenie {
+			return ssylki.Razbor{}, 0, errObnovlenieZameneno
+		}
+		if ctx.Err() == nil {
+			s.otmetitOtkazPodpiski(id, adres, err)
+		}
 		return r, 0, err
 	}
 	serverov := 0
+	for i := range r.Servery {
+		r.Servery[i].IzPodpiski = true
+	}
 	aktivnaya := false
 	teper := s.seychas()
 	if err := s.pravitNabor(func(n *Nabor) error {
+		if s.obnovleniyaPodpisok[id] != pokolenie {
+			return errObnovlenieZameneno
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		ostanovlena := s.ostanovlena
+		s.mu.Unlock()
+		if ostanovlena {
+			return context.Canceled
+		}
 		z := n.zapisPodpiski(id)
 		if z == nil || z.Adres != adres {
 			return errors.New("подписка удалена во время обновления")
@@ -73,7 +122,7 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 			n.Servery = ssylki.Slit(n.Servery, r.Servery)
 			serverov = len(n.Servery)
 		} else {
-			z.Servery = ssylki.Slit(nil, r.Servery)
+			z.Servery = ssylki.Slit(z.Servery, r.Servery)
 			serverov = len(z.Servery)
 		}
 		n.OtmetitObnovlenie(id, teper)
@@ -82,7 +131,11 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 		return r, 0, oshibkaSohraneniya{err}
 	}
 	if aktivnaya {
-		s.pravitSost(func(f *sostoyanie.SostoyanieFayla) { f.PodpiskaObnovlena = &teper })
+		muNabor.Lock()
+		if s.obnovleniyaPodpisok[id] == pokolenie {
+			s.pravitSost(func(f *sostoyanie.SostoyanieFayla) { f.PodpiskaObnovlena = &teper })
+		}
+		muNabor.Unlock()
 	}
 	return r, serverov, nil
 }

@@ -84,8 +84,11 @@ type Sluzhba struct {
 	serveryYadra    []protokol.Server
 	otpechatkiYadra map[string][32]byte
 	mu              sync.Mutex
-	speed           *speedJob
-	speedRunner     speedRun
+	// Поколения обновлений защищены muNabor вместе с записью их результатов.
+	nomerObnovleniya    uint64
+	obnovleniyaPodpisok map[string]uint64
+	speed               *speedJob
+	speedRunner         speedRun
 	// zhurnalKomand пишет строку на каждую команду: имя, кто прислал, исход.
 	// nil значит «молчим»: тесты и стенд создают службу без журнала. Тел в нём
 	// нет НИКОГДА, там ключи (см. zhurnalKomand.go).

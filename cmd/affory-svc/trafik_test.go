@@ -39,6 +39,7 @@ func TestModernRulesReconnectActiveTunnelAndKeepIdleIdle(t *testing.T) {
 	s.mu.Lock()
 	generation := s.pokolenieP
 	s.mu.Unlock()
+	p = []byte(`{"trafik":{"po_umolchaniyu":"vpn","servisy":[{"id":"youtube","marshrut":"vpn"}]}}`)
 	r = s.Obrabotat(ctxAdmina(), protokol.Kadr{Id: 2, Imya: "setRules", Telo: p})
 	if r.Oshib != nil || s.Status().Sostoyanie != protokol.SostPodnyat {
 		t.Fatalf("active rules: %+v", r)
@@ -48,6 +49,45 @@ func TestModernRulesReconnectActiveTunnelAndKeepIdleIdle(t *testing.T) {
 	s.mu.Unlock()
 	if after <= generation {
 		t.Fatal("rules were saved but core was never restarted")
+	}
+}
+
+func TestIdentichnyePravilaNePerepodklyuchayutYadro(t *testing.T) {
+	s := podstavnaya(t, nil)
+	p := []byte(`{"trafik":{"po_umolchaniyu":"vpn","domeny":[{"domen":"example.org","marshrut":"direct"}]}}`)
+	if r := s.Obrabotat(ctxAdmina(), protokol.Kadr{Id: 1, Imya: "setRules", Telo: p}); r.Oshib != nil {
+		t.Fatal(r.Oshib)
+	}
+	if err := s.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.nabor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Фикстура не запускает sobratTun, который запоминает применённые правила.
+	s.mu.Lock()
+	s.pravilaKonfiga = otpechatokPravil(n.Pravila)
+	generation := s.pokolenieP
+	s.mu.Unlock()
+	r := s.Obrabotat(ctxAdmina(), protokol.Kadr{Id: 2, Imya: "setRules", Telo: p})
+	if r.Oshib != nil {
+		t.Fatal(r.Oshib)
+	}
+	s.mu.Lock()
+	after := s.pokolenieP
+	s.mu.Unlock()
+	if after != generation {
+		t.Fatal("unchanged rules restarted the core")
+	}
+	var out struct {
+		Pending bool `json:"trebuet_podyoma"`
+	}
+	if err := json.Unmarshal(r.Telo, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Pending {
+		t.Fatal("unchanged applied rules require a restart")
 	}
 }
 

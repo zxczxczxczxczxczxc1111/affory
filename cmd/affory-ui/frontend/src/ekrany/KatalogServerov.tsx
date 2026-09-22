@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Server } from "../protokol";
 import type { PodpiskaNaEkrane, ZamerZaderzhki } from "./Servery";
 import { vozrast } from "./Servery";
@@ -36,6 +36,21 @@ function chitatVid(): { vid: Vid; otkaz: string } {
   }
 }
 
+const SMENA_ID = "affory:server-ids";
+export function perenestiIdServerov(podpiska: string, ids: Record<string, string>) {
+  if (!Object.keys(ids).length) return;
+  const state = chitatVid();
+  const prefix = `${podpiska}:`;
+  const vid = { ...state.vid, zakrepleny: [...new Set(state.vid.zakrepleny.map(key => {
+    const id = key.startsWith(prefix) ? ids[key.slice(prefix.length)] : undefined;
+    return id ? `${prefix}${id}` : key;
+  }))] };
+  let otkaz = state.otkaz;
+  try { localStorage.setItem(KLYUCH, JSON.stringify(vid)); }
+  catch { otkaz = "Не удалось сохранить закрепления после обновления идентификаторов."; }
+  window.dispatchEvent(new CustomEvent(SMENA_ID, { detail: { vid, otkaz } }));
+}
+
 interface Props {
   servery: Server[]; podpiski: PodpiskaNaEkrane[]; uzel?: string; zapros: string;
   zaderzhki: ZamerZaderzhki[]; nesushchiy?: string; vybran?: string; podnyat: boolean; disabled: boolean;
@@ -45,6 +60,11 @@ interface Props {
 
 export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, nesushchiy, vybran, podnyat, disabled, naVybor, naObnovit, obnovlyaetsya, obnovlyaemyePodpiski = [] }: Props) {
   const [state, setState] = useState(chitatVid);
+  useEffect(() => {
+    const obnovit = (event: Event) => setState((event as CustomEvent<{ vid: Vid; otkaz: string }>).detail);
+    window.addEventListener(SMENA_ID, obnovit);
+    return () => window.removeEventListener(SMENA_ID, obnovit);
+  }, []);
   const [pokazatSkrytye, setPokazatSkrytye] = useState(false);
   const { vid } = state;
   const gruppy = gruppyServerov(servery, podpiski, uzel);

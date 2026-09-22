@@ -9,7 +9,37 @@ import (
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
+
+func TestDistinctEndpointProfilesAcceptedByShippingCore(t *testing.T) {
+	core := os.Getenv("AFFORY_SINGBOX")
+	if core == "" {
+		t.Skip("AFFORY_SINGBOX not set")
+	}
+	r, err := ssylki.RazobratSpisok([]byte("trojan://first@192.0.2.225:443?sni=a.example#One\ntrojan://second@192.0.2.225:443?sni=b.example#Two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Servery) != 2 {
+		t.Fatal("parser lost a profile")
+	}
+	v := obraztsovyyVhod()
+	v.Server = r.Servery[1]
+	v.Servery = r.Servery
+	k := sobrat(t, v)
+	b, err := json.Marshal(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "profiles.json")
+	if err := os.WriteFile(p, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(core, "check", "-c", p).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+}
 
 func TestSelectiveTrafficKeepsExplicitRoutesAndDNS(t *testing.T) {
 	v := obraztsovyyVhod()

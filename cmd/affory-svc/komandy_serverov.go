@@ -87,7 +87,7 @@ func (s *Sluzhba) addServer(k protokol.Kadr) protokol.Kadr {
 	}
 
 	if err := s.pravitNabor(func(n *Nabor) error {
-		*n = dobavitServer(*n, srv)
+		n.Servery, srv = ssylki.DobavitProfil(n.Servery, srv)
 		return nil
 	}); err != nil {
 		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
@@ -224,6 +224,8 @@ func otkazPodpiski(k protokol.Kadr, r ssylki.Razbor, err error) protokol.Kadr {
 	var nab oshibkaNabora
 	var sohr oshibkaSohraneniya
 	switch {
+	case errors.Is(err, errObnovlenieZameneno):
+		return otvet(k.Id, k.Imya, map[string]any{"obnovlenie_zameneno": true})
 	case errors.As(err, &nab):
 		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
 	case errors.Is(err, errPodpiskaNeZadana):
@@ -708,7 +710,7 @@ func (s *Sluzhba) pravitNabor(izmenit func(*Nabor) error) error {
 	}
 	// Копия СПИСКА, а не только заголовка структуры: izmenit имеет право
 	// заменить срез целиком, и заслону было бы не с чем сравнивать.
-	staryy := Nabor{Servery: append([]protokol.Server(nil), n.Servery...)}
+	staryy := Nabor{Servery: append([]protokol.Server(nil), n.Servery...), Podpiski: append([]ZapisPodpiski(nil), n.Podpiski...)}
 	// Состав подписок ДО правки. Сравнение идёт по идентификаторам, а строка в
 	// журнал пишется только при расхождении: набор пишут восемь путей и
 	// расписание, и строка на каждую запись утонула бы в своём же шуме.
@@ -722,6 +724,11 @@ func (s *Sluzhba) pravitNabor(izmenit func(*Nabor) error) error {
 	}
 	if err := s.zapisatNabor(n); err != nil {
 		return err
+	}
+	for _, old := range staryy.Podpiski {
+		if current := n.zapisPodpiski(old.Id); current == nil || current.Adres != old.Adres {
+			delete(s.obnovleniyaPodpisok, old.Id)
+		}
 	}
 	if !sostavySovpadayut(sostavDo, sostavPodpisok(n)) {
 		log.Printf("состав подписок изменён: было [%s], стало [%s]; %s",
@@ -762,6 +769,7 @@ func (s *Sluzhba) zamenitNaborBlobom(telo []byte) error {
 	if err := s.sekretyPisat(telo); err != nil {
 		return err
 	}
+	clear(s.obnovleniyaPodpisok)
 	n, err := s.nabor()
 	if err != nil {
 		return err

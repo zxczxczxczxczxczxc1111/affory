@@ -93,17 +93,8 @@ func RazobratSpisok(telo []byte) (Razbor, error) {
 	tekst = strings.ReplaceAll(tekst, "\r\n", "\n")
 	tekst = strings.ReplaceAll(tekst, "\r", "\n")
 
-	// Повторы В САМОЙ подписке. Замерено на живой подписке 01.09.2026: из
-	// одиннадцати строк две вели на один и тот же узел с одним и тем же
-	// идентификатором. Модель этого не предусматривала, а последствие тяжёлое:
-	// сверка кандидатов из задачи 3.6 отвергает список с повторяющимся Id,
-	// конфиг ядра не собирается, и подъёма нет вовсе. Человек вставляет рабочую
-	// подписку и получает клиент, который не подключается ни к чему.
-	//
-	// Схлопывается ТИХО и без отказа: для человека это одна и та же точка, а не
-	// ошибка публикации, о которой ему есть что делать.
-	vzyaty := make(map[string]bool)
-
+	// Дедупликация после разбора сравнивает всю конфигурацию. Общий endpoint
+	// сам по себе не означает, что пароли, SNI и параметры транспорта совпали.
 	for i, stroka := range strings.Split(tekst, "\n") {
 		nomer := i + 1
 		stroka = strings.TrimSpace(stroka)
@@ -113,10 +104,6 @@ func RazobratSpisok(telo []byte) (Razbor, error) {
 		srv, err := Razobrat(stroka)
 		switch {
 		case err == nil:
-			if vzyaty[srv.Id] {
-				continue
-			}
-			vzyaty[srv.Id] = true
 			srv.IzPodpiski = true
 			r.Servery = append(r.Servery, srv)
 		case errors.Is(err, ErrUvedomleniePodpiski):
@@ -131,6 +118,7 @@ func RazobratSpisok(telo []byte) (Razbor, error) {
 		}
 	}
 
+	r.Servery = unikalnyeProfili(r.Servery)
 	if len(r.Servery) > 0 {
 		return r, nil
 	}
@@ -359,30 +347,4 @@ func (z *Zagruzchik) ZagruzitSPovtorami(ctx context.Context, adres string, popyt
 		}
 	}
 	return Razbor{}, posledn
-}
-
-// Slit заменяет подписочные записи свежими и сохраняет ручные серверы.
-// Устаревшие записи и прежние ключи не являются частью нового каталога.
-func Slit(bylo, stalo []protokol.Server) []protokol.Server {
-	itog := make([]protokol.Server, 0, len(stalo)+len(bylo))
-	seen := make(map[string]bool)
-	for _, srv := range stalo {
-		if !srv.Uderzhan && !seen[srv.Id] {
-			itog = append(itog, srv)
-			seen[srv.Id] = true
-		}
-	}
-
-	// Ручные добавляются после: порядок подписки это порядок панели, и менять
-	// его нам незачем.
-	vzyaty := make(map[string]bool, len(stalo))
-	for _, s := range stalo {
-		vzyaty[s.Id] = true
-	}
-	for _, s := range bylo {
-		if !s.IzPodpiski && !s.Uderzhan && !vzyaty[s.Id] {
-			itog = append(itog, s)
-		}
-	}
-	return itog
 }

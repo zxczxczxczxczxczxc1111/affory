@@ -26,6 +26,31 @@ func TestKatalogPereklyuchenieNeSmeshivaetPodpiski(t *testing.T) {
 	}
 }
 
+func TestAktivatsiyaRazvoditIdRuchnogoIPodpisochnogoProfilya(t *testing.T) {
+	manual, err := ssylki.Razobrat("trojan://manual@node.example:443#Manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := ssylki.Razobrat("trojan://remote@node.example:443#Remote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote.IzPodpiski = true
+	n := Nabor{Aktivnaya: "A", Podpiski: []ZapisPodpiski{{Id: "A"}, {Id: "B", Servery: []protokol.Server{remote}}}, Servery: []protokol.Server{manual}}
+	aliases := n.PereklyuchitAktivnuyu("B", false)
+	if len(n.Servery) != 2 || n.Servery[0].Id == manual.Id || n.Servery[1].Id != manual.Id {
+		t.Fatal("activation collided with the manual profile")
+	}
+	newID := n.Servery[0].Id
+	if aliases[remote.Id] != newID {
+		t.Fatal("UI cannot resolve selected profile after activation")
+	}
+	n.PereklyuchitAktivnuyu("A", false)
+	if again := n.PereklyuchitAktivnuyu("B", false); len(again) != 0 || n.Servery[0].Id != newID {
+		t.Fatal("identity changed again on switching sources")
+	}
+}
+
 func TestKatalogUdalenieAktivnoyNeOstavlyaetStaryeServery(t *testing.T) {
 	n := Nabor{Aktivnaya: "A", Podpiski: []ZapisPodpiski{{Id: "A"}, {Id: "B", Servery: []protokol.Server{{Id: "b", IzPodpiski: true}}}}, Servery: []protokol.Server{{Id: "a", IzPodpiski: true}, {Id: "manual"}}}
 	n.UbratPodpisku("A")

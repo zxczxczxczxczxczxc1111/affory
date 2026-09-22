@@ -129,6 +129,14 @@ func TestDobavlenieIUdaleniyeNeTeryayutDrugDruga(t *testing.T) {
 // время тикнуло расписание» случается сама.
 func TestDobavlenieINeTeryaetsyaPodRaspisaniemPodpiski(t *testing.T) {
 	s := podstavnaya(t, nil)
+	// Разные источники действительно привозят разные профили, а не одну
+	// конфигурацию с искусственно различными ID фикстуры.
+	s.zagruzitPodpisku = func(context.Context, string) (ssylki.Razbor, error) {
+		srv := vtoroyServer()
+		srv.Host = "203.0.113.10"
+		srv.IzPodpiski = true
+		return ssylki.Razbor{Servery: []protokol.Server{srv}}, nil
+	}
 	hranilishcheProby(t, s, Nabor{
 		Servery:  []protokol.Server{serverProby()},
 		Podpiska: "https://panel.example/zhivaya",

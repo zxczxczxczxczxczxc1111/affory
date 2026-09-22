@@ -393,6 +393,7 @@ func (s *Sluzhba) setActiveSubscription(ctx context.Context, k protokol.Kadr) pr
 	adresKlash, _ := s.dostupKKlash()
 	nashli := false
 	pusto := false
+	var zamenyId map[string]string
 	if err := s.pravitNabor(func(n *Nabor) error {
 		z := n.zapisPodpiski(telo.Id)
 		if z == nil {
@@ -400,7 +401,7 @@ func (s *Sluzhba) setActiveSubscription(ctx context.Context, k protokol.Kadr) pr
 		}
 		nashli = true
 		pusto = len(z.Servery) == 0
-		n.PereklyuchitAktivnuyu(telo.Id, adresKlash != "")
+		zamenyId = n.PereklyuchitAktivnuyu(telo.Id, adresKlash != "")
 		return nil
 	}); err != nil {
 		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
@@ -413,7 +414,7 @@ func (s *Sluzhba) setActiveSubscription(ctx context.Context, k protokol.Kadr) pr
 		if err != nil {
 			return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
 		}
-		return otvet(k.Id, k.Imya, map[string]any{"aktivnaya": telo.Id, "serverov": len(n.Servery)})
+		return otvet(k.Id, k.Imya, map[string]any{"aktivnaya": telo.Id, "serverov": len(n.Servery), "server_ids": zamenyId})
 	}
 	r, serverov, err := s.obnovitPodpisku(ctx)
 	if err != nil {
@@ -453,13 +454,13 @@ func proveritAdresPodpiski(adres string) string {
 // PereklyuchitAktivnuyu перекладывает актуальные записи между подписками.
 // Снимок работающего ядра хранится в Sluzhba и в кэши подписок не попадает.
 // Второй аргумент оставлен для совместимости внутренних вызовов.
-func (n *Nabor) PereklyuchitAktivnuyu(id string, _ bool) {
+func (n *Nabor) PereklyuchitAktivnuyu(id string, _ bool) map[string]string {
 	if n.Aktivnaya == id {
-		return
+		return nil
 	}
 	novaya := n.zapisPodpiski(id)
 	if novaya == nil {
-		return
+		return nil
 	}
 	var ruchnye, prezhnie []protokol.Server
 	for _, srv := range aktualnyeServery(n.Servery) {
@@ -472,9 +473,20 @@ func (n *Nabor) PereklyuchitAktivnuyu(id string, _ bool) {
 	if p := n.zapisPodpiski(n.Aktivnaya); p != nil {
 		p.Servery = prezhnie
 	}
-	n.Servery = ssylki.Slit(ruchnye, aktualnyeServery(novaya.Servery))
+	cached := aktualnyeServery(novaya.Servery)
+	n.Servery = ssylki.Slit(ruchnye, cached)
+	zameny := make(map[string]string)
+	for _, old := range cached {
+		for _, current := range n.Servery {
+			if current.IzPodpiski && current.Id != old.Id && ssylki.TotZheProfil(old, current) {
+				zameny[old.Id] = current.Id
+				break
+			}
+		}
+	}
 	novaya.Servery = nil
 	n.Aktivnaya = id
+	return zameny
 }
 
 // obnovitVsePodpiski обходит ВСЕ добавленные подписки, а не только активную.
@@ -514,17 +526,16 @@ func (s *Sluzhba) obnovitVsePodpiski(ctx context.Context) (ssylki.Razbor, int, e
 // Отдельной правкой набора, а не внутри обхода: отказ приходит из сети, и
 // держать набор запертым на время похода значило бы подвесить любую команду
 // человека на чужую панель.
-func (s *Sluzhba) otmetitOtkazPodpiski(id string, prichina error) {
+// Вызывается под muNabor после проверки поколения сетевого запроса.
+func (s *Sluzhba) otmetitOtkazPodpiski(id, adres string, prichina error) {
 	if id == "" || prichina == nil {
 		return
 	}
 	// Меняется только текст ошибки. Пересборка брандмауэра здесь не нужна
 	// и задерживала возврат уже завершившегося сетевого запроса.
-	muNabor.Lock()
-	defer muNabor.Unlock()
 	n, err := s.nabor()
 	if err == nil {
-		if z := n.zapisPodpiski(id); z != nil {
+		if z := n.zapisPodpiski(id); z != nil && z.Adres == adres {
 			z.Otkaz = prichina.Error()
 			err = s.zapisatNabor(n)
 		}

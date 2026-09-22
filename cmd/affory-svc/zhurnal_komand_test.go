@@ -19,7 +19,7 @@ import (
 
 func sluzhbaSZhurnalom(t *testing.T) (*Sluzhba, *bytes.Buffer) {
 	t.Helper()
-	s := NovayaSluzhba()
+	s := podstavnaya(t, nil)
 	var b bytes.Buffer
 	s.zhurnalKomand = log.New(&b, "", 0)
 	return s, &b

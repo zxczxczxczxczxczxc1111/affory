@@ -2,6 +2,7 @@ import { aktualnyeZamery } from "./zamery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./desktop.css";
 import { Glavnyy } from "./ekrany/Glavnyy";
+import { perenestiIdServerov } from "./ekrany/KatalogServerov";
 import { Skorost } from "./ekrany/Skorost";
 import { useSkorost } from "./skorost";
 import { Karkas } from "./ekrany/Karkas";
@@ -365,7 +366,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
 
   // Runs a command and folds its answer into state. Every command goes
   // through here so a refusal frame becomes a refusal screen in one place.
-  const vypolnit = useCallback(async (komanda: string, telo: unknown = {}) => {
+  const vypolnit = useCallback(async (komanda: string, telo: unknown = {}, naOtvet?: (telo: unknown) => void) => {
     const blocksControls = ["connect", "disconnect", "setRules", "setRouteMode", "setServer", "setActiveSubscription"].includes(komanda);
     if (blocksControls) setBusyCommand(komanda);
     const idPodpiski = komanda === "refreshSubscription" && typeof telo === "object" && telo !== null && "id" in telo && typeof telo.id === "string" ? telo.id : "";
@@ -379,6 +380,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         zadatOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst, komanda, vkladka: vkladkaSeychas.current });
       } else {
         zadatOtkaz(null);
+        naOtvet?.(kadr.telo);
       }
       const s = statusIz(kadr);
       if (s) zadatStatus(s);
@@ -908,10 +910,18 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             naPravila={() => zadatVkladku("pravila")}
             naTrafik={r => { if (pravila?.trafik) void vypolnit("setRules", { trafik: { ...pravila.trafik, po_umolchaniyu: r }, bez_ru_spiska: pravila.bez_ru_spiska }); }}
             naVyborServera={(id, podpiska) => { void (async () => {
+              let tekushchiyId = id;
               if (podpiska && !podpiski.some(p => p.id === podpiska && p.aktivnaya)) {
-                if (!await vypolnit("setActiveSubscription", { id: podpiska })) return;
+                if (!await vypolnit("setActiveSubscription", { id: podpiska }, telo => {
+                  if (typeof telo !== "object" || telo === null || !("server_ids" in telo)) return;
+                  const ids = telo.server_ids;
+                  if (typeof ids !== "object" || ids === null || Array.isArray(ids)) return;
+                  const zameny = Object.fromEntries(Object.entries(ids).filter((pair): pair is [string, string] => typeof pair[1] === "string"));
+                  tekushchiyId = zameny[id] ?? id;
+                  perenestiIdServerov(podpiska, zameny);
+                })) return;
               }
-              await vypolnit("connect", { server: id });
+              await vypolnit("connect", { server: tekushchiyId });
             })(); }}
             spisokOtkaz={spisokOtkaz}
             status={naEkrane}
