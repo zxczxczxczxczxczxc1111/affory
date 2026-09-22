@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { IkPoisk, IkStrelkaVniz, IkTochki, IkTreugolnik } from "../ikonki";
 
 // Примитивы редизайна. Отдельным файлом, а не внутри ui.tsx, потому что ui.tsx
@@ -20,10 +20,14 @@ export function Vertushka({ className = "h-4 w-4" }: { className?: string }) {
 
 /** Флажок: тот же родной checkbox, только квадратный. Для строки таблицы,
  *  где переключатель-пилюля читался бы как настройка, а не как отметка. */
-export function Flazhok({ vkl, naSmenu, podpis, skrytPodpis = false, aktiven = true, testId }: {
+export function Flazhok({ vkl, naSmenu, podpis, golos, skrytPodpis = false, aktiven = true, testId }: {
   vkl: boolean;
   naSmenu: (v: boolean) => void;
   podpis: string;
+  /** Имя для чтения с экрана, когда видимая подпись одинакова во всех строках
+   *  списка. Глазами строка читается вместе со своим приложением, а голосом
+   *  десять одинаковых «И запущенные им программы» подряд не различить. */
+  golos?: string;
   skrytPodpis?: boolean;
   aktiven?: boolean;
   testId?: string;
@@ -38,7 +42,7 @@ export function Flazhok({ vkl, naSmenu, podpis, skrytPodpis = false, aktiven = t
         className="flazhok"
         checked={vkl}
         disabled={!aktiven}
-        aria-label={skrytPodpis ? podpis : undefined}
+        aria-label={golos ?? (skrytPodpis ? podpis : undefined)}
         onChange={(e) => naSmenu(e.target.checked)}
       />
       {!skrytPodpis && (
@@ -87,11 +91,13 @@ export function Vybor({ znachenie, naVybor, znacheniya, aktiven = true, testId, 
 }
 
 /** Поиск: поле со значком, на всю ширину строки инструментов. */
-export function Poisk({ znachenie, naVvod, placeholder, id, aktiven = true, testId, "aria-label": podpis }: {
+export function Poisk({ znachenie, naVvod, placeholder, id, priv, aktiven = true, testId, "aria-label": podpis }: {
   znachenie: string;
   naVvod: (v: string) => void;
   placeholder: string;
   id?: string;
+  /** Ссылка на само поле: форма ставит в него курсор при открытии. */
+  priv?: Ref<HTMLInputElement>;
   aktiven?: boolean;
   testId?: string;
   "aria-label": string;
@@ -101,6 +107,7 @@ export function Poisk({ znachenie, naVvod, placeholder, id, aktiven = true, test
       <IkPoisk className="text-fg-muted pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
       <input
         id={id}
+        ref={priv}
         type="search"
         data-testid={testId}
         aria-label={podpis}

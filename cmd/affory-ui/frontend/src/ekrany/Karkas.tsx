@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { VKLADKI, nazvanieVkladki, type Vkladka } from "./vkladki";
+import { sleduyushchayaVkladka } from "./klavishi-vkladok";
 import { IkNastroyki, IkPodklyuchenie, IkPravila, IkRazvernut, IkSvernut, IkZakryt } from "../ikonki";
 import { ZnachokServisa } from "./ui";
 import sphere from "../assets/affory-sphere.png";
@@ -37,7 +39,12 @@ const ZNACHKI: Partial<Record<Vkladka, typeof IkPodklyuchenie>> = {
   nastroyki: IkNastroyki,
 };
 
+// «Серверы» живут вкладкой в коде, но в полосу не выходят: список неизменный,
+// поэтому и порядок для стрелок берётся отсюда, а не из общего VKLADKI.
+const VIDIMYE = VKLADKI.filter((v) => v !== "servery");
+
 export function Karkas({ vkladka, naVkladku, naSvernut, naRazvernut, naZakryt, naGitHub, zablokirovany = false, children }: KarkasProps) {
+  const knopki = useRef<(HTMLButtonElement | null)[]>([]);
   return (
     <div className="flex h-screen min-w-0 flex-col">
       <header
@@ -51,18 +58,30 @@ export function Karkas({ vkladka, naVkladku, naSvernut, naRazvernut, naZakryt, n
             Affory
           </span>
           <nav role="tablist" aria-label="Разделы" className="flex h-polosa items-stretch">
-            {VKLADKI.filter(v => v !== "servery").map((v) => {
+            {VIDIMYE.map((v, nomer) => {
               const aktivna = v === vkladka || (v === "podklyuchenie" && vkladka === "servery");
               const Znachok = ZNACHKI[v];
               return (
                 <button
                   key={v}
+                  ref={(el) => { knopki.current[nomer] = el; }}
                   type="button"
                   role="tab"
                   aria-selected={aktivna}
+                  // Roving tabindex: Tab доносит до полосы разделов один раз, а
+                  // дальше по ней ходят стрелки. Прежде каждый раздел стоял в
+                  // общем порядке, и до содержимого окна надо было пройти все.
+                  tabIndex={aktivna ? 0 : -1}
                   style={NE_TASHCHIT}
                   disabled={zablokirovany}
                   onClick={() => naVkladku(v)}
+                  onKeyDown={(e) => {
+                    const kuda = sleduyushchayaVkladka(e.key, nomer, VIDIMYE.length);
+                    if (kuda === null) return;
+                    e.preventDefault();
+                    naVkladku(VIDIMYE[kuda]);
+                    knopki.current[kuda]?.focus();
+                  }}
                   className={
                     // Ink, never fill: a fill-only tab has no edge on black.
                     aktivna

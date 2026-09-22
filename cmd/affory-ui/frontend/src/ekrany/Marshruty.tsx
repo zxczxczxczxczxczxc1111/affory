@@ -7,6 +7,7 @@ import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
 import { IkonkaServisa } from "./IkonkaServisa";
 import { Vybor } from "./Vybor";
 import { slovoPosleChisla } from "../chisla";
+import { sleduyushchayaVkladka } from "./klavishi-vkladok";
 import { OhvatPravil } from "./OhvatPravil";
 
 // Раздел правил: слева режим по умолчанию и счёт правил, справа три вкладки.
@@ -106,9 +107,20 @@ export function Marshruty({
   const [applyError, setApplyError] = useState("");
   const [tab, setTab] = useState<"services" | "apps" | "sites">("services");
   const [adding, setAdding] = useState(false);
+  // Кнопки полосы вкладок и кнопка «Добавить»: первым нужен фокус при ходьбе
+  // стрелками, второй принимает фокус обратно, когда исчезает та кнопка, на
+  // которой он стоял, - удалённая строка или ставшее ненужным применение.
+  const knopkiVkladok = useRef<(HTMLButtonElement | null)[]>([]);
+  const knopkaDobavit = useRef<HTMLButtonElement | null>(null);
+  const pervoePoleFormy = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (adding && tab === "apps") obnovitProtsessy?.();
   }, [adding, tab, obnovitProtsessy]);
+  // Курсор в первое поле открытой формы: иначе после нажатия «Добавить» надо
+  // было ещё дойти до поля табом через всю полосу вкладок.
+  useEffect(() => {
+    if (adding) pervoePoleFormy.current?.focus();
+  }, [adding, tab]);
   const [query, setQuery] = useState("");
   const [path, setPath] = useState("");
   const [picking, setPicking] = useState(false);
@@ -147,6 +159,10 @@ export function Marshruty({
       const ok = await naKomandu("setRules",body);
       if (ok !== true) { setApplyError("Не удалось применить правила. Черновик сохранён; причина указана в сообщении службы."); return; }
       setDraft(null); setPath(""); setDomain(""); setAdding(false);
+      // Кнопка «Применить изменения» после успеха гаснет вместе со всей
+      // полосой черновика, поэтому фокус с неё уходит к действию, с которого
+      // редактирование и начинается.
+      knopkaDobavit.current?.focus();
       setNotice(status.sostoyanie === "vyklyuchen" ? "Правила сохранены" : "Правила применены");
     } catch (error: unknown) {
       setApplyError(error instanceof Error ? error.message : String(error));
@@ -201,6 +217,10 @@ export function Marshruty({
   };
   const add = () => {
     if (disabled || (status.kill_switch && route==="direct")) return;
+    // Пустой ввод отсекается здесь, а не только гашением кнопки: по Enter из
+    // поля поиска форма отправляется в обход кнопки, и правило с пустым путём
+    // раньше доехало бы до черновика.
+    if ((tab === "apps" ? path.trim() : domain.trim()) === "") return;
     let changed = false;
     if (tab === "apps") {
       const app = {
@@ -225,6 +245,9 @@ export function Marshruty({
       });
     }
     setAdding(false);
+    // Форма закрылась вместе с полем, в котором стоял курсор. Без этого фокус
+    // падал на body, и следующий Tab начинал обход окна заново.
+    knopkaDobavit.current?.focus();
     setNotice(changed ? "Правило добавлено в черновик. Нажми «Применить изменения», когда закончишь редактирование." : "Такое правило уже есть в списке.");
   };
 
@@ -314,15 +337,26 @@ export function Marshruty({
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <nav role="tablist" aria-label="Вид правил" className="border-border flex shrink-0 items-stretch gap-1 border-b px-8">
-          {VKLADKI.map(({ v, podpis, schyot, poyasnenie, vklyucheno }) => {
+          {VKLADKI.map(({ v, podpis, schyot, poyasnenie, vklyucheno }, nomer) => {
             const on = v === tab;
             return (
               <button
                 key={v}
+                ref={(el) => { knopkiVkladok.current[nomer] = el; }}
                 type="button"
                 role="tab"
                 aria-selected={on}
+                // В порядок Tab попадает только выбранная вкладка: иначе путь с
+                // клавиатуры до содержимого правил шёл через все три.
+                tabIndex={on ? 0 : -1}
                 onClick={() => changeTab(v)}
+                onKeyDown={(e) => {
+                  const kuda = sleduyushchayaVkladka(e.key, nomer, VKLADKI.length);
+                  if (kuda === null) return;
+                  e.preventDefault();
+                  changeTab(VKLADKI[kuda].v);
+                  knopkiVkladok.current[kuda]?.focus();
+                }}
                 className={`relative flex h-12 items-center gap-2 px-3 text-sm font-medium transition-colors ${
                   on ? "text-foreground" : "text-fg-muted hover:text-fg-secondary"
                 }`}
@@ -529,6 +563,7 @@ export function Marshruty({
                 <Knopka
                   rang="glavnaya"
                   bolshaya
+                  priv={knopkaDobavit}
                   aria-expanded={adding}
                   aktiven={!disabled}
                   onClick={() => {
@@ -545,12 +580,19 @@ export function Marshruty({
               </header>
 
               {adding && (
-                <div className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-4">
+                // Настоящая форма, а не набор полей: Enter в поле пути или
+                // домена добавляет правило в черновик, как ждёт любой, кто
+                // заполнял поле с клавиатуры. Вводит только черновик, поэтому
+                // случайный Enter ничего не применяет.
+                <form
+                  onSubmit={(e) => { e.preventDefault(); add(); }}
+                  className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-4">
                   {tab === "apps" ? (
                     <>
                       <div className="flex items-center gap-3">
                         <Poisk
                           aria-label="Поиск приложения"
+                          priv={pervoePoleFormy}
                           znachenie={query}
                           naVvod={setQuery}
                           placeholder="Найти среди запущенных"
@@ -662,6 +704,7 @@ export function Marshruty({
                   ) : (
                     <Pole
                       aria-label="Домен сайта"
+                      priv={pervoePoleFormy}
                       znachenie={domain}
                       naVvod={setDomain}
                       placeholder="example.org"
@@ -679,17 +722,17 @@ export function Marshruty({
                     <Knopka
                       rang="glavnaya"
                       bolshaya
+                      tip="submit"
                       aktiven={
                         !disabled && !(status.kill_switch && route==="direct") &&
                         (tab === "apps" ? path.trim() !== "" : domain.trim() !== "")
                       }
-                      onClick={add}
                     >
                       Добавить в черновик
                     </Knopka>
                   </div>
                   {status.kill_switch && route==="direct" && <p className="text-warn text-[13px]">Блокировка сети вне VPN включена. Выбери «Через VPN», чтобы добавить правило.</p>}
-                </div>
+                </form>
               )}
 
               {(tab === "apps" ? apps.length : domains.length) === 0 ? (
@@ -720,6 +763,7 @@ export function Marshruty({
                         </span>
                         <Flazhok
                           podpis="И запущенные им программы"
+                          golos={`И программы, запущенные ${app.imya}`}
                           aktiven={!disabled}
                           vkl={app.potomki}
                           naSmenu={(v) =>
@@ -742,13 +786,19 @@ export function Marshruty({
                           }
                         />
                         <div className="flex justify-end">
+                          {/* Глазами строка читается вместе с именем слева, голосом
+                              нет: десять «Удалить» подряд не различить, и второе
+                              нажатие вслепую стирает не ту строку. */}
                           <Knopka
                             rang={remove === app.put ? "opasnaya" : "tekst"}
+                            aria-label={remove === app.put ? `Подтвердить удаление ${app.imya}` : `Удалить правило ${app.imya}`}
                             aktiven={!disabled}
                             onClick={() => {
-                              if (remove === app.put)
+                              if (remove === app.put) {
                                 save({ ...trafik, prilozheniya: apps.filter((a) => a.put !== app.put) });
-                              else setRemove(app.put);
+                                // Строка вместе с кнопкой сейчас исчезнет.
+                                knopkaDobavit.current?.focus();
+                              } else setRemove(app.put);
                             }}
                           >
                             {remove === app.put ? "Подтвердить" : "Удалить"}
@@ -794,11 +844,13 @@ export function Marshruty({
                         <div className="flex justify-end">
                           <Knopka
                             rang={remove === d.domen ? "opasnaya" : "tekst"}
+                            aria-label={remove === d.domen ? `Подтвердить удаление ${d.domen}` : `Удалить правило ${d.domen}`}
                             aktiven={!disabled}
                             onClick={() => {
-                              if (remove === d.domen)
+                              if (remove === d.domen) {
                                 save({ ...trafik, domeny: domains.filter((v) => v.domen !== d.domen) });
-                              else setRemove(d.domen);
+                                knopkaDobavit.current?.focus();
+                              } else setRemove(d.domen);
                             }}
                           >
                             {remove === d.domen ? "Подтвердить" : "Удалить"}

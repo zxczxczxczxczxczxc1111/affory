@@ -176,7 +176,7 @@ const RANG: Record<RangKnopki, string> = {
 /** Button. 32px tall, 13px text, flex-centred label: the mockup's crooked
  *  captions were inline-block plus padding, and this is the fix. `bolshaya`
  *  is the 40px variant for the one main action of the connection card. */
-export function Knopka({ rang, aktiven = true, bolshaya = false, zhdyot = false, testId, className = "", children, ...rest }: {
+export function Knopka({ rang, aktiven = true, bolshaya = false, zhdyot = false, testId, priv, tip = "button", className = "", children, ...rest }: {
   rang: RangKnopki;
   aktiven?: boolean;
   bolshaya?: boolean;
@@ -184,11 +184,17 @@ export function Knopka({ rang, aktiven = true, bolshaya = false, zhdyot = false,
    *  нажатие. Без этого «нажал и ничего» читается как зависшая программа. */
   zhdyot?: boolean;
   testId?: string;
+  /** Ссылка на саму кнопку: сюда возвращают фокус, когда исчезает элемент, на
+   *  котором он стоял. Проп, а не forwardRef, как у `Pole` выше. */
+  priv?: Ref<HTMLButtonElement>;
+  /** `submit` для единственной кнопки формы, чтобы Enter в поле работал. */
+  tip?: "button" | "submit";
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const razmer = bolshaya ? "h-10 px-5 text-sm" : "h-8 text-[13px]";
   return (
     <button
-      type="button"
+      ref={priv}
+      type={tip}
       data-testid={testId}
       aria-busy={zhdyot || undefined}
       disabled={!aktiven || zhdyot}

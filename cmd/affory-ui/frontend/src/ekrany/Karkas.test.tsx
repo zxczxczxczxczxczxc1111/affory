@@ -100,6 +100,27 @@ describe("каркас: три раздела и третья кнопка ок�
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Подключение");
   });
 
+  // C9. Полоса разделов была набором отдельных кнопок: стрелки не делали
+  // ничего, а Tab проходил по каждой, поэтому с клавиатуры до содержимого окна
+  // надо было продавиться через всю полосу.
+  it("стрелки ходят по разделам, Tab доносит только до выбранного", () => {
+    const na = vi.fn();
+    render(<Karkas vkladka="podklyuchenie" naVkladku={na} naSvernut={nichego} naZakryt={nichego}>x</Karkas>);
+    const vkladki = screen.getAllByRole("tab");
+    expect(vkladki.map((t) => t.tabIndex)).toEqual([0, -1, -1]);
+    fireEvent.keyDown(vkladki[0], { key: "ArrowRight" });
+    expect(na).toHaveBeenLastCalledWith("pravila");
+    fireEvent.keyDown(vkladki[0], { key: "ArrowLeft" });
+    expect(na).toHaveBeenLastCalledWith("nastroyki");
+    fireEvent.keyDown(vkladki[0], { key: "End" });
+    expect(na).toHaveBeenLastCalledWith("nastroyki");
+    fireEvent.keyDown(vkladki[2], { key: "Home" });
+    expect(na).toHaveBeenLastCalledWith("podklyuchenie");
+    na.mockClear();
+    fireEvent.keyDown(vkladki[0], { key: "a" });
+    expect(na).not.toHaveBeenCalled();
+  });
+
   it("развернуть зовёт наверх, а без обработчика кнопка неактивна", () => {
     const ra = vi.fn();
     render(<Karkas vkladka="podklyuchenie" naVkladku={nichego} naSvernut={nichego} naRazvernut={ra} naZakryt={nichego}>x</Karkas>);

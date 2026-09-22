@@ -340,3 +340,87 @@ it("кнопка обновления перечитывает список пр
   fireEvent.click(screen.getByRole("button",{name:"Обновить"}));
   expect(obnovit).toHaveBeenCalledTimes(1);
 });
+
+// C9. Клавиатура, подписи действий и возврат фокуса.
+const prilozheniya: PravilaOtvet = {
+  ...rules,
+  trafik: {
+    ...rules.trafik!,
+    prilozheniya: [
+      {put:"C:\\Program Files\\Mozilla Firefox\\firefox.exe",imya:"firefox.exe",potomki:true,marshrut:"direct"},
+      {put:"C:\\Games\\steam.exe",imya:"steam.exe",potomki:false,marshrut:"vpn"},
+    ],
+  },
+};
+
+it("стрелки ходят по вкладкам правил, Tab доносит только до выбранной", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={vi.fn()}/>);
+  const vkladki = screen.getAllByRole("tab");
+  expect(vkladki.map(v=>v.tabIndex)).toEqual([0,-1,-1]);
+  fireEvent.keyDown(vkladki[0],{key:"ArrowRight"});
+  expect(screen.getByRole("tab",{selected:true}).textContent).toMatch(/Приложения/);
+  fireEvent.keyDown(screen.getByRole("tab",{selected:true}),{key:"End"});
+  expect(screen.getByRole("tab",{selected:true}).textContent).toMatch(/Сайты/);
+  fireEvent.keyDown(screen.getByRole("tab",{selected:true}),{key:"ArrowRight"});
+  expect(screen.getByRole("tab",{selected:true}).textContent).toMatch(/Сервисы/);
+});
+
+it("каждая строка называет своё приложение в подписи флажка и удаления", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={prilozheniya} otlozheno={{}} naKomandu={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  expect(screen.getByRole("checkbox",{name:"И программы, запущенные firefox.exe"})).toBeChecked();
+  expect(screen.getByRole("checkbox",{name:"И программы, запущенные steam.exe"})).not.toBeChecked();
+  const udalit = screen.getByRole("button",{name:"Удалить правило firefox.exe"});
+  fireEvent.click(udalit);
+  expect(screen.getByRole("button",{name:"Подтвердить удаление firefox.exe"})).toBeInTheDocument();
+  // Вторая строка при этом остаётся обычной: подтверждение принадлежит одной.
+  expect(screen.getByRole("button",{name:"Удалить правило steam.exe"})).toBeInTheDocument();
+});
+
+it("удалённая строка отдаёт фокус кнопке добавления, а не пустоте", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={prilozheniya} otlozheno={{}} naKomandu={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Удалить правило steam.exe"}));
+  fireEvent.click(screen.getByRole("button",{name:"Подтвердить удаление steam.exe"}));
+  expect(screen.queryByRole("button",{name:/steam\.exe/})).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("button",{name:"Добавить"}));
+});
+
+it("открытая форма ставит курсор в первое поле", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  expect(document.activeElement).toBe(screen.getByLabelText("Домен сайта"));
+});
+
+it("Enter в поле домена добавляет правило в черновик", async () => {
+  const send = vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  const pole = screen.getByLabelText("Домен сайта");
+  fireEvent.change(pole,{target:{value:"news.example"}});
+  fireEvent.submit(pole);
+  // Форма закрылась, а фокус вернулся на кнопку, с которой её открывали.
+  expect(screen.queryByLabelText("Домен сайта")).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("button",{name:"Добавить"}));
+  await primenit();
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
+    trafik: expect.objectContaining({domeny:[{domen:"work.example",marshrut:"direct"},{domen:"news.example",marshrut:"vpn"}]}),
+  }));
+});
+
+it("Enter в поиске приложения не заводит правило с пустым путём", () => {
+  const send = vi.fn();
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send}
+    zapushchennye={[{imya:"Steam",put:"C:\\Games\\steam.exe"}]} obnovitProtsessy={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  const poisk = screen.getByLabelText("Поиск приложения");
+  fireEvent.change(poisk,{target:{value:"steam"}});
+  fireEvent.submit(poisk);
+  // Форма осталась открытой, черновика нет: путь ещё не выбран.
+  expect(screen.getByLabelText("Путь к приложению")).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Применить изменения"})).toBeNull();
+  expect(send).not.toHaveBeenCalled();
+});
