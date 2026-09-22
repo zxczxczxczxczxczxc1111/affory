@@ -341,6 +341,67 @@ it("кнопка обновления перечитывает список пр
   expect(obnovit).toHaveBeenCalledTimes(1);
 });
 
+// C4. Поле сайта принимало одно готовое имя: адрес из браузера служба
+// отвергала целиком, кириллица не принималась, список добавлялся по одному.
+function otkrytFormuSaytov(props: Partial<Parameters<typeof Pravila>[0]> = {}) {
+  const send = vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send} {...props}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  return send;
+}
+
+it("адрес из браузера и кириллица доходят до правила в том виде, что примет служба", async () => {
+  const send = otkrytFormuSaytov();
+  fireEvent.change(screen.getByLabelText("Домен сайта"),{target:{value:"https://Пример.РФ/страница?a=1"}});
+  const razbor = screen.getByTestId("razbor-domenov");
+  expect(razbor).toHaveTextContent("xn--e1afmkfd.xn--p1ai");
+  expect(razbor).toHaveTextContent("набрано https://Пример.РФ/страница?a=1");
+  fireEvent.click(screen.getByRole("button",{name:"Добавить в черновик"}));
+  await primenit();
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
+    trafik: expect.objectContaining({domeny:[
+      {domen:"work.example",marshrut:"direct"},
+      {domen:"xn--e1afmkfd.xn--p1ai",marshrut:"vpn"},
+    ]}),
+  }));
+});
+
+it("список сайтов за один ввод уходит одной правкой черновика", async () => {
+  const send = otkrytFormuSaytov();
+  fireEvent.change(screen.getByLabelText("Домен сайта"),{
+    target:{value:"news.example.org, https://video.example.org/watch\nnews.example.org work.example"},
+  });
+  expect(screen.getByTestId("razbor-domenov")).toHaveTextContent("Добавится 3 правила");
+  // Повтор внутри ввода схлопнут, а совпадение с уже сохранённым правилом
+  // названо заменой, а не тихо добавлено второй строкой.
+  expect(screen.getByTestId("razbor-domenov")).toHaveTextContent("заменит прежний маршрут");
+  fireEvent.click(screen.getByRole("button",{name:"Добавить в черновик"}));
+  await primenit();
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
+    trafik: expect.objectContaining({domeny:[
+      {domen:"news.example.org",marshrut:"vpn"},
+      {domen:"video.example.org",marshrut:"vpn"},
+      {domen:"work.example",marshrut:"vpn"},
+    ]}),
+  }));
+});
+
+it("адрес и мусор объясняются построчно и не дают добавить только себя", () => {
+  otkrytFormuSaytov();
+  const pole = screen.getByLabelText("Домен сайта");
+  fireEvent.change(pole,{target:{value:"192.168.1.10 example"}});
+  const razbor = screen.getByTestId("razbor-domenov");
+  expect(razbor).toHaveTextContent("192.168.1.10: это адрес, а не имя сайта");
+  expect(razbor).toHaveTextContent("example: нужна зона");
+  expect(screen.getByRole("button",{name:"Добавить в черновик"})).toBeDisabled();
+  // Годная строка рядом с негодной не блокирует добавление годной.
+  fireEvent.change(pole,{target:{value:"192.168.1.10 shop.example.org"}});
+  expect(screen.getByRole("button",{name:"Добавить в черновик"})).toBeEnabled();
+  expect(screen.getByTestId("razbor-domenov")).toHaveTextContent("Добавится 1 правило");
+});
+
 // C9. Клавиатура, подписи действий и возврат фокуса.
 const prilozheniya: PravilaOtvet = {
   ...rules,

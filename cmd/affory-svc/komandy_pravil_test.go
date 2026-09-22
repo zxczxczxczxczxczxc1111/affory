@@ -110,6 +110,18 @@ func TestSetRulesOtvergaetKrivoyDomen(t *testing.T) {
 	}
 }
 
+// Окно приводит кириллицу к punycode само (cmd/affory-ui/frontend/src/domeny.ts):
+// в правило уезжает имя, которое увидит ядро. Служба обязана принимать его как
+// обычное имя, иначе весь этот путь упирается в отказ на применении.
+func TestSetRulesPrinimaetPunycodeImya(t *testing.T) {
+	s := podstavnaya(t, nil)
+	telo, _ := json.Marshal(map[string]any{"protsessy": []string{}, "domeny": []string{"xn--e1afmkfd.xn--p1ai"}})
+	o := razobratPravila(t, s.Obrabotat(ctxAdmina(), protokol.Kadr{Id: 1, Imya: "setRules", Telo: telo}))
+	if len(o.Domeny) != 1 || o.Domeny[0] != "xn--e1afmkfd.xn--p1ai" {
+		t.Fatalf("punycode-имя не сохранилось: %v", o.Domeny)
+	}
+}
+
 func TestSetRulesPriPodnyatomTunneleGovoritProPodyom(t *testing.T) {
 	// The core has no hot reload of route rules: the answer must say the
 	// change waits for the next connect, exactly like setRouteMode.

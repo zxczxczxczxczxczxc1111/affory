@@ -7,6 +7,7 @@ import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
 import { IkonkaServisa } from "./IkonkaServisa";
 import { Vybor } from "./Vybor";
 import { slovoPosleChisla } from "../chisla";
+import { razobratVvodDomenov } from "../domeny";
 import { sleduyushchayaVkladka } from "./klavishi-vkladok";
 import { OhvatPravil } from "./OhvatPravil";
 
@@ -76,6 +77,14 @@ export function sokratitPut(put: string, predel = 58): string {
 const SETKA_PRILOZHENIY = "grid grid-cols-[minmax(0,1fr)_150px_80px] min-[1100px]:grid-cols-[minmax(0,1fr)_190px_150px_110px] items-center gap-x-4 gap-y-2";
 const SETKA_SAYTOV = "grid grid-cols-[minmax(0,1fr)_150px_110px] items-center gap-x-4";
 
+/** Столько правил сайтов принимает служба (cmd/affory-svc/trafik.go). Набор
+ *  сверх предела отвергается ЦЕЛИКОМ, поэтому счёт ведётся и здесь. */
+const PREDEL_DOMENOV = 1024;
+
+/** Сколько разобранных имён показывать в предпросмотре. Вставляют и по сотне;
+ *  сотня строк под полем прячет и кнопку, и список правил. */
+const POKAZAT_V_PREDPROSMOTRE = 8;
+
 export function Marshruty({
   proveritPrilozhenie,
   proveritSoedineniya,
@@ -128,6 +137,10 @@ export function Marshruty({
   const pickerEpoch = useRef(0);
   useEffect(() => () => { pickerEpoch.current++; }, []);
   const [domain, setDomain] = useState("");
+  // Ввод сайтов разбирается на каждый набранный знак: предпросмотр показывает
+  // ровно то, что уедет в правило, а punycode кириллицы иначе появлялся бы в
+  // списке уже после применения и читался как чужая строка.
+  const razborDomenov = razobratVvodDomenov(domain);
   const [descendants, setDescendants] = useState(true);
   const [route, setRoute] = useState<Marshrut>(
     !status.kill_switch && trafik.po_umolchaniyu === "vpn" ? "direct" : "vpn",
@@ -222,6 +235,7 @@ export function Marshruty({
     // раньше доехало бы до черновика.
     if ((tab === "apps" ? path.trim() : domain.trim()) === "") return;
     let changed = false;
+    let skolko = 1;
     if (tab === "apps") {
       const app = {
         put: path.trim(),
@@ -235,20 +249,34 @@ export function Marshruty({
         prilozheniya: existing < 0 ? [...apps,app] : apps.map((previous,i) => i===existing ? app : previous),
       });
     } else {
-      const normalized = domain.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
+      const novye = razborDomenov.gotovye.map((g) => g.domen);
+      if (novye.length === 0) return;
+      const itog = [
+        ...domains.filter((d) => !novye.includes(d.domen)),
+        ...novye.map((domen) => ({ domen, marshrut: route })),
+      ];
+      // Предел службы (cmd/affory-svc/trafik.go): весь набор отвергается
+      // целиком, поэтому упереться в него лучше здесь, чем получить отказ на
+      // применение и гадать, какая из вставленных строк лишняя.
+      if (itog.length > PREDEL_DOMENOV) {
+        setNotice(`Правил сайтов может быть не больше ${PREDEL_DOMENOV}: сейчас ${domains.length}, а в этом вводе ещё ${novye.length}.`);
+        return;
+      }
       changed = save({
         ...trafik,
-        domeny: [
-          ...domains.filter((d) => d.domen !== normalized),
-          { domen: normalized, marshrut: route },
-        ],
+        domeny: itog,
       });
+      skolko = novye.length;
     }
     setAdding(false);
     // Форма закрылась вместе с полем, в котором стоял курсор. Без этого фокус
     // падал на body, и следующий Tab начинал обход окна заново.
     knopkaDobavit.current?.focus();
-    setNotice(changed ? "Правило добавлено в черновик. Нажми «Применить изменения», когда закончишь редактирование." : "Такое правило уже есть в списке.");
+    setNotice(
+      !changed ? "Такое правило уже есть в списке."
+      : skolko > 1 ? `${skolko} ${slovoPosleChisla(skolko, "правило", "правила", "правил")} добавлено в черновик. Нажми «Применить изменения», когда закончишь редактирование.`
+      : "Правило добавлено в черновик. Нажми «Применить изменения», когда закончишь редактирование.",
+    );
   };
 
   // Что включено на вкладке, видно НЕ ЗАХОДЯ на неё. Прежде счёт был только у
@@ -702,13 +730,60 @@ export function Marshruty({
                       />
                     </>
                   ) : (
-                    <Pole
-                      aria-label="Домен сайта"
-                      priv={pervoePoleFormy}
-                      znachenie={domain}
-                      naVvod={setDomain}
-                      placeholder="example.org"
-                    />
+                    <>
+                      <Pole
+                        aria-label="Домен сайта"
+                        priv={pervoePoleFormy}
+                        znachenie={domain}
+                        naVvod={setDomain}
+                        placeholder="example.org, пример.рф - можно адресом и списком"
+                      />
+                      {domain.trim() !== "" && (
+                        <div className="flex flex-col gap-1.5 text-[13px]" data-testid="razbor-domenov">
+                          {razborDomenov.gotovye.length > 0 && (
+                            <>
+                              <p className="text-fg-muted">
+                                Добавится {razborDomenov.gotovye.length} {slovoPosleChisla(razborDomenov.gotovye.length, "правило", "правила", "правил")}:
+                              </p>
+                              <ul className="flex flex-col gap-0.5">
+                                {razborDomenov.gotovye.slice(0, POKAZAT_V_PREDPROSMOTRE).map((g) => (
+                                  <li key={g.domen} className="text-fg-secondary break-all">
+                                    {g.domen}
+                                    {/* Набранное показывается рядом только когда
+                                        разошлось с тем, что уедет в правило. */}
+                                    {g.ishodnyy.toLowerCase() !== g.domen && (
+                                      <span className="text-fg-muted"> · набрано {g.ishodnyy}</span>
+                                    )}
+                                    {domains.some((d) => d.domen === g.domen) && (
+                                      <span className="text-warn"> · заменит прежний маршрут</span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                              {razborDomenov.gotovye.length > POKAZAT_V_PREDPROSMOTRE && (
+                                <p className="text-fg-muted">
+                                  и ещё {razborDomenov.gotovye.length - POKAZAT_V_PREDPROSMOTRE}
+                                </p>
+                              )}
+                            </>
+                          )}
+                          {razborDomenov.otkazy.length > 0 && (
+                            <ul className="flex flex-col gap-0.5" role="alert">
+                              {razborDomenov.otkazy.slice(0, POKAZAT_V_PREDPROSMOTRE).map((o) => (
+                                <li key={o.vvod} className="text-danger break-all">
+                                  {o.vvod}: {o.prichina}
+                                </li>
+                              ))}
+                              {razborDomenov.otkazy.length > POKAZAT_V_PREDPROSMOTRE && (
+                                <li className="text-danger">
+                                  и ещё {razborDomenov.otkazy.length - POKAZAT_V_PREDPROSMOTRE} негодных
+                                </li>
+                              )}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                   <div className="flex items-center justify-end gap-3">
                     <div className="w-[170px]">
@@ -725,7 +800,7 @@ export function Marshruty({
                       tip="submit"
                       aktiven={
                         !disabled && !(status.kill_switch && route==="direct") &&
-                        (tab === "apps" ? path.trim() !== "" : domain.trim() !== "")
+                        (tab === "apps" ? path.trim() !== "" : razborDomenov.gotovye.length > 0)
                       }
                     >
                       Добавить в черновик
