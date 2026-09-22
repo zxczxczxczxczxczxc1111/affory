@@ -368,8 +368,7 @@ export function Marshruty({
                         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span className="text-foreground truncate text-sm font-medium">{service.imya}</span>
                           <span className="text-fg-muted truncate text-[13px]">
-                            {vkl ? "Через VPN" : "Напрямую"}
-                            {!explicit ? " по умолчанию" : ""}
+                            {explicit ? "Задано: " : "По общему режиму: "}{vkl ? "через VPN" : "напрямую"}
                           </span>
                         </span>
                         <Tumbler
@@ -428,6 +427,9 @@ export function Marshruty({
               </div>
 
               <p className="text-fg-muted text-[13px]">
+                Здесь задан маршрут доменов сервиса. Правило приложения или отдельного сайта может его изменить.
+              </p>
+              <p className="text-fg-muted text-[13px]">
                 Приложение обращается напрямую к IP? Добавь его во вкладке «Приложения»
               </p>
 
@@ -441,8 +443,9 @@ export function Marshruty({
                         вместе с программой. Правило накрывает домен и все его поддомены.
                       </p>
                       <p>
-                        Отдельный домен важнее набора сервиса, а набор сервиса важнее общего режима:
-                        выключенный здесь сервис идёт напрямую даже в режиме «Всё через VPN».
+                        Сначала действует правило приложения, затем отдельного сайта, затем сервиса,
+                        затем общий режим. Локальный прокси Affory выбирает VPN раньше пользовательских правил.
+                        Проверить приложение вместе с сайтом можно на вкладках «Приложения» и «Сайты».
                       </p>
                       <p>
                         Браузер с защищённым DNS или ECH может скрыть имя сайта. Для такого случая
@@ -499,7 +502,7 @@ export function Marshruty({
                           и звать включать уже включённое значит врать. */}
                       {status.kill_switch
                         ? "Список не действует, пока включена блокировка сети вне VPN. Выключить её можно в настройках защиты"
-                        : "Сайты из российского списка открываются без VPN"}
+                        : "Сайты из российского списка открываются без VPN, если нет более важного правила"}
                     </span>
                   </span>
                   <Tumbler
@@ -749,7 +752,7 @@ export function Marshruty({
                 </div>
               )}
 
-              <OhvatPravil key={tab} vid={tab} trafik={trafik} katalog={pravila?.katalog} chernovik={dirty} ozhidayut={pravila?.trebuet_podyoma} disabled={disabled} proverit={proveritSoedineniya} proveritPrilozhenie={proveritPrilozhenie} vybratFayl={naVyborPrilozheniya} zamenit={(oldPath,newPath)=>{
+              <OhvatPravil key={tab} vid={tab} trafik={trafik} katalog={pravila?.katalog} chernovik={dirty} ozhidayut={pravila?.trebuet_podyoma} bezRu={bezRu} killSwitch={status.kill_switch===true} disabled={disabled} proverit={proveritSoedineniya} proveritPrilozhenie={proveritPrilozhenie} vybratFayl={naVyborPrilozheniya} zamenit={(oldPath,newPath)=>{
                 const key=newPath.trim().toLowerCase();
                 if(apps.some(a=>a.put!==oldPath && a.put.toLowerCase()===key))throw new Error("Для этого файла уже есть правило. Измени его в списке приложений.");
                 return save({...trafik,prilozheniya:apps.map(a=>a.put===oldPath?{...a,put:newPath.trim(),imya:newPath.trim().split(/[/\\]/).pop() || a.imya}:a)});
@@ -772,8 +775,10 @@ export function Marshruty({
                           может не быть. В таком случае добавь саму игру или приложение отдельным правилом.
                         </p>
                         <p>
-                          Пока хотя бы одно приложение отправлено в VPN, адреса сайтов вся система
-                          спрашивает через VPN: Windows не сообщает, какая программа спросила
+                          Если хотя бы одно приложение направлено в VPN, Affory по умолчанию ищет
+                          адреса сайтов через VPN: общий DNS Windows не позволяет надёжно определить приложение.
+                          Явные правила сайтов и сервисов, локальные имена и российский список проверяются раньше.
+                          Поэтому маршрут соединения и поиск адреса могут различаться.
                         </p>
                       </div>
                     }

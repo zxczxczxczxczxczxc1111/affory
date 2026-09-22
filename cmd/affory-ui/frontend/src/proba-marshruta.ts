@@ -1,0 +1,71 @@
+import { domenPopadaet } from "./ohvat";
+import type { KatalogServisov, Marshrut, PravilaTrafika } from "./trafik";
+
+export interface ReshenieProby { marshrut: Marshrut | null; prichina: string }
+export interface ProbaMarshruta {
+  dannye: ReshenieProby;
+  dns: ReshenieProby;
+  primechaniya: string[];
+}
+
+// Only recognise the simple descriptions emitted by our pinned core. An
+// unfamiliar or compound rule remains technical data rather than a guess.
+export function opisatPraviloSoedineniya(rule:string):string {
+  const condition=rule.split(" => ")[0];
+  if(condition==="final") return "Сработал общий маршрут";
+  if(condition.startsWith("process_path_tree=")) return "Сработало правило программы, которая запустила приложение";
+  if(condition.startsWith("process_path=")) return "Сработало отдельное правило приложения";
+  if(condition.startsWith("domain_suffix=") || condition.startsWith("domain=")) return "Сработало правило сайта или сервиса";
+  if(condition==="inbound=proksi-in") return "Соединение пришло через локальный прокси Affory";
+  if(condition.startsWith("rule_set=")) return "Сработал набор доменов";
+  if(condition==="ip_is_private=true" || condition==="ip_is_private") return "Сработало исключение для локального IP-адреса";
+  return "Причина выбора доступна в технических сведениях ядра";
+}
+
+// This is a settings preview, not a network probe. Unknown launch history and
+// rule-set membership must not turn into an invented deterministic route.
+export function obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,trafik,katalog}:{
+  domen:string;put:string;proksi:boolean;bezRu:boolean;killSwitch:boolean;
+  trafik:PravilaTrafika;katalog?:KatalogServisov;
+}):ProbaMarshruta {
+  const own=[...trafik.domeny].sort((a,b)=>b.domen.split(".").length-a.domen.split(".").length).find(d=>domenPopadaet(domen,d.domen));
+  const service=trafik.servisy.find(s=>katalog?.servisy.find(k=>k.id===s.id)?.domeny.some(d=>domenPopadaet(domen,d)));
+  const domainRule:ReshenieProby|null=own?{marshrut:own.marshrut,prichina:`Правило сайта ${own.domen}, включая поддомены`}:service?{
+    marshrut:service.marshrut,prichina:`Правило сервиса ${katalog?.servisy.find(k=>k.id===service.id)?.imya ?? service.id}`,
+  }:null;
+  const app=trafik.prilozheniya.find(a=>a.put.toLowerCase()===put.toLowerCase());
+  const hasLaunchRules=trafik.prilozheniya.some(a=>a.potomki);
+  const missingCatalog=!katalog && trafik.servisy.length>0;
+  const ru=!bezRu && !killSwitch;
+  const primechaniya=["Расчёт для обычного веб-соединения. Служебные адреса Affory и VPN-серверов обходят пользовательские правила."];
+  let dannye:ReshenieProby;
+  if(proksi) dannye={marshrut:"vpn",prichina:"Приложение явно использует локальный прокси Affory. Этот выбор важнее правил приложения и сайта"};
+  else if(app) dannye={marshrut:app.marshrut,prichina:`Отдельное правило приложения ${app.imya || app.put}. Оно важнее правила сайта и сервиса`};
+  else if(!put && trafik.prilozheniya.length>0) dannye={marshrut:null,prichina:"Укажи приложение: его правило может изменить маршрут сайта"};
+  else if(put && hasLaunchRules) dannye={marshrut:null,prichina:"Нужно знать, какая программа запустила это приложение. По одному пути нельзя выбрать правило; проверь работающие программы во вкладке «Приложения»"};
+  else if(!domen) dannye={marshrut:null,prichina:"Укажи сайт: его правило или набор сервиса может изменить общий маршрут"};
+  else if(domainRule) dannye=domainRule;
+  else if(missingCatalog) dannye={marshrut:null,prichina:"Каталог сервисов недоступен. Нельзя проверить, подходит ли правило сервиса"};
+  else if(ru && trafik.po_umolchaniyu==="vpn") dannye={marshrut:null,prichina:"Для российского списка напрямую, для остальных сайтов через VPN. Вхождение в список здесь не проверяется"};
+  else dannye={marshrut:trafik.po_umolchaniyu,prichina:"Общий режим: подходящего правила приложения, сайта или сервиса нет"};
+  if(!proksi && !app && !domainRule && !killSwitch) primechaniya.push("Локальные IP-адреса идут напрямую, если их не перекрывает явное правило. IP-адрес сайта здесь не запрашивается.");
+  if(domainRule && (app || proksi || dannye.marshrut===null)) primechaniya.push(`По доменным настройкам: ${domainRule.prichina.toLowerCase()} (${domainRule.marshrut==="vpn"?"через VPN":"напрямую"}). Правило приложения или прокси может оказаться важнее.`);
+
+  // DNS requests shared by Windows cannot reliably be attributed to one app.
+  // Local names precede user domains, then rule sets, then the DNS default.
+  const dnsDefault=trafik.prilozheniya.some(a=>a.marshrut==="vpn")?"vpn":trafik.po_umolchaniyu;
+  let dns:ReshenieProby;
+  if(proksi) dns={marshrut:null,prichina:"При передаче имени через прокси адрес может искать VPN-сервер. По этому расчёту нельзя установить, был ли отдельный DNS-запрос приложения"};
+  else if(!domen) dns={marshrut:null,prichina:"Укажи сайт, чтобы проверить выбор DNS"};
+  else if(!domen.includes(".") || [".local",".lan",".home.arpa"].some(s=>domen.endsWith(s))) dns={marshrut:"direct",prichina:"Локальное имя: DNS текущей сети, раньше правил сайта"};
+  else if(killSwitch) dns={marshrut:"vpn",prichina:"Включена блокировка сети вне VPN; доменные исключения для DNS отключены"};
+  else if(domainRule) dns={...domainRule,prichina:`${domainRule.prichina}. Для DNS правило приложения не используется`};
+  else if(missingCatalog) dns={marshrut:null,prichina:"Каталог сервисов недоступен. Нельзя проверить доменные правила DNS"};
+  else if(ru && dnsDefault==="vpn") dns={marshrut:null,prichina:"Для российского списка DNS текущей сети, для остальных через VPN. Вхождение в список здесь не проверяется"};
+  else dns={marshrut:dnsDefault,prichina:trafik.prilozheniya.some(a=>a.marshrut==="vpn")?"DNS по умолчанию через VPN: хотя бы одно приложение направлено в VPN":"DNS по общему режиму"};
+  primechaniya.push("Расчёт DNS относится к обычным DNS-запросам, перехваченным Affory. Защищённый DNS самого браузера и поиск адреса на VPN-сервере им не проверяются.");
+  primechaniya.push("Правило сайта сработает, только если Affory видит его имя. Если имя скрыто, правило приложения надёжнее.");
+  const invalid=killSwitch && (trafik.po_umolchaniyu==="direct" || [...trafik.prilozheniya,...trafik.domeny,...trafik.servisy].some(r=>r.marshrut==="direct"));
+  if(invalid) return {dannye:{marshrut:null,prichina:"Эти настройки нельзя применить: прямые маршруты конфликтуют с блокировкой сети вне VPN"},dns:{marshrut:null,prichina:"Сначала устрани конфликт настроек"},primechaniya};
+  return {dannye,dns,primechaniya};
+}

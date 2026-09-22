@@ -672,6 +672,7 @@ it("проверка домена соединена с мостом и не в�
   render(<App/>);
   fireEvent.click(await screen.findByRole("tab",{name:"Правила"}));
   fireEvent.click(await screen.findByRole("tab",{name:/Сайты/}));
+  fireEvent.click(screen.getByRole("button",{name:"Проверка правил"}));
   fireEvent.change(screen.getByLabelText("Домен для проверки"),{target:{value:"api.example.org"}});
   fireEvent.click(screen.getByRole("button",{name:"Проверить соединения"}));
   await screen.findByText(/Подключение не запущено/);
@@ -685,6 +686,7 @@ it("проверка охвата использует отдельный зап
   render(<App/>);
   fireEvent.click(await screen.findByRole("tab",{name:"Правила"}));
   fireEvent.click(await screen.findByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Проверка правил"}));
   fireEvent.click(screen.getByRole("button",{name:"Проверить охват"}));
   await screen.findByText(/Приложение и связанные запуски в этом сеансе не обнаружены/);
   expect(stend.s.sled).toContainEqual({chto:"prochitatOhvatPrilozheniya",args:["C:\\App.exe"]});

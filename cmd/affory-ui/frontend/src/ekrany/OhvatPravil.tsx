@@ -1,34 +1,42 @@
 import { useEffect, useRef, useState } from "react";
-import { domenPopadaet, normalizovatProbuDomena, opisatDomen, type ProveritSoedineniya, type SnimokSoedineniy, type ProveritPrilozhenie } from "../ohvat";
+import { domenPopadaet, normalizovatProbuDomena, type ProveritSoedineniya, type SnimokSoedineniy, type ProveritPrilozhenie } from "../ohvat";
+import { obyasnitMarshrut, opisatPraviloSoedineniya, type ReshenieProby } from "../proba-marshruta";
 import { imyaMarshruta, type KatalogServisov, type PravilaTrafika } from "../trafik";
-import { Knopka, Pole } from "./ui";
+import { Flazhok, Knopka, Pole, Svorachivaemyy } from "./ui";
 import { ProverkaPrilozheniya } from "./ProverkaPrilozheniya";
 
-export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabled,naSbros,proverit,proveritPrilozhenie,vybratFayl,zamenit}:{
+export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,bezRu=false,killSwitch=false,disabled,naSbros,proverit,proveritPrilozhenie,vybratFayl,zamenit}:{
   vid:"apps"|"sites"; trafik:PravilaTrafika; katalog?:KatalogServisov; chernovik:boolean;
-  ozhidayut?:boolean; disabled:boolean; naSbros:()=>void; proverit?:ProveritSoedineniya;
+  ozhidayut?:boolean; bezRu?:boolean; killSwitch?:boolean; disabled:boolean; naSbros:()=>void; proverit?:ProveritSoedineniya;
   proveritPrilozhenie?:ProveritPrilozhenie;vybratFayl?:()=>Promise<string>;zamenit?:(oldPath:string,newPath:string)=>boolean;
 }) {
   const [open,setOpen]=useState(false), [confirm,setConfirm]=useState(false);
   const [input,setInput]=useState(""), [busy,setBusy]=useState(false), [error,setError]=useState("");
+  const [extra,setExtra]=useState(""),[proksi,setProksi]=useState(false);
   const [result,setResult]=useState<SnimokSoedineniy|null>(null);
   const epoch=useRef(0);
   useEffect(()=>()=>{epoch.current++;},[]);
   const sites=vid==="sites";
-  const query=sites?normalizovatProbuDomena(input):input.trim();
+  const domainInput=sites?input:extra;
+  const domen=normalizovatProbuDomena(domainInput);
+  const put=(sites?extra:input).trim();
+  const preview=obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,trafik,katalog});
+  const settingsSnapshot=JSON.stringify({trafik,katalog,bezRu,killSwitch,chernovik,ozhidayut});
+  useEffect(()=>{epoch.current++;setResult(null);setError("");setBusy(false);},[settingsSnapshot,disabled]);
   const count=sites?trafik.domeny.length:trafik.prilozheniya.length;
   const changeInput=(value:string)=>{epoch.current++;setInput(value);setResult(null);setError("");setBusy(false);};
+  const changeExtra=(value:string)=>{epoch.current++;setExtra(value);setResult(null);setError("");setBusy(false);};
   const inspect=async(value=input)=>{
     if (!proverit || busy || disabled) return;
-    const filter=sites?normalizovatProbuDomena(value):value.trim();
-    if (sites && value.trim() && !filter) {setError("Укажи домен или ссылку HTTP/HTTPS");return;}
+    const rawDomain=sites?value:extra;
+    const host=normalizovatProbuDomena(rawDomain), path=(sites?extra:value).trim();
+    if (rawDomain.trim() && !host) {setError("Укажи домен или ссылку HTTP/HTTPS");return;}
     const ticket=++epoch.current;
     setBusy(true);setError("");setResult(null);
-    try {const snapshot=await proverit(sites?{domen:filter}:{put:filter});if(ticket===epoch.current)setResult(snapshot);}
+    try {const snapshot=await proverit({...host?{domen:host}:{},...path?{put:path}:{}});if(ticket===epoch.current)setResult(snapshot);}
     catch(e:unknown){if(ticket===epoch.current)setError(e instanceof Error?e.message:String(e));}
     finally{if(ticket===epoch.current)setBusy(false);}
   };
-  const app=trafik.prilozheniya.find(a=>a.put.toLowerCase()===query.toLowerCase());
   return <section aria-label="Охват и проверка правил" className="border-border flex flex-col gap-3 border-t pt-4 text-[13px]">
     <div className="flex flex-wrap gap-2">
       <Knopka rang="vtoraya" aria-expanded={open} onClick={()=>setOpen(!open)}>{open?"Скрыть охват правил":"Показать охват правил"}</Knopka>
@@ -52,15 +60,32 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
       <p className="text-fg-muted">{sites?"Сначала действует правило приложения, затем сайта, затем сервиса. Например, отдельное правило для api.example.com важнее общего правила для example.com.":"Отдельное правило приложения действует первым. Например, если Steam открыл лаунчер, а тот запустил игру, сначала учитывается правило игры, затем лаунчера, затем Steam. Если запуск не удалось заметить, Affory не угадывает, какие программы связаны."}</p>
       <p className="text-fg-muted">Это настройки маршрута, а не результат сетевой проверки.</p>
     </div>}
+    <Svorachivaemyy zagolovok="Проверка правил" deti={<div className="flex flex-col gap-4">
     {!sites && <ProverkaPrilozheniya rules={trafik.prilozheniya} draft={chernovik} disabled={disabled} connectionBusy={busy} proverit={proveritPrilozhenie} vybratFayl={vybratFayl} zamenit={zamenit} soedineniya={path=>{changeInput(path);void inspect(path);}}/>}
     <form className="flex flex-col gap-3" onSubmit={e=>{e.preventDefault();void inspect();}}>
       <p className="text-foreground font-medium">Проверка по соединениям</p>
-      <p className="text-fg-muted">Открой сайт или выполни действие в приложении, затем нажми «Проверить соединения». Оставь поле пустым, чтобы увидеть все текущие соединения.</p>
+      <p className="text-fg-muted">Укажи приложение и сайт вместе или заполни только одно поле. Открой сайт в этом приложении и нажми «Проверить соединения». Оба поля пусты: все текущие соединения.</p>
       <div className="flex flex-wrap gap-2">
         <Pole aria-label={sites?"Домен для проверки":"Путь приложения для проверки"} placeholder={sites?"api.example.org или ссылка":"Полный путь к файлу приложения (.exe)"} znachenie={input} naVvod={changeInput} className="min-w-[180px] flex-1"/>
+        <Pole aria-label={sites?"Путь приложения для проверки":"Домен для проверки"} placeholder={sites?"Уточнить приложение: полный путь .exe":"Уточнить сайт: домен или ссылка"} znachenie={extra} naVvod={changeExtra} className="min-w-[180px] flex-1"/>
         <Knopka rang="vtoraya" type="submit" aktiven={!disabled && !busy && !!proverit} zhdyot={busy}>Проверить соединения</Knopka>
       </div>
-      {query && <p className="text-fg-secondary">{sites?opisatDomen(query,trafik,katalog):app?`${imyaMarshruta(app.marshrut)}: отдельное правило для ${app.imya}. Оно важнее правил программ, которые его запустили.`:"Отдельного правила для этого приложения нет. Оно может использовать правило программы, которая его запустила. По одному пути к файлу это проверить нельзя."}</p>}
+      {(put || domen) && <div className="bg-surface border-border flex flex-col gap-3 rounded-xl border p-3" aria-label="Расчёт маршрута по настройкам">
+        <p className="text-foreground font-medium">По настройкам{chernovik?" черновика":""}</p>
+        {domainInput.trim() && !domen?<p className="text-warn">Домен не распознан. Исправь его для совместного расчёта.</p>:<>
+          <Reshenie label="Соединение" result={preview.dannye}/>
+          <Reshenie label="Поиск адреса (DNS)" result={preview.dns}/>
+          {!proksi && <p className="text-fg-muted">Для обычного DNS-запроса, который обрабатывает Affory.</p>}
+        </>}
+        <details className="text-fg-muted"><summary>Условия расчёта</summary>
+          <div className="mt-2 flex flex-col gap-2">
+            <Flazhok podpis="Показать расчёт для локального прокси Affory" vkl={proksi} naSmenu={setProksi}/>
+            <p>Обычно приложения используют VPN без настройки прокси. Выбери прокси только если указал его адрес вручную в приложении. Этот выбор меняет расчёт, а снимок ниже показывает соединения обоих способов.</p>
+            {preview.primechaniya.map(note=><p key={note}>{note}</p>)}
+          </div>
+        </details>
+        <p className="text-fg-muted">Это расчёт, а не проверка доступности сайта или фактического DNS-запроса.</p>
+      </div>}
       {chernovik && <p className="text-warn">Подсказка учитывает черновик. Проверка показывает текущие соединения, ещё без этих изменений.</p>}
       {!chernovik && ozhidayut && <p className="text-warn">Сохранённые правила ещё не применены. Проверка показывает соединения с прежними правилами.</p>}
       {error && <p role="alert" className="text-danger">{error}</p>}
@@ -72,6 +97,7 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
             <span className="text-foreground break-all">{c.Host || c.Adres}:{c.Port}</span>
             <span className="break-all">{c.Protsess || "Не удалось определить приложение"}</span>
             <span>Куда идёт соединение: {c.Vyhod==="direct"?"напрямую":c.Vyhod.startsWith("srv-")?"через VPN":"не удалось определить"}</span>
+            <span className="text-fg-secondary">{opisatPraviloSoedineniya(c.Pravilo)}</span>
             <details className="text-fg-muted break-all"><summary>Технические сведения</summary><p>Выход: {c.Vyhod || "неизвестен"}</p><p>Правило: {c.Pravilo || "не сообщено"}</p></details>
           </li>)}
         </ul>}
@@ -79,5 +105,10 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
       </div>}
       <p className="text-fg-muted">{sites?"Проверка example.com включает соединения с api.example.com и другими его поддоменами. Она не перебирает все возможные адреса.":"По указанному пути видны соединения всех запусков этого файла, в том числе открытых отдельно. Для другой программы нажми «Соединения» в проверке охвата выше."} Здесь видно, куда направлено соединение, но это ещё не означает, что сайт ответил. Запись журнала не включается.</p>
     </form>
+    </div>}/>
   </section>;
+}
+
+function Reshenie({label,result}:{label:string;result:ReshenieProby}) {
+  return <div><p className="text-foreground">{label}: {result.marshrut?imyaMarshruta(result.marshrut):"нужны дополнительные сведения"}</p><p className="text-fg-secondary">{result.prichina}</p></div>;
 }

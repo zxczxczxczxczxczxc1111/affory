@@ -60,6 +60,7 @@ it("замена файла сохраняет маршрут и охват, с�
   const send=vi.fn().mockResolvedValue(true);
   render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={{...rules,trafik:{...rules.trafik!,prilozheniya:[app,other]}}} otlozheno={{}} naKomandu={send} naVyborPrilozheniya={choose}/>);
   fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Проверка правил"}));
   await act(async()=>fireEvent.click(screen.getByRole("button",{name:"Заменить файл"})));
   expect(screen.getByRole("alert")).toHaveTextContent("уже есть правило");
   expect(screen.queryByRole("button",{name:"Применить изменения"})).toBeNull();

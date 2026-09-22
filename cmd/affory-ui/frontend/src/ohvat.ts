@@ -50,7 +50,7 @@ export function normalizovatProbuDomena(input:string):string {
     const url=new URL(value.includes("://") ? value : `https://${value}`);
     if (!["https:","http:"].includes(url.protocol) || url.username || url.password) return "";
     value=url.hostname.toLowerCase().replace(/\.$/,"");
-    return /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(value) ? value : "";
+    return value.length<=253 && !/^[\d.]+$/.test(value) && value.split(".").every(part=>part.length<=63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(part)) ? value : "";
   } catch { return ""; }
 }
 export function domenPopadaet(host:string,rule:string):boolean {
