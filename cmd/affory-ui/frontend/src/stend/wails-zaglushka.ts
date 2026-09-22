@@ -345,8 +345,8 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
     sloi: [
       { vid: "tunnel", podpis: "VPN на этом компьютере", proshlo: true, podrobno: "Affory, адрес 172.19.0.1", ms: 2 },
       { vid: "yadro", podpis: "Связь с сервером", proshlo: true, podrobno: "ответ за 41ms", ms: 41 },
-      { vid: "imya", podpis: "Имена сайтов", proshlo: true, podrobno: "cp.cloudflare.com -> 104.16.132.229", ms: 28 },
-      { vid: "mestnyy-dns", podpis: "Сервер имён этой сети", proshlo: false, podrobno: "192.168.0.1 не отвечает: нет ответа за отведённый срок", ms: 3001 },
+      { vid: "imya", podpis: "Имена сайтов через VPN", proshlo: true, podrobno: "cp.cloudflare.com -> 104.16.132.229", ms: 28 },
+      { vid: "mestnyy-dns", podpis: "Имена сайтов мимо VPN", proshlo: false, podrobno: "yandex.ru не разрешается: нет ответа за отведённый срок; через 192.168.0.1 открываются российские сайты и всё, что идёт мимо VPN", ms: 3001 },
       { vid: "udp", podpis: "Голос и видео", proshlo: true, podrobno: "получено 10 из 10, среднее 24ms, разброс 6ms", ms: 1140 },
     ],
   }),

@@ -196,13 +196,13 @@ type Sluzhba struct {
 	// Шов чтения местного резолвера. Настоящий спрашивает таблицу адаптеров
 	// машины, а тесту смены сети нужно назвать ДРУГОЙ адрес, не трогая сеть
 	// рабочей машины.
-	mestnyyRezolver func() (netip.Addr, error)
+	mestnyyRezolver func(krome ...uint32) (netip.Addr, error)
 	// Швы проверки слоёв (A3). Настоящие спрашивают систему и ходят в сеть, а
 	// тесту нужно назвать состояние адаптеров и ответ резолвера, не трогая ни
 	// сеть рабочей машины, ни её адаптеры.
-	adaptery      func() ([]set.Adapter, error)
-	probaRezolver func(context.Context, netip.Addr, string) proby.Itog
-	oshibkaIPv6   error
+	adaptery    func() ([]set.Adapter, error)
+	probaImeni  func(context.Context, string) proby.Itog
+	oshibkaIPv6 error
 	// ostanovlena это конец жизни службы, и живёт он под тем же замком, что и
 	// поколения подъёма, потому что стережёт то же самое: регистрацию горутин.
 	//
@@ -415,9 +415,9 @@ func NovayaSluzhba() *Sluzhba {
 	s.soedineniyaYadra = yadra.Soedineniya
 	s.provalov = provalovPodryadPoUmolchaniyu
 	s.perezapuskSetiNeChashche = perezapusSetiNeChashche
-	s.mestnyyRezolver = set.LokalnyyResolver
+	s.mestnyyRezolver = set.LokalnyyResolverKrome
 	s.adaptery = set.Adaptery
-	s.probaRezolver = proby.Rezolver
+	s.probaImeni = proby.Imya
 	s.otstupy = otstupyPoUmolchaniyu
 	s.periodProksi = periodProksiPoUmolchaniyu
 	s.proveritKonfig = func(put string) error { return yadra.Proverit(imyaYadraTun, put) }

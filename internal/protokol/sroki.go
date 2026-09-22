@@ -96,6 +96,16 @@ var dolgie = map[string]time.Duration{
 	// TWO such probes in a row (internal/set/utechki.go): through the tunnel
 	// and directly, plus reading the set for the carrying server's address.
 	"checkLeaks": SrokDolgoy,
+	// Пять проб подряд, и худший случай у каждой свой: серия из десяти пакетов
+	// UDP с шагом в сотню миллисекунд, два похода к серверам имён по три
+	// секунды и замер через clash_api. Сама команда держит себя в тридцати
+	// секундах, и срок ответа обязан быть БОЛЬШЕ её собственного лимита.
+	//
+	// Найдено живой пробой в госте 22.09.2026, в день, когда команда завелась:
+	// на выключенном VPN она отвечала за 1.8 с и выглядела здоровой, а на
+	// поднятом канал рвал её молча, и окно показало бы «служба не ответила» на
+	// работающей проверке.
+	"checkNetwork": SrokDolgoy,
 	// srokSnimka in internal/set/snimok.go is 15 s, and the set is read first.
 	"getServerHealth": SrokDolgoy,
 

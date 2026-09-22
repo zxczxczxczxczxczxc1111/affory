@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"math"
 	"net"
-	"net/netip"
 	"time"
 )
 
@@ -42,31 +41,17 @@ func nePoluchilos(nach time.Time, podrobno string) Itog {
 // домашней сети, и вчетверо меньше, чем ждёт Windows до своего отказа.
 const SrokProby = 3 * time.Second
 
-// Rezolver спрашивает КОНКРЕТНЫЙ резолвер по UDP.
+// Прямого вопроса к адресу местного резолвера здесь НЕТ, и это измерено.
 //
-// Прямо к адресу, а не через системный: системный на поднятом туннеле идёт в
-// ядро, и его ответ ничего не говорит про тот адрес, который записан в конфиг.
-// Ровно этот адрес и устаревает при смене сети.
-func Rezolver(ctx context.Context, adres netip.Addr, imya string) Itog {
-	nach := time.Now()
-	if !adres.IsValid() {
-		return nePoluchilos(nach, "адрес резолвера неизвестен")
-	}
-	r := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, set_, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "udp", net.JoinHostPort(adres.String(), "53"))
-		},
-	}
-	ctx, otmena := context.WithTimeout(ctx, SrokProby)
-	defer otmena()
-	adresa, err := r.LookupHost(ctx, imya)
-	if err != nil {
-		return nePoluchilos(nach, fmt.Sprintf("%s не отвечает: %v", adres, korotko(err)))
-	}
-	return poluchilos(nach, fmt.Sprintf("%s ответил: %s", adres, adresa[0]))
-}
+// Такая проба была, и на поднятом туннеле она врала всегда: 22.09.2026 в госте
+// прямой вопрос к живому 192.168.0.1 не вернулся вовсе (12.2 с), потому что
+// пакет уходит в TUN и его забирает ядро. Слой краснел на здоровой сети, то
+// есть пугал человека поломкой, которой нет.
+//
+// Путь мимо VPN меряется тем же способом, каким по нему ходят сайты: именем
+// через системный резолвер (Imya ниже). Тот же опыт: при живом местном
+// резолвере семь российских имён отвечали за 0 с, при мёртвом - ни одно, по 12
+// секунд на имя, а stackoverflow.com через туннель отвечал за 0.1 с.
 
 // Imya спрашивает имя ТЕМ ЖЕ путём, которым его спрашивают программы человека:
 // через системный резолвер. На поднятом туннеле это путь через ядро целиком, с

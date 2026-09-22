@@ -150,7 +150,7 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 		return nil, 0, "", err
 	}
 
-	resolver, err := s.mestnyyRezolver()
+	resolver, err := s.mestnyyBezTunnelya()
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("локальный резолвер не определён: %w", err)
 	}

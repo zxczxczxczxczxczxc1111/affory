@@ -31,8 +31,8 @@ func sloyPoVidu(sloi []sloyProverki, vid string) (sloyProverki, bool) {
 
 // bezSetevyhProb глушит пробы, которые иначе ушли бы в НАСТОЯЩУЮ сеть.
 func bezSetevyhProb(s *Sluzhba) {
-	s.probaRezolver = func(context.Context, netip.Addr, string) proby.Itog {
-		return proby.Itog{Proshlo: true, Podrobno: "резолвер ответил (заглушка)"}
+	s.probaImeni = func(_ context.Context, imya string) proby.Itog {
+		return proby.Itog{Proshlo: true, Podrobno: imya + " -> 5.255.255.242 (заглушка)"}
 	}
 	s.adaptery = func() ([]set.Adapter, error) { return nil, nil }
 }
@@ -141,18 +141,26 @@ func TestSlomannyyMestnyyRezolverVidenOtdelnoOtTunnelya(t *testing.T) {
 		return []set.Adapter{{Indeks: indeks, Imya: "tun0",
 			Adresa: []netip.Addr{netip.MustParseAddr("172.19.0.1")}, Umolchanie: true}}, nil
 	}
-	var sprosili netip.Addr
-	s.probaRezolver = func(_ context.Context, a netip.Addr, _ string) proby.Itog {
-		sprosili = a
-		return proby.Itog{Podrobno: "192.168.0.1 не отвечает: нет ответа за отведённый срок"}
+	// Спрашивается ИМЯ через системный резолвер, а не адрес напрямую: прямой
+	// вопрос на поднятом туннеле не возвращается вовсе, его забирает ядро
+	// (измерено в госте 22.09.2026, 12.2 с к живому 192.168.0.1).
+	var sprosili string
+	s.probaImeni = func(_ context.Context, imya string) proby.Itog {
+		sprosili = imya
+		return proby.Itog{Podrobno: imya + " не разрешается: нет ответа за отведённый срок"}
 	}
 
 	sl := s.sloyMestnogoRezolvera(context.Background())
-	if sprosili.String() != "192.168.0.1" {
-		t.Fatalf("спросили %s, а в конфиге ядра записан 192.168.0.1", sprosili)
+	if sprosili != imyaProbyMimoVPN {
+		t.Fatalf("спросили %q, а путь мимо VPN проверяется российским именем", sprosili)
 	}
 	if sl.Proshlo {
 		t.Fatal("недоступный местный резолвер признан рабочим")
+	}
+	// Адрес из конфига обязан быть в подробностях: чинить человек будет его, а
+	// имя это только признак.
+	if !strings.Contains(sl.Podrobno, "192.168.0.1") {
+		t.Errorf("в подробностях %q нет адреса резолвера: чинить нечего", sl.Podrobno)
 	}
 	// И туннель при этом остаётся зелёным: в том и смысл раздельных слоёв.
 	if tun := s.sloyTunnelya(context.Background()); !tun.Proshlo {
@@ -214,6 +222,17 @@ func TestKomandaProverkiSetiEstVDispetchere(t *testing.T) {
 	k := s.Obrabotat(context.Background(), protokol.Kadr{Id: 1, Imya: "checkNetwork"})
 	if k.Oshib != nil && k.Oshib.Kod == protokol.KodNeRealizovano {
 		t.Fatal("диспетчер не знает команды checkNetwork")
+	}
+}
+
+func TestSrokOtvetaPerekryvaetRabotuProverki(t *testing.T) {
+	// Дефект живой машины, 22.09.2026: команда не стояла в списке долгих и
+	// получала пять секунд, работая при этом до тридцати. На выключенном VPN
+	// она отвечала за 1.8 с и выглядела здоровой; на поднятом канал рвал её
+	// молча, и окно показало бы «служба не ответила» на работающей проверке.
+	if srok := protokol.SrokOtveta("checkNetwork"); srok <= srokProverkiSeti {
+		t.Fatalf("срок ответа %s не перекрывает работу проверки (%s): канал оборвёт её на середине",
+			srok, srokProverkiSeti)
 	}
 }
 

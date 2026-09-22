@@ -31,6 +31,27 @@ import (
 // каждое из них, то есть чинил бы одно и ломал другое.
 const perezapusSetiNeChashche = 30 * time.Second
 
+// mestnyyBezTunnelya спрашивает резолвер СОСЕДНЕЙ сети, исключая свой туннель.
+//
+// Исключение обязательно, и это измерено, а не предположено. Адаптер tun0
+// несёт маршрут по умолчанию и объявляет СВОЙ адрес сервером имён (172.19.0.2),
+// то есть проходит по всем признакам кандидата. Без исключения продукт видит
+// собственный туннель как новую сеть: 22.09.2026 в госте это дало переподъём
+// каждые тридцать секунд по кругу, с разрывом всех соединений на каждом.
+// Конфиг при этом собирался на опущенном туннеле, то есть снова с домашним
+// резолвером, и следующий тик снова объявлял смену сети.
+//
+// Туннель ещё не поднят - индекса нет, исключать нечего.
+func (s *Sluzhba) mestnyyBezTunnelya() (netip.Addr, error) {
+	s.mu.Lock()
+	indeks := s.tun.Indeks
+	s.mu.Unlock()
+	if indeks == 0 {
+		return s.mestnyyRezolver()
+	}
+	return s.mestnyyRezolver(indeks)
+}
+
 // rezolverSmenilsya отвечает, стоит ли пересобирать конфиг под новую сеть.
 //
 // Отвечает false, когда резолвер НЕ ЧИТАЕТСЯ: сеть могли просто выдернуть, и
@@ -43,7 +64,7 @@ func (s *Sluzhba) rezolverSmenilsya() (netip.Addr, bool) {
 	if !bylo.IsValid() {
 		return netip.Addr{}, false
 	}
-	stalo, err := s.mestnyyRezolver()
+	stalo, err := s.mestnyyBezTunnelya()
 	if err != nil {
 		return netip.Addr{}, false
 	}

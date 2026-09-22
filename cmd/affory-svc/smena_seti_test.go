@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func sluzhbaSRezolverom(t *testing.T, adres string) *Sluzhba {
 
 func TestSmenaRezolveraVidnaNablyudatelyu(t *testing.T) {
 	s := sluzhbaSRezolverom(t, "192.168.0.1")
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
 
 	stalo, smenilsya := s.rezolverSmenilsya()
 	if !smenilsya {
@@ -43,7 +44,7 @@ func TestSmenaRezolveraVidnaNablyudatelyu(t *testing.T) {
 func TestTotZheRezolverNeSchitaetsyaSmenoySeti(t *testing.T) {
 	// Иначе продукт рвал бы соединения на каждом тике наблюдателя.
 	s := sluzhbaSRezolverom(t, "192.168.0.1")
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("192.168.0.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("192.168.0.1"), nil }
 	if _, smenilsya := s.rezolverSmenilsya(); smenilsya {
 		t.Fatal("тот же адрес принят за смену сети")
 	}
@@ -54,7 +55,7 @@ func TestPropavshayaSetNeSchitaetsyaSmenoySeti(t *testing.T) {
 	// попытка подняться в пустоту; туннель разбирает такое пробой живости и
 	// восстановлением, а не пересборкой конфига.
 	s := sluzhbaSRezolverom(t, "192.168.0.1")
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.Addr{}, errors.New("адаптеров нет") }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.Addr{}, errors.New("адаптеров нет") }
 	if _, smenilsya := s.rezolverSmenilsya(); smenilsya {
 		t.Fatal("пропажа сети принята за смену сети")
 	}
@@ -63,7 +64,7 @@ func TestPropavshayaSetNeSchitaetsyaSmenoySeti(t *testing.T) {
 func TestBezKonfigaSmenaSetiNeRassmatrivaetsya(t *testing.T) {
 	// Туннель опущен: ядра нет, сверять не с чем, пересобирать нечего.
 	s := podstavnaya(t, nil)
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
 	if _, smenilsya := s.rezolverSmenilsya(); smenilsya {
 		t.Fatal("смена сети замечена при опущенном туннеле")
 	}
@@ -74,7 +75,7 @@ func TestSborkaKonfigaZapominaetRezolver(t *testing.T) {
 	// целиком (s.podnyatTunnel), и боевая сборка в нём не случается вовсе.
 	// Запоминается ФАКТ - то, что уехало в конфиг, - иначе сверять потом не с чем.
 	s := podstavnayaSPolnymNaborom(t)
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("192.168.7.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("192.168.7.1"), nil }
 
 	if _, _, _, err := s.sobratTun(nil, false); err != nil {
 		t.Fatalf("конфиг не собрался: %v", err)
@@ -91,11 +92,11 @@ func TestSuhayaSborkaNeTrogaetRezolverKonfiga(t *testing.T) {
 	// Сухая сборка проверяет кандидата на живом туннеле. Запиши она свой
 	// резолвер - и смена сети, случившаяся в этот момент, была бы забыта молча.
 	s := podstavnayaSPolnymNaborom(t)
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("192.168.7.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("192.168.7.1"), nil }
 	if _, _, _, err := s.sobratTun(nil, false); err != nil {
 		t.Fatalf("конфиг не собрался: %v", err)
 	}
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("10.9.9.9"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("10.9.9.9"), nil }
 	if _, _, _, err := s.sobratTun(nil, true); err != nil {
 		t.Fatalf("сухая сборка не прошла: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestOpuskanieZabyvaetRezolverKonfiga(t *testing.T) {
 
 func TestSmenaSetiPerepodnimaetTunnel(t *testing.T) {
 	s := sluzhbaSRezolverom(t, "192.168.0.1")
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
 	s.proveritKonfig = func(string) error { return nil }
 
 	s.mu.Lock()
@@ -156,7 +157,7 @@ func TestVtoroyPerezapuskSetiZhdyotPauzy(t *testing.T) {
 	// Сеть дребезжит: переключение Wi-Fi на провод и пробуждение дают несколько
 	// изменений подряд. Без паузы продукт рвал бы соединения на каждое.
 	s := sluzhbaSRezolverom(t, "192.168.0.1")
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
 	s.mu.Lock()
 	s.posledniyPerezapuskSeti = s.seychas()
 	s.mu.Unlock()
@@ -186,7 +187,7 @@ func TestNablyudatelSamSprashivaetProSet(t *testing.T) {
 	s.periodNesushchego = time.Millisecond
 	s.period = time.Millisecond
 	// Сеть «переезжает» уже под работающим наблюдателем.
-	s.mestnyyRezolver = func() (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
 
 	srok := time.Now().Add(10 * time.Second)
 	for time.Now().Before(srok) {
@@ -199,4 +200,65 @@ func TestNablyudatelSamSprashivaetProSet(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("наблюдатель не спросил про сеть: смена сети замечена не будет никогда")
+}
+
+// kakSistema ведёт себя как настоящий перечислитель адаптеров: без исключения
+// отдаёт резолвер туннеля, с исключением - резолвер соседней сети. Ровно это
+// измерено в госте 22.09.2026 на живом tun0.
+func kakSistema(tunnelnyy, domashniy string, indeksTunnelya uint32) func(...uint32) (netip.Addr, error) {
+	return func(krome ...uint32) (netip.Addr, error) {
+		for _, k := range krome {
+			if k == indeksTunnelya {
+				return netip.MustParseAddr(domashniy), nil
+			}
+		}
+		return netip.MustParseAddr(tunnelnyy), nil
+	}
+}
+
+func TestSvoyTunnelNePrinimaetsyaZaNovuyuSet(t *testing.T) {
+	// Самый дорогой из дефектов A4, и он найден только живой машиной: tun0
+	// несёт маршрут по умолчанию и объявляет СВОЙ адрес сервером имён, то есть
+	// проходит по всем признакам кандидата. Продукт видел собственный туннель
+	// как новую сеть и переподнимался каждые тридцать секунд по кругу, разрывая
+	// на каждом круге все соединения человека.
+	s := sluzhbaSRezolverom(t, "192.168.0.1")
+	s.mu.Lock()
+	indeks := s.tun.Indeks
+	s.mu.Unlock()
+	if indeks == 0 {
+		t.Fatal("в фикстуре нет индекса туннеля: тест не проверяет ничего")
+	}
+	s.mestnyyRezolver = kakSistema("172.19.0.2", "192.168.0.1", indeks)
+
+	if stalo, smenilsya := s.rezolverSmenilsya(); smenilsya {
+		t.Fatalf("свой туннель принят за новую сеть (%s): переподъём пойдёт по кругу", stalo)
+	}
+}
+
+func TestSborkaKonfigaNeBeryotRezolverSvoegoTunnelya(t *testing.T) {
+	// Второе место того же дефекта. Конфиг пересобирается и при ЖИВОМ туннеле
+	// (смена сервера, проверка кандидата), и без исключения индекса в него
+	// уехал бы адрес самого туннеля: весь российский набор пошёл бы спрашивать
+	// имена у ядра, которое эти имена и направляет.
+	s := podstavnayaSPolnymNaborom(t)
+	const indeks = 77
+	s.mu.Lock()
+	s.tun.Indeks = indeks
+	s.mu.Unlock()
+	s.mestnyyRezolver = kakSistema("172.19.0.2", "192.168.7.1", indeks)
+
+	telo, _, _, err := s.sobratTun(nil, false)
+	if err != nil {
+		t.Fatalf("конфиг не собрался: %v", err)
+	}
+	if strings.Contains(string(telo), "172.19.0.2") {
+		t.Fatal("в конфиг уехал резолвер собственного туннеля")
+	}
+	s.mu.Lock()
+	zapomnen := s.rezolverKonfiga
+	s.mu.Unlock()
+	if zapomnen.String() != "192.168.7.1" {
+		t.Fatalf("запомнен резолвер %s вместо домашнего", zapomnen)
+	}
 }

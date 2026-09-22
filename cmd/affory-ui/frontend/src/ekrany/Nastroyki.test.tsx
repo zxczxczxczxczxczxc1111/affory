@@ -695,7 +695,7 @@ it("по зову из трея подсвечивает карточку обн
 describe("проверка сети по слоям", () => {
   const sloi = [
     { vid: "tunnel", podpis: "VPN на этом компьютере", proshlo: true, podrobno: "tun0, адрес 172.19.0.1", ms: 2 },
-    { vid: "mestnyy-dns", podpis: "Сервер имён этой сети", proshlo: false, podrobno: "192.168.0.1 не отвечает", ms: 3001 },
+    { vid: "mestnyy-dns", podpis: "Имена сайтов мимо VPN", proshlo: false, podrobno: "192.168.0.1 не отвечает", ms: 3001 },
   ];
 
   it("кнопка шлёт checkNetwork", () => {
@@ -718,7 +718,7 @@ describe("проверка сети по слоям", () => {
     raskrytVse();
     const spisok = screen.getByTestId("sloi-seti");
     expect(spisok).toHaveTextContent("VPN на этом компьютере");
-    expect(spisok).toHaveTextContent("Сервер имён этой сети");
+    expect(spisok).toHaveTextContent("Имена сайтов мимо VPN");
     // Главное: по разметке видно, какой слой красный, а какой нет.
     const stroki = spisok.querySelectorAll("li");
     expect(stroki[0].getAttribute("data-proshlo")).toBe("true");
