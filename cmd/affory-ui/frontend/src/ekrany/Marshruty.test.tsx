@@ -341,6 +341,50 @@ it("кнопка обновления перечитывает список пр
   expect(obnovit).toHaveBeenCalledTimes(1);
 });
 
+// C6. Частые приложения. Карточка сервиса это набор доменов, нативный клиент
+// она не накрывает, а путь к .exe угадывать нельзя: у Discord в нём номер
+// сборки, у лаунчеров - диск установки.
+it("пресет берёт фактический путь запущенной программы, а не угаданный", async () => {
+  const send = vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={send}
+    zapushchennye={[
+      {imya:"Discord",put:"C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe"},
+      {imya:"Steam",put:"C:\\Games\\Steam\\steam.exe"},
+    ]} obnovitProtsessy={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  fireEvent.click(screen.getByRole("button",{name:"Discord: запущено"}));
+  expect(screen.getByLabelText("Путь к приложению")).toHaveValue("C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe");
+  fireEvent.click(screen.getByRole("button",{name:"Добавить в черновик"}));
+  await primenit();
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({
+    trafik: expect.objectContaining({prilozheniya:[{
+      put:"C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe",
+      imya:"Discord.exe", potomki:true, marshrut:"vpn",
+    }]}),
+  }));
+});
+
+it("незапущенное приложение не превращается в выдуманное правило", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={vi.fn()}
+    zapushchennye={[]} obnovitProtsessy={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  const chip = screen.getByRole("button",{name:"Telegram: не запущено"});
+  expect(chip).toBeDisabled();
+  fireEvent.click(chip);
+  expect(screen.getByLabelText("Путь к приложению")).toHaveValue("");
+});
+
+it("пресет с уже заведённым правилом не предлагает завести его второй раз", () => {
+  const steam = {put:"C:\\Games\\Steam\\steam.exe",imya:"steam.exe",potomki:true,marshrut:"vpn" as const};
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={{...rules,trafik:{...rules.trafik!,prilozheniya:[steam]}}}
+    otlozheno={{}} naKomandu={vi.fn()} zapushchennye={[{imya:"Steam",put:steam.put}]} obnovitProtsessy={vi.fn()}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  expect(screen.getByRole("button",{name:"Steam: правило уже есть"})).toBeDisabled();
+});
+
 // C3. Поиск, фильтр и групповые действия по уже сохранённым правилам: лимиты
 // в 256 приложений и 1024 сайта делают скролл негодным способом что-то найти.
 const mnogoPravil: PravilaOtvet = {

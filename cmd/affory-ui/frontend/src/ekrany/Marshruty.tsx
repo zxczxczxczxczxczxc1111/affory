@@ -8,6 +8,7 @@ import { IkonkaServisa } from "./IkonkaServisa";
 import { Vybor } from "./Vybor";
 import { slovoPosleChisla } from "../chisla";
 import { razobratVvodDomenov } from "../domeny";
+import { imyaFayla, naydennyePuti, PRESETY } from "../presety";
 import { sleduyushchayaVkladka } from "./klavishi-vkladok";
 import { OhvatPravil } from "./OhvatPravil";
 
@@ -676,6 +677,40 @@ export function Marshruty({
                   className="border-border bg-surface flex flex-col gap-3 rounded-xl border p-4">
                   {tab === "apps" ? (
                     <>
+                      {/* Частые приложения. Путь НЕ угадывается: имя файла
+                          ищется среди запущенных программ, и в поле уезжает
+                          фактический путь. Не запущено - так и написано. */}
+                      <div className="flex flex-col gap-2" data-testid="presety-prilozheniy">
+                        <p className="text-fg-muted text-[13px]">
+                          Частые приложения. Карточка сервиса на вкладке «Сервисы» это только набор доменов и нативный клиент не накрывает
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {PRESETY.map((preset) => {
+                            const puti = naydennyePuti(preset, zapushchennye);
+                            const uzheEst = puti.length > 0 && puti.every((p) => apps.some((a) => a.put.toLowerCase() === p.toLowerCase()));
+                            const sostoyanie = uzheEst ? "правило уже есть" : puti.length > 1 ? `найдено ${puti.length}` : puti.length === 1 ? "запущено" : "не запущено";
+                            return (
+                              <Knopka
+                                key={preset.id}
+                                rang="vtoraya"
+                                aktiven={!disabled && puti.length > 0 && !uzheEst}
+                                aria-label={`${preset.imya}: ${sostoyanie}`}
+                                title={puti.length > 0 ? `${preset.poyasnenie}. ${puti.join(", ")}` : `${preset.poyasnenie}. Запусти приложение или выбери файл на ПК`}
+                                onClick={() => {
+                                  // Имя файла в поиск, фактический путь в поле:
+                                  // человек видит, что именно выбрано, и может
+                                  // взять вторую копию из списка ниже.
+                                  setQuery(imyaFayla(puti[0]).replace(/\.exe$/, ""));
+                                  setPath(puti[0]);
+                                }}
+                              >
+                                {preset.imya}
+                                <span className="text-fg-muted">· {sostoyanie}</span>
+                              </Knopka>
+                            );
+                          })}
+                        </div>
+                      </div>
                       <div className="flex items-center gap-3">
                         <Poisk
                           aria-label="Поиск приложения"
