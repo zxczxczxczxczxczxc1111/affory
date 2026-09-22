@@ -90,12 +90,19 @@ func trafikPravila(v Vhod, dns bool) []any {
 		key = "server"
 	}
 	if !dns {
+		// Every explicit executable wins before any inherited route, including
+		// entries which also cover the programs they launch.
+		var roots []string
 		for _, a := range v.Trafik.Prilozheniya {
-			field := "process_path"
+			p = append(p, map[string]any{"process_path": []string{a.Put}, key: tegMarshruta(a.Marshrut, false)})
 			if a.Potomki {
-				field = "process_path_tree"
+				roots = append(roots, a.Put)
 			}
-			p = append(p, map[string]any{field: []string{a.Put}, key: tegMarshruta(a.Marshrut, false)})
+		}
+		for _, a := range v.Trafik.Prilozheniya {
+			if a.Potomki {
+				p = append(p, map[string]any{"process_path_tree": []string{a.Put}, "process_path_tree_roots": roots, key: tegMarshruta(a.Marshrut, false)})
+			}
 		}
 	}
 	// A specific child domain beats its parent, regardless of the order in the UI.

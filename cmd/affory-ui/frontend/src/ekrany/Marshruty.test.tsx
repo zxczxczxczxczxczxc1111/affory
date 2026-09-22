@@ -40,6 +40,19 @@ it("повтор домена с регистром и точкой заменя
   expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({trafik:expect.objectContaining({domeny:[{domen:"work.example",marshrut:"vpn"}]})}));
 });
 
+it("повтор приложения обновляет правило на прежнем месте",async()=>{
+  const first={put:"C:\\First.exe",imya:"First.exe",potomki:true,marshrut:"direct" as const};
+  const second={put:"C:\\Second.exe",imya:"Second.exe",potomki:false,marshrut:"vpn" as const};
+  const send=vi.fn().mockResolvedValue(true);
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={{...rules,trafik:{...rules.trafik!,prilozheniya:[first,second]}}} otlozheno={{}} naKomandu={send}/>);
+  fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));
+  fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
+  fireEvent.change(screen.getByLabelText("Путь к приложению"),{target:{value:first.put}});
+  fireEvent.click(screen.getByRole("button",{name:"Добавить в черновик"}));
+  await primenit();
+  expect(send).toHaveBeenCalledWith("setRules",expect.objectContaining({trafik:expect.objectContaining({prilozheniya:[{...first,marshrut:"vpn"},second]})}));
+});
+
 it("новая форма учитывает смену общего режима, открытая сохраняет выбранный маршрут", () => {
   const initial:PravilaOtvet={...rules,trafik:{...rules.trafik!,po_umolchaniyu:"vpn"}};
   const props={status:{sostoyanie:"vyklyuchen" as const},otlozheno:{},naKomandu:vi.fn()};

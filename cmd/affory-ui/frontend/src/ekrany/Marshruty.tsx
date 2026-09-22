@@ -179,22 +179,19 @@ export function Marshruty({
   const add = () => {
     if (disabled) return;
     let changed = false;
-    if (tab === "apps")
+    if (tab === "apps") {
+      const app = {
+        put: path.trim(),
+        imya: path.trim().split(/[/\\]/).pop() ?? "Приложение",
+        potomki: descendants,
+        marshrut: route,
+      };
+      const existing = apps.findIndex(p => p.put.toLowerCase() === app.put.toLowerCase());
       changed = save({
         ...trafik,
-        prilozheniya: [
-          ...apps.filter(
-            (p) => p.put.toLowerCase() !== path.trim().toLowerCase(),
-          ),
-          {
-            put: path.trim(),
-            imya: path.trim().split(/[/\\]/).pop() ?? "Приложение",
-            potomki: descendants,
-            marshrut: route,
-          },
-        ],
+        prilozheniya: existing < 0 ? [...apps,app] : apps.map((previous,i) => i===existing ? app : previous),
       });
-    else {
+    } else {
       const normalized = domain.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
       changed = save({
         ...trafik,

@@ -1,18 +1,19 @@
 {
-  "vypusk": "1.4.2",
   "repozitoriy": "https://github.com/SagerNet/sing-box.git",
   "teg": "v1.14.1",
   "kommit": "1ac1a339cb1223e9c70eae14c44411c75033c02d",
   "process_family": {
-    "patch": "4e52cf8a927e9738d03b827ef194437dd33bcbd2fb77dcacef093226490f9fb3",
+    "patch": "ce50f6d93fb911945774da35a2fbb257b61958f761ab1a72dda350bf958a5048",
     "family_test.go": "1e371db80194596f8b654716504affc037e3af11bfb94bed745e5ca4f1fd2af4",
     "family.go": "243da069143a29e67a40efe6d766f100ebf2f1e139a4a7192a6b890783608a3a",
     "watcher_windows_test.go": "f4c2b0cd8531ea9c858b655651b8cdcf0fd01921c68d2f7c8251d4900c32be90",
     "watcher_windows.go": "1e057c198c50152038f7d639d037417937e03f4863a5e3693bc7389e0e838b44"
   },
-  "versiya": "1.14.1-affory-family.1",
+  "versiya": "1.14.1-affory-family.2",
   "tegi": "with_gvisor,with_quic,with_utls,with_clash_api",
   "go": "go version go1.26.8 windows/amd64",
-  "sha256": "af84df4c46a1456469d08628944a579570c590c2c8a8564fca55915f07d2695b",
-  "sobrano": "2026-09-19T08:31:15.4897103+03:00"
+  "sha256": "68d201ee0b8e8ae1f00b2747703391dcd264857d1019a7d2dc9395726a6327c7",
+  "bayt": 44257280,
+  "sobrano": "2026-09-22T14:06:06.1434214+03:00",
+  "vypusk": "1.4.2"
 }

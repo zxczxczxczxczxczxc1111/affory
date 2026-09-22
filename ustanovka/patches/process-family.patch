@@ -90,14 +90,15 @@ index f011765..506d791 100644
  
  func getProcessPath(pid uint32) (string, error) {
 diff --git a/option/rule.go b/option/rule.go
-index 15f86a4..36ffd3e 100644
+index 15f86a4..b87dabd 100644
 --- a/option/rule.go
 +++ b/option/rule.go
-@@ -161,6 +161,7 @@ type RawDefaultRule struct {
+@@ -161,6 +161,8 @@ type RawDefaultRule struct {
  	PortRange                badoption.Listable[string]                                                  `json:"port_range,omitempty"`
  	ProcessName              badoption.Listable[string]                                                  `json:"process_name,omitempty"`
  	ProcessPath              badoption.Listable[string]                                                  `json:"process_path,omitempty"`
 +	ProcessPathTree          badoption.Listable[string]                                                  `json:"process_path_tree,omitempty"`
++	ProcessPathTreeRoots     badoption.Listable[string]                                                  `json:"process_path_tree_roots,omitempty"`
  	ProcessPathRegex         badoption.Listable[string]                                                  `json:"process_path_regex,omitempty"`
  	PackageName              badoption.Listable[string]                                                  `json:"package_name,omitempty"`
  	PackageNameRegex         badoption.Listable[string]                                                  `json:"package_name_regex,omitempty"`
@@ -150,7 +151,7 @@ index 682111d..c891f6e 100644
  						r.logger.Warn(E.Cause(err, "create process searcher"))
  					}
 diff --git a/route/rule/rule_default.go b/route/rule/rule_default.go
-index 3aef4a1..b818656 100644
+index 3aef4a1..a71a3fe 100644
 --- a/route/rule/rule_default.go
 +++ b/route/rule/rule_default.go
 @@ -200,6 +200,14 @@ func NewDefaultRule(ctx context.Context, logger log.ContextLogger, options optio
@@ -161,19 +162,46 @@ index 3aef4a1..b818656 100644
 +		if !C.IsWindows {
 +			return nil, E.New("process_path_tree requires Affory's Windows core")
 +		}
-+		item := NewProcessPathTreeItem(options.ProcessPathTree)
++		item := NewProcessPathTreeItem(options.ProcessPathTree, options.ProcessPathTreeRoots...)
 +		rule.items = append(rule.items, item)
 +		rule.allItems = append(rule.allItems, item)
 +	}
  	if len(options.PackageName) > 0 {
  		item := NewPackageNameItem(options.PackageName)
  		rule.items = append(rule.items, item)
+diff --git a/route/rule/rule_item_process_path.go b/route/rule/rule_item_process_path.go
+index ac5c6a1..5ffab7f 100644
+--- a/route/rule/rule_item_process_path.go
++++ b/route/rule/rule_item_process_path.go
+@@ -20,6 +20,9 @@ func NewProcessPathItem(processNameList []string) *ProcessPathItem {
+ 		processMap: make(map[string]bool),
+ 	}
+ 	for _, processName := range processNameList {
++		if C.IsWindows {
++			processName = strings.ToLower(processName)
++		}
+ 		rule.processMap[processName] = true
+ 	}
+ 	return rule
+@@ -29,7 +32,11 @@ func (r *ProcessPathItem) Match(metadata *adapter.InboundContext) bool {
+ 	if metadata.ProcessInfo == nil {
+ 		return false
+ 	}
+-	if metadata.ProcessInfo.ProcessPath != "" && r.processMap[metadata.ProcessInfo.ProcessPath] {
++	path := metadata.ProcessInfo.ProcessPath
++	if C.IsWindows {
++		path = strings.ToLower(path)
++	}
++	if path != "" && r.processMap[path] {
+ 		return true
+ 	}
+ 	if C.IsAndroid {
 diff --git a/route/rule/rule_item_process_tree.go b/route/rule/rule_item_process_tree.go
 new file mode 100644
-index 0000000..0857d3a
+index 0000000..ba9121d
 --- /dev/null
 +++ b/route/rule/rule_item_process_tree.go
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,42 @@
 +package rule
 +
 +import (
@@ -183,13 +211,17 @@ index 0000000..0857d3a
 +
 +type ProcessPathTreeItem struct {
 +	paths       map[string]bool
++	roots       map[string]bool
 +	description string
 +}
 +
-+func NewProcessPathTreeItem(paths []string) *ProcessPathTreeItem {
-+	r := &ProcessPathTreeItem{paths: make(map[string]bool), description: "process_path_tree=" + strings.Join(paths, ",")}
++func NewProcessPathTreeItem(paths []string, roots ...string) *ProcessPathTreeItem {
++	r := &ProcessPathTreeItem{paths: make(map[string]bool), roots: make(map[string]bool), description: "process_path_tree=" + strings.Join(paths, ",")}
 +	for _, path := range paths {
 +		r.paths[strings.ToLower(path)] = true
++	}
++	for _, path := range roots {
++		r.roots[strings.ToLower(path)] = true
 +	}
 +	return r
 +}
@@ -202,6 +234,11 @@ index 0000000..0857d3a
 +		if r.paths[strings.ToLower(path)] {
 +			return true
 +		}
++		// Paths are ordered from this process towards its launchers. Stop at
++		// the nearest configured launcher, independent of rule order.
++		if r.roots[strings.ToLower(path)] {
++			return false
++		}
 +	}
 +	return false
 +}
@@ -209,10 +246,10 @@ index 0000000..0857d3a
 +func (r *ProcessPathTreeItem) String() string { return r.description }
 diff --git a/route/rule/rule_item_process_tree_test.go b/route/rule/rule_item_process_tree_test.go
 new file mode 100644
-index 0000000..b000059
+index 0000000..e9413c2
 --- /dev/null
 +++ b/route/rule/rule_item_process_tree_test.go
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,81 @@
 +package rule
 +
 +import (
@@ -243,6 +280,55 @@ index 0000000..b000059
 +	}
 +	if len(rule.DefaultOptions.ProcessPathTree) != 1 {
 +		t.Fatal("family matcher was discarded")
++	}
++}
++
++func TestAfforyNearestConfiguredLauncherWinsRegardlessOfRuleOrder(t *testing.T) {
++	outer, inner := `C:\Outer.exe`, `C:\Inner.exe`
++	far := NewProcessPathTreeItem([]string{outer}, outer, inner)
++	near := NewProcessPathTreeItem([]string{inner}, outer, inner)
++	metadata := &adapter.InboundContext{ProcessInfo: &adapter.ConnectionOwner{
++		ProcessPath: `C:\App.exe`, ProcessFamilyPaths: []string{`C:\App.exe`, `c:\INNER.exe`, outer},
++	}}
++	for _, rules := range [][]*ProcessPathTreeItem{{far, near}, {near, far}} {
++		var winner *ProcessPathTreeItem
++		for _, r := range rules {
++			if r.Match(metadata) {
++				winner = r
++				break
++			}
++		}
++		if winner != near {
++			t.Fatal("nearest configured launcher did not win")
++		}
++	}
++	metadata.ProcessInfo.ProcessFamilyPaths = []string{`C:\Other.exe`, outer}
++	if !far.Match(metadata) || near.Match(metadata) {
++		t.Fatal("unrelated branch lost outer rule")
++	}
++	metadata.ProcessInfo.ProcessFamilyPaths = []string{`C:\Other.exe`}
++	if far.Match(metadata) || near.Match(metadata) {
++		t.Fatal("unknown family was guessed")
++	}
++}
++
++func TestAfforyWindowsExactPathIgnoresCase(t *testing.T) {
++	r := NewProcessPathItem([]string{`C:\Apps\app.exe`})
++	if !r.Match(&adapter.InboundContext{ProcessInfo: &adapter.ConnectionOwner{ProcessPath: `c:\APPS\App.EXE`}}) {
++		t.Fatal("Windows executable casing changed its route")
++	}
++	if r.Match(&adapter.InboundContext{ProcessInfo: &adapter.ConnectionOwner{ProcessPath: `C:\Other\app.exe`}}) {
++		t.Fatal("filename alone matched")
++	}
++}
++
++func TestAfforyRootsOptionIsAccepted(t *testing.T) {
++	var r option.Rule
++	if err := r.UnmarshalJSONContext(context.Background(), []byte(`{"process_path_tree":["C:\\Outer.exe"],"process_path_tree_roots":["C:\\Outer.exe","C:\\Inner.exe"],"outbound":"direct"}`)); err != nil {
++		t.Fatal(err)
++	}
++	if len(r.DefaultOptions.ProcessPathTreeRoots) != 2 {
++		t.Fatal("roots were dropped")
 +	}
 +}
 diff --git a/route/rule_conds.go b/route/rule_conds.go

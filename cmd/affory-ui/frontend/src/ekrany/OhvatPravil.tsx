@@ -46,7 +46,7 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
           <span>{a.potomki?"Приложение и программы, которые оно запускает, если Affory успел заметить их запуск":"Только это приложение"}</span>
         </li>)}
       </ul>
-      <p className="text-fg-muted">{sites?"Сначала действует правило приложения, затем сайта, затем сервиса. Например, отдельное правило для api.example.com важнее общего правила для example.com.":"Если подходят несколько правил приложений, сейчас действует первое в списке. Если программа, запустившая приложение, уже закрылась, Affory может не знать, что их нужно направлять вместе."}</p>
+      <p className="text-fg-muted">{sites?"Сначала действует правило приложения, затем сайта, затем сервиса. Например, отдельное правило для api.example.com важнее общего правила для example.com.":"Отдельное правило приложения действует первым. Например, если Steam открыл лаунчер, а тот запустил игру, сначала учитывается правило игры, затем лаунчера, затем Steam. Если запуск не удалось заметить, Affory не угадывает, какие программы связаны."}</p>
       <p className="text-fg-muted">Это настройки маршрута, а не результат сетевой проверки.</p>
     </div>}
     <form className="flex flex-col gap-3" onSubmit={e=>{e.preventDefault();void inspect();}}>
@@ -56,7 +56,7 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,disabl
         <Pole aria-label={sites?"Домен для проверки":"Путь приложения для проверки"} placeholder={sites?"api.example.org или ссылка":"Полный путь к файлу приложения (.exe)"} znachenie={input} naVvod={changeInput} className="min-w-[180px] flex-1"/>
         <Knopka rang="vtoraya" type="submit" aktiven={!disabled && !busy && !!proverit} zhdyot={busy}>Проверить соединения</Knopka>
       </div>
-      {query && <p className="text-fg-secondary">{sites?opisatDomen(query,trafik,katalog):app?`${imyaMarshruta(app.marshrut)}: отдельное правило для ${app.imya}. Если запустившая его программа указана выше в списке, может действовать её правило.`:"Отдельного правила для этого приложения нет. Оно может использовать правило программы, которая его запустила. По одному пути к файлу это проверить нельзя."}</p>}
+      {query && <p className="text-fg-secondary">{sites?opisatDomen(query,trafik,katalog):app?`${imyaMarshruta(app.marshrut)}: отдельное правило для ${app.imya}. Оно важнее правил программ, которые его запустили.`:"Отдельного правила для этого приложения нет. Оно может использовать правило программы, которая его запустила. По одному пути к файлу это проверить нельзя."}</p>}
       {chernovik && <p className="text-warn">Подсказка учитывает черновик. Проверка показывает текущие соединения, ещё без этих изменений.</p>}
       {!chernovik && ozhidayut && <p className="text-warn">Сохранённые правила ещё не применены. Проверка показывает соединения с прежними правилами.</p>}
       {error && <p role="alert" className="text-danger">{error}</p>}
