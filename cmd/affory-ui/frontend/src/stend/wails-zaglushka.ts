@@ -337,6 +337,19 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
       { imya: "DoH браузера", itog: "ne_vidim", tekst: "браузер с включённым DoH резолвит сам, мимо системного резолвера; правила по доменам его не видят, проверка тоже" },
     ],
   }),
+  // Пять слоёв теми же видами и подписями, что у службы (proverka_seti.go).
+  // Один слой СЛОМАН намеренно: список, где всё зелено, не показывает, как
+  // окно рисует отказ, и обход проходил бы мимо этой половины разметки.
+  checkNetwork: () => ({
+    vremya: new Date().toISOString(),
+    sloi: [
+      { vid: "tunnel", podpis: "VPN на этом компьютере", proshlo: true, podrobno: "Affory, адрес 172.19.0.1", ms: 2 },
+      { vid: "yadro", podpis: "Связь с сервером", proshlo: true, podrobno: "ответ за 41ms", ms: 41 },
+      { vid: "imya", podpis: "Имена сайтов", proshlo: true, podrobno: "cp.cloudflare.com -> 104.16.132.229", ms: 28 },
+      { vid: "mestnyy-dns", podpis: "Сервер имён этой сети", proshlo: false, podrobno: "192.168.0.1 не отвечает: нет ответа за отведённый срок", ms: 3001 },
+      { vid: "udp", podpis: "Голос и видео", proshlo: true, podrobno: "получено 10 из 10, среднее 24ms, разброс 6ms", ms: 1140 },
+    ],
+  }),
   startSpeedTest: (v) => {
     skorost = { id: Date.now(), phase: "download", path: "vpn", provider: stroka(v.provider) || "ookla", name: "Speedtest", attempt: 1 };
     setTimeout(() => {

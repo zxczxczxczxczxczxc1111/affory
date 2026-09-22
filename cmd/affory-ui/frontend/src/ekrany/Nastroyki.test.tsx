@@ -687,3 +687,49 @@ it("по зову из трея подсвечивает карточку обн
   expect(scrollIntoView).toHaveBeenCalledTimes(1);
   expect(screen.getByTestId("obnovlenie").parentElement).toHaveClass("af-privlech");
 });
+
+// A3. Одна HTTP-проба зелена при сломанном DNS и съеденном UDP: она ходит
+// другим путём. В госте 22.09.2026 это стоило человеку неразрешимых имён при
+// состоянии «поднят». Теперь слои спрашиваются порознь, и список говорит, что
+// именно сломано.
+describe("проверка сети по слоям", () => {
+  const sloi = [
+    { vid: "tunnel", podpis: "VPN на этом компьютере", proshlo: true, podrobno: "tun0, адрес 172.19.0.1", ms: 2 },
+    { vid: "mestnyy-dns", podpis: "Сервер имён этой сети", proshlo: false, podrobno: "192.168.0.1 не отвечает", ms: 3001 },
+  ];
+
+  it("кнопка шлёт checkNetwork", () => {
+    const na = vi.fn();
+    render(<Nastroyki status={status()} otlozheno={{}} naKomandu={na} naUdalenie={vi.fn()} />);
+    raskrytVse();
+    fireEvent.click(screen.getByTestId("proverit-set"));
+    expect(na).toHaveBeenCalledWith("checkNetwork", {});
+  });
+
+  it("до нажатия списка нет", () => {
+    render(<Nastroyki status={status()} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()} />);
+    raskrytVse();
+    expect(screen.queryByTestId("sloi-seti")).toBeNull();
+  });
+
+  it("сломанный слой виден отдельно от целого", () => {
+    render(<Nastroyki status={status()} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
+      proverkaSeti={{ vremya: "2026-09-22T17:00:00Z", sloi }} />);
+    raskrytVse();
+    const spisok = screen.getByTestId("sloi-seti");
+    expect(spisok).toHaveTextContent("VPN на этом компьютере");
+    expect(spisok).toHaveTextContent("Сервер имён этой сети");
+    // Главное: по разметке видно, какой слой красный, а какой нет.
+    const stroki = spisok.querySelectorAll("li");
+    expect(stroki[0].getAttribute("data-proshlo")).toBe("true");
+    expect(stroki[1].getAttribute("data-proshlo")).toBe("false");
+    expect(stroki[1].className).toContain("text-warn");
+  });
+
+  it("подробности слоя печатаются: без них строка ничего не даёт", () => {
+    render(<Nastroyki status={status()} otlozheno={{}} naKomandu={vi.fn()} naUdalenie={vi.fn()}
+      proverkaSeti={{ vremya: "2026-09-22T17:00:00Z", sloi }} />);
+    raskrytVse();
+    expect(screen.getByTestId("sloi-seti")).toHaveTextContent("192.168.0.1 не отвечает");
+  });
+});

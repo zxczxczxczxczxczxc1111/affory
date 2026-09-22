@@ -23,7 +23,7 @@ import {
   udalitProgrammu, ustanovitSluzhbu, zvat, type Kadr,
 } from "./most";
 import { naladitVstavku } from "./vstavka";
-import { VERSIYA_PROTOKOLA, type HodObnovleniya, type OtkazStroki, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
+import { VERSIYA_PROTOKOLA, type HodObnovleniya, type OtkazStroki, type ProverkaSeti, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
 
 // The only place that talks to most.ts. Screens get whole StatusOtvet values
 // as props and never touch the bridge, so a shell swap is most.ts plus here.
@@ -206,6 +206,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // Why the last check brought nothing. Without it a failed checkLeaks left the
   // PREVIOUS report on screen, and it read as the current one.
   const [proverkaOtkaz, zadatProverkaOtkaz] = useState<Otkazano | null>(null);
+  // Проверка слоёв сети (A3): туннель, сервер, имена, резолвер сети и UDP
+  // порознь. null до первого нажатия.
+  const [proverkaSeti, zadatProverkuSeti] = useState<ProverkaSeti | null>(null);
 
   // Строки последней подписки, которые клиент не понял. Живут отдельно от
   // списка серверов намеренно: список это то, что получилось, а это то, что не
@@ -469,6 +472,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           zadatProverkaOtkaz(null);
           if (r.adres_vyhoda) zadatStat((s) => ({ ...(s ?? {}), adres_vyhoda: r.adres_vyhoda as string }));
         }
+      }
+      if (komanda === "checkNetwork") {
+        // Прошлый список слоёв не отвечает за сейчас: он уходит вместе с
+        // отказом, который его заменил. Та же грабля, что уже была с утечками.
+        zadatProverkuSeti(kadr.oshibka ? null : (kadr.telo as ProverkaSeti));
       }
       if (!kadr.oshibka && komanda === "checkExitIp") {
         const t = kadr.telo as { adres?: string; cherez?: string };
@@ -1033,6 +1041,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             povtorit={() => void sprositVsyo()}
             proverka={proverka}
             proverkaOtkaz={proverkaOtkaz}
+            proverkaSeti={proverkaSeti}
             // Какие команды сейчас в полёте. Кнопка, за которой стоит
             // секунда ожидания, обязана сказать об этом сама: молчание после
             // нажатия человек читает как зависшую программу и жмёт второй раз.

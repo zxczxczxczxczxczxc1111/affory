@@ -15,6 +15,7 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/proby"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
@@ -184,7 +185,24 @@ type Sluzhba struct {
 	pokolenieP     int
 	pravilaKonfiga string
 	trafikKonfiga  protokol.MarshrutTrafika
-	oshibkaIPv6    error
+	// Местный резолвер, УЕХАВШИЙ В КОНФИГ ядра (A4). Ядро не перечитывает
+	// конфиг на ходу, поэтому единственный способ узнать, что сеть сменилась, -
+	// сверить записанный адрес с текущим. Пустой значит «конфига нет».
+	rezolverKonfiga netip.Addr
+	// Когда последний раз переподнимались из-за смены сети, и не чаще чего это
+	// делать. Поле, а не константа: тест не ждёт тридцати секунд.
+	posledniyPerezapuskSeti  time.Time
+	perezapuskSetiNeChashche time.Duration
+	// Шов чтения местного резолвера. Настоящий спрашивает таблицу адаптеров
+	// машины, а тесту смены сети нужно назвать ДРУГОЙ адрес, не трогая сеть
+	// рабочей машины.
+	mestnyyRezolver func() (netip.Addr, error)
+	// Швы проверки слоёв (A3). Настоящие спрашивают систему и ходят в сеть, а
+	// тесту нужно назвать состояние адаптеров и ответ резолвера, не трогая ни
+	// сеть рабочей машины, ни её адаптеры.
+	adaptery      func() ([]set.Adapter, error)
+	probaRezolver func(context.Context, netip.Addr, string) proby.Itog
+	oshibkaIPv6   error
 	// ostanovlena это конец жизни службы, и живёт он под тем же замком, что и
 	// поколения подъёма, потому что стережёт то же самое: регистрацию горутин.
 	//
@@ -396,6 +414,10 @@ func NovayaSluzhba() *Sluzhba {
 	s.periodZhurnala = periodZhurnalaPoUmolchaniyu
 	s.soedineniyaYadra = yadra.Soedineniya
 	s.provalov = provalovPodryadPoUmolchaniyu
+	s.perezapuskSetiNeChashche = perezapusSetiNeChashche
+	s.mestnyyRezolver = set.LokalnyyResolver
+	s.adaptery = set.Adaptery
+	s.probaRezolver = proby.Rezolver
 	s.otstupy = otstupyPoUmolchaniyu
 	s.periodProksi = periodProksiPoUmolchaniyu
 	s.proveritKonfig = func(put string) error { return yadra.Proverit(imyaYadraTun, put) }
@@ -1375,6 +1397,10 @@ func (s *Sluzhba) opustitYadro() {
 	s.serveryYadra = nil
 	s.otpechatkiYadra = nil
 	s.pravilaKonfiga, s.trafikKonfiga = "", ""
+	// Резолвер конфига забывается вместе с ним: без ядра сверять нечего, а
+	// оставленный адрес заставил бы наблюдателя следующего подъёма считать
+	// сменой сети то, что сменилось, пока туннель лежал.
+	s.rezolverKonfiga = netip.Addr{}
 	s.mu.Unlock()
 }
 
@@ -1544,6 +1570,12 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 				s.zapomnitNesushchego(id)
 			}
 		}
+		// Смена сети проверяется на КАЖДОМ тике, а не раз в период пробы:
+		// вопрос идёт к таблице адаптеров, наружу не ходит и стоит копейки, а
+		// человек с поломанным разрешением имён ждать минуту не должен.
+		if s.smotretSet(ctx) {
+			return
+		}
 		if time.Now().Before(sledZamer) {
 			continue
 		}
@@ -1597,10 +1629,18 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 				continue
 			}
 			log.Printf("резервная цель исходящего %s тоже недоступна: %v", teg, rezervErr)
+			// Причина выясняется ДО остановки, пока адаптер и конфиг ещё на
+			// месте: после s.opustit() спрашивать уже нечего и не у чего (A3).
+			prichina := s.prichinaRazryva(ctx)
 			s.otmenit()
 			s.opustit()
+			tekst := "VPN перестал нести трафик"
+			if prichina != "" {
+				tekst += ": " + prichina
+				log.Printf("причина разрыва: %s", prichina)
+			}
 			s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
-				Kod: protokol.KodTunnelNeNeset, Tekst: "VPN перестал нести трафик"})
+				Kod: protokol.KodTunnelNeNeset, Tekst: tekst})
 			// Возвращаемся САМИ, и только после аварии. Осознанное отключение
 			// человеком не переподключает никогда, иначе кнопка «отключить»
 			// перестаёт работать: это и есть граница между обычным режимом и

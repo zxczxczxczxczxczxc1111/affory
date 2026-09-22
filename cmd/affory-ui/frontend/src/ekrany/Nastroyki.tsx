@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { HodObnovleniya, OtkazNaEkrane, RezultatProverki, ShagObnovleniya, Sostoyanie, StatusOtvet } from "../protokol";
+import type { HodObnovleniya, OtkazNaEkrane, ProverkaSeti, RezultatProverki, ShagObnovleniya, Sostoyanie, StatusOtvet } from "../protokol";
 import { otlozhenaDo } from "./Pravila";
 import { Udalenie } from "./Udalenie";
 import { Knopka, Neudacha, Panel, Pole, Polosa, Ryad, RyadRazdela, Tumbler } from "./ui";
@@ -43,6 +43,8 @@ export interface NastroykiProps {
    *  on success, so a failed check left the PREVIOUS one on screen as if it
    *  were current (03.09.2026). */
   proverkaOtkaz?: OtkazNaEkrane | null;
+  /** Слои сети из последней проверки (A3). null до первого нажатия. */
+  proverkaSeti?: ProverkaSeti | null;
   /** Writes the whole set to a file, and reads it back. Administrator only
    *  (owner 03.09.2026: secrets leaving the machine stay behind the UAC).
    *  The PASSWORD comes from here, the path from the shell's own dialog: the
@@ -124,7 +126,7 @@ type Razdel = "hysteria" | "diagnostika" | "profil";
 export function Nastroyki({
   trafik, estChernovikPravil=false, naPravila, obnovitPravila,
   status, otlozheno, svyaz, povtorit, naKomandu, naUdalenie,
-  proverka = null, proverkaOtkaz = null, naObnovlenie, adresVyhoda = null, zamerPolosy = null,
+  proverka = null, proverkaOtkaz = null, proverkaSeti = null, naObnovlenie, adresVyhoda = null, zamerPolosy = null,
   vyvestiProfil, vvestiProfil, itogProfilya = null, zanyatyeKomandy = {},
   hodObnovleniya = null, vestiKObnovleniyu = 0, naPapkuZhurnalov,
 }: NastroykiProps) {
@@ -562,6 +564,42 @@ export function Nastroyki({
                           {ITOG[p.itog] ?? p.itog}
                           {" · "}
                           <span className="text-fg-muted">{p.tekst}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <Ryad
+                  testId="proverka-seti"
+                  nazvanie="Что работает, а что нет"
+                  poyasnenie={
+                    zhdyot("checkNetwork")
+                      ? "Проверяю по очереди: VPN, сервер, имена сайтов, сервер имён сети и голосовой канал"
+                      : "Каждая часть отдельно: если что-то одно сломано, видно, что именно"
+                  }
+                  aktiven={aktiven}
+                >
+                  <Knopka
+                    rang="vtoraya"
+                    testId="proverit-set"
+                    zhdyot={zhdyot("checkNetwork")}
+                    aktiven={mozhnoZvat}
+                    onClick={() => naKomandu("checkNetwork", {})}
+                  >
+                    {zhdyot("checkNetwork") ? "Проверяю" : "Проверить"}
+                  </Knopka>
+                </Ryad>
+                {proverkaSeti && proverkaSeti.sloi.length > 0 && (
+                  <div className="border-border border-t px-4 py-3">
+                    <ul data-testid="sloi-seti" className="flex flex-col gap-1 text-sm">
+                      {proverkaSeti.sloi.map((sl) => (
+                        <li key={sl.vid} data-vid={sl.vid} data-proshlo={sl.proshlo}
+                            className={sl.proshlo ? "break-words" : "text-warn break-words"}>
+                          <span className="font-medium">{sl.podpis}</span>
+                          {" · "}
+                          {sl.proshlo ? "работает" : "не отвечает"}
+                          {" · "}
+                          <span className="text-fg-muted">{sl.podrobno}</span>
                         </li>
                       ))}
                     </ul>

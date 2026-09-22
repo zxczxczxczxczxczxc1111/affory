@@ -150,7 +150,7 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 		return nil, 0, "", err
 	}
 
-	resolver, err := set.LokalnyyResolver()
+	resolver, err := s.mestnyyRezolver()
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("локальный резолвер не определён: %w", err)
 	}
@@ -233,6 +233,9 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 	if !suhaya {
 		s.mu.Lock()
 		s.pravilaKonfiga, s.trafikKonfiga = otpechatokPravil(n.Pravila), trafikPravil(n.Pravila).PoUmolchaniyu
+		// Резолвер запоминается ровно тот, что уехал в конфиг (A4): сверять с
+		// системой потом будет нечего, если помнить намерение, а не факт.
+		s.rezolverKonfiga = resolver
 		s.mu.Unlock()
 		s.zapomnitServeryYadra(n.Servery)
 	}

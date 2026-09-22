@@ -51,7 +51,11 @@ var resheniyeOPravah = map[string]bool{
 	// Разовый снимок локального ядра не меняет маршруты и не включает журнал.
 	"listConnections":    false,
 	"inspectApplication": false,
-	"addServer":          false, "removeServer": false,
+	// Проверка слоёв сети (A3) НИЧЕГО не меняет: спрашивает адаптеры, свой же
+	// clash_api и шлёт свои запросы наружу. Требовать под неё права значило бы
+	// требовать их ровно тогда, когда человек уже в беде и ищет причину.
+	"checkNetwork": false,
+	"addServer":    false, "removeServer": false,
 	"setSubscription": false, "refreshSubscription": false, "setRules": false,
 	// Подписки это тот же класс, что и setSubscription: адрес панели, а не
 	// маршрут всей машины. UAC ради переключения между своими панелями

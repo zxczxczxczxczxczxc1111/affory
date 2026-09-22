@@ -419,6 +419,8 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		return s.listRules(k)
 	case "listConnections":
 		return s.listConnections(ctx, k)
+	case "checkNetwork":
+		return s.checkNetwork(ctx, k)
 	case "inspectApplication":
 		return s.inspectApplication(ctx, k)
 
@@ -482,7 +484,7 @@ func imenaKomand() []string {
 		"listSubscriptions", "addSubscription", "removeSubscription", "setActiveSubscription",
 		"setKillSwitch", "exportProfile", "importProfile",
 		"setAutostart", "setConnectOnStart", "setBandwidth",
-		"listRules", "setRules", "listConnections", "inspectApplication",
+		"listRules", "setRules", "listConnections", "inspectApplication", "checkNetwork",
 		"subscribeStats", "setJournal", "setDiagnostics", "clearJournal",
 		"checkExitIp", "checkLeaks",
 		"installUpdate", "getServerHealth", "checkUpdate", "downloadUpdate",

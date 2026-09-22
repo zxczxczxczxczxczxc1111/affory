@@ -100,6 +100,21 @@ export interface RezultatProverki {
   adres_vyhoda?: string;
 }
 
+/** Один слой проверки сети (A3). Подпись приходит от службы: слой знает про
+ *  себя больше, чем окно, и переводить его обратно в человеческие слова тут
+ *  значило бы держать второй словарь, который разойдётся с первым. */
+export interface SloyProverkiSeti {
+  vid: string;
+  podpis: string;
+  proshlo: boolean;
+  podrobno: string;
+  ms: number;
+}
+export interface ProverkaSeti {
+  vremya: string;
+  sloi: SloyProverkiSeti[];
+}
+
 /** protokol.Server as the service projects it for the screen (dlyaEkrana):
  *  identity, transport, address and the two marks. Keys never travel. */
 export interface Server {
