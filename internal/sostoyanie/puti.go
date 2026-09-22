@@ -3,6 +3,8 @@ package sostoyanie
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/puti"
 )
 
 // Two directories, two owners. Program files are read-only to the user; data is
@@ -69,7 +71,7 @@ func KatalogDannyh() string {
 	if korenDannyh != "" {
 		return korenDannyh
 	}
-	return filepath.Join(`C:\ProgramData`, "Affory")
+	return puti.KatalogDannyh
 }
 
 // PodmenitKatalogDannyh уводит каталог данных в сторону на весь процесс.
@@ -82,4 +84,4 @@ func PodmenitKatalogDannyh(put string) { korenDannyh = put }
 // Журналы компонентов лежат в подкаталоге данных, по файлу на компонент (§5
 // п.6 спеки). Права наследуются от каталога данных через (OI)(CI): читают
 // SYSTEM и админы, больше никто.
-func KatalogZhurnalov() string { return filepath.Join(KatalogDannyh(), "log") }
+func KatalogZhurnalov() string { return filepath.Join(KatalogDannyh(), puti.PodkatalogZhurnalov) }

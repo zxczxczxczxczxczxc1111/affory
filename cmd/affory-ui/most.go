@@ -51,6 +51,7 @@ type Most interface {
 	// session 0 cannot see.
 	SpisokProtsessov() ([]Protsess, error)
 	VybratPrilozhenie() (string, error)
+	OtkrytPapkuZhurnalov() error
 	// Screen QR (six comforts §3): shoot every display, decode, addServer.
 	// Returns the added server's name; the link never reaches the screen.
 	DobavitSEkrana() (string, error)

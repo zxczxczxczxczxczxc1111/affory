@@ -342,6 +342,7 @@ function izvestit(imya: string, data: unknown): void {
 
 export const Call = {
   async ByName(imya: string, ...args: unknown[]): Promise<unknown> {
+    if (imya === "main.most.OtkrytPapkuZhurnalov") throw new Error("В браузерном стенде Проводник недоступен. В установленном Affory кнопка открывает папку журналов.");
     if (imya === "main.most.SluzhbaUstanovlena") return true;
     if (imya === "main.most.Zvat") {
       const komanda = String(args[0]);

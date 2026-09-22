@@ -151,6 +151,7 @@ vi.mock("./most", () => ({
     if (stend.s.protsessyLomayutsya) throw new Error("список процессов не читается");
     return [...stend.s.protsessy];
   },
+  otkrytPapkuZhurnalov: async () => { stend.s.sled.push({chto:"otkrytPapkuZhurnalov",args:[]}); },
   tekstBufera: async () => {
     if (stend.s.buferLomaetsya) throw new Error("буфер обмена не прочитался");
     return stend.s.bufer ?? "";
@@ -644,14 +645,24 @@ describe("ни один отказ не пропадает молча", () => {
   });
 });
 
+it("кнопка папки журналов вызывает нативный мост без команды службы", async () => {
+  const most=mostProby();
+  render(<App/>);
+  fireEvent.click(await screen.findByRole("tab",{name:"Настройки"}));
+  fireEvent.click(await screen.findByTestId("razdel-diagnostika"));
+  fireEvent.click(screen.getByRole("button",{name:"Открыть папку с логами"}));
+  await waitFor(()=>expect(stend.s.sled.some(v=>v.chto==="otkrytPapkuZhurnalov")).toBe(true));
+  expect(most.skolkoRaz("clearJournal")).toBe(0);
+});
+
 describe("баннер отказа", () => {
   it("баннер отказа закрывается крестиком", async () => {
     const most = mostProby();
     most.otvechatOtkazom("clearJournal", "journal-clear-failed");
     render(<App />);
     await screen.findByText(/выключено/i);
-    fireEvent.click(screen.getByText("Правила"));
-    fireEvent.click(await screen.findByTestId("razdel-zhurnal"));
+    fireEvent.click(screen.getByText("Настройки"));
+    fireEvent.click(await screen.findByTestId("razdel-diagnostika"));
     fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
     fireEvent.click(screen.getByTestId("otkaz-zakryt"));
@@ -663,15 +674,15 @@ describe("баннер отказа", () => {
     most.otvechatOtkazom("clearJournal", "journal-clear-failed");
     render(<App />);
     await screen.findByText(/выключено/i);
-    fireEvent.click(screen.getByText("Правила"));
-    fireEvent.click(await screen.findByTestId("razdel-zhurnal"));
+    fireEvent.click(screen.getByText("Настройки"));
+    fireEvent.click(await screen.findByTestId("razdel-diagnostika"));
     fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
-    // The refusal belongs to the tab that asked for it: a rules failure has
+    // The refusal belongs to the tab that asked for it: a settings failure has
     // no business staring at a person who walked over to Connection.
     fireEvent.click(screen.getByText("Подключение"));
     expect(screen.queryByTestId("otkaz")).toBeNull();
-    fireEvent.click(screen.getByText("Правила"));
+    fireEvent.click(screen.getByText("Настройки"));
     expect(screen.getByTestId("otkaz")).toBeTruthy();
   });
 
@@ -706,8 +717,8 @@ describe("баннер отказа", () => {
     most.otvechatOtkazom("clearJournal", "journal-clear-failed");
     render(<App />);
     await screen.findByText(/выключено/i);
-    fireEvent.click(screen.getByText("Правила"));
-    fireEvent.click(await screen.findByTestId("razdel-zhurnal"));
+    fireEvent.click(screen.getByText("Настройки"));
+    fireEvent.click(await screen.findByTestId("razdel-diagnostika"));
     fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
     await screen.findByTestId("otkaz");
     // Баннер и содержимое вкладки прокручиваются ОДНИМ окном (af-viewport).

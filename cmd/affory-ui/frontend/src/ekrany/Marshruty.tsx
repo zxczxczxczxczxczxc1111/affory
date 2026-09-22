@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { PravilaProps } from "./Pravila";
-import type { StatusOtvet } from "../protokol";
 import { imyaMarshruta, type Marshrut, type PravilaTrafika } from "../trafik";
 import { Flazhok, Knopka, Poisk, Pole, SegmentStolbik, Svorachivaemyy, Tumbler } from "./ui";
 import { IkPlyus, IkSayt, IkSsylka, IkTreugolnik } from "../ikonki";
@@ -79,7 +78,6 @@ export function Marshruty({
   naVyborPrilozheniya,
   naKomandu,
   zanyato = false,
-  zanyatyeKomandy = {},
 }: PravilaProps & { trafik: PravilaTrafika }) {
   const [tab, setTab] = useState<"services" | "apps" | "sites">("services");
   const [adding, setAdding] = useState(false);
@@ -750,82 +748,8 @@ export function Marshruty({
             </div>
           )}
 
-          {/* Журнал стоит под всеми тремя вкладками, а не внутри одной: он
-              про правила целиком, и человек, включивший его на «Сайтах», не
-              должен искать его заново, перейдя на «Приложения». */}
-          <RazdelZhurnala status={status} disabled={disabled} naKomandu={naKomandu} zanyatyeKomandy={zanyatyeKomandy} />
         </div>
       </div>
     </section>
-  );
-}
-
-/** Журнал соединений: один блок на оба вида экрана правил. Пока он жил
- *  внутри Marshruty, у экрана без данных была СВОЯ копия тумблеров, и
- *  подробный журнал в ней однажды отстал от службы на целую волну. */
-export function RazdelZhurnala({
-  status,
-  disabled,
-  naKomandu,
-  zanyatyeKomandy = {},
-}: {
-  status: StatusOtvet;
-  disabled: boolean;
-  naKomandu: (komanda: string, telo: unknown) => void;
-  zanyatyeKomandy?: Record<string, boolean>;
-}) {
-  return (
-    <div className="mt-5 flex flex-col">
-      <Svorachivaemyy
-        testId="razdel-zhurnal"
-        zagolovok="Журнал соединений"
-        poyasnenie={status.zhurnal ? "включён" : "выключен"}
-        deti={
-          <div className="flex flex-col gap-3">
-            <p>
-              Служба записывает, какое приложение к какому адресу пошло и каким маршрутом.
-              Нужен, когда правило не срабатывает и надо увидеть, что происходит на самом деле.
-            </p>
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-fg-secondary text-sm">Вести журнал</span>
-              <Tumbler
-                testId="zhurnal"
-                podpis="Журнал соединений"
-                aktiven={!disabled}
-                vkl={status.zhurnal ?? false}
-                naSmenu={(vkl) => naKomandu("setJournal", { vkl })}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-fg-secondary text-sm">Подробный журнал для отладки</span>
-                <span className="text-fg-muted text-[13px] leading-relaxed">
-                  Раз в секунду: занятые порты, соединения, скорость и задержка. Нужен, когда
-                  связь пропадает без видимой причины
-                </span>
-              </span>
-              <Tumbler
-                testId="diagnostika"
-                podpis="Подробный журнал для отладки"
-                aktiven={!disabled}
-                vkl={status.diagnostika ?? false}
-                naSmenu={(vkl) => naKomandu("setDiagnostics", { vkl })}
-              />
-            </div>
-            <div>
-              <Knopka
-                rang="vtoraya"
-                testId="ochistit-zhurnal"
-                zhdyot={zanyatyeKomandy["clearJournal"] === true}
-                aktiven={!disabled}
-                onClick={() => naKomandu("clearJournal", {})}
-              >
-                {zanyatyeKomandy["clearJournal"] === true ? "Стираю" : "Очистить журнал"}
-              </Knopka>
-            </div>
-          </div>
-        }
-      />
-    </div>
   );
 }

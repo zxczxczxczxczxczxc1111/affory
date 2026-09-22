@@ -100,20 +100,10 @@ describe("правила без данных: экран говорит, чег�
     expect(screen.getByLabelText("Правила")).toBeTruthy();
   });
 
-  it("журнал работает, пока служба отвечает: он не про набор правил", () => {
-    const naKomandu = risovat({ otlozheno: {} });
-    fireEvent.click(screen.getByTestId("razdel-zhurnal"));
-    fireEvent.click(screen.getByTestId("diagnostika"));
-    expect(naKomandu).toHaveBeenCalledWith("setDiagnostics", { vkl: true });
-    fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
-    expect(naKomandu).toHaveBeenCalledWith("clearJournal", {});
-  });
-
-  it("при молчащей службе тумблеры журнала неактивны, а не врут положением", () => {
-    risovat({ status: { ...VYKL, sostoyanie: "sluzhba-molchit" }, otlozheno: {} });
-    fireEvent.click(screen.getByTestId("razdel-zhurnal"));
-    expect((screen.getByTestId("zhurnal") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByTestId("diagnostika") as HTMLInputElement).disabled).toBe(true);
+  it("состояние без правил не дублирует журнал из настроек", () => {
+    risovat({ otlozheno: {} });
+    expect(screen.queryByTestId("razdel-zhurnal")).toBeNull();
+    expect(screen.queryByTestId("diagnostika")).toBeNull();
   });
 });
 

@@ -8,6 +8,7 @@ import {
   IkProfil, IkProksi, IkPusk, IkShchit, IkStrelkaVpravo,
 } from "../ikonki";
 import { obyom } from "./Glavnyy";
+import { Zhurnaly } from "./Zhurnaly";
 
 // Settings tab. 4.8 brought the two launch switches, 4.7 the uninstall, 4.11
 // the rest: the §9.2 defaults shown rather than implied, the "all traffic"
@@ -18,6 +19,7 @@ import { obyom } from "./Glavnyy";
 // пользуются.
 
 export interface NastroykiProps {
+  naPapkuZhurnalov?: () => Promise<void>;
   status: StatusOtvet;
   /** Deferred commands with wave numbers, from hello. `null` until it answers. */
   otlozheno: Record<string, number> | null;
@@ -118,7 +120,7 @@ export function Nastroyki({
   status, otlozheno, svyaz, povtorit, naKomandu, naUdalenie,
   proverka = null, proverkaOtkaz = null, naObnovlenie, adresVyhoda = null, zamerPolosy = null,
   vyvestiProfil, vvestiProfil, itogProfilya = null, zanyatyeKomandy = {},
-  hodObnovleniya = null, vestiKObnovleniyu = 0,
+  hodObnovleniya = null, vestiKObnovleniyu = 0, naPapkuZhurnalov,
 }: NastroykiProps) {
   // The password lives exactly as long as this screen does, goes into the body
   // of one command and nowhere else: not a file name, not an argument, not a
@@ -490,8 +492,8 @@ export function Nastroyki({
           <RyadRazdela
             testId="razdel-diagnostika"
             znachok={<IkDiagnostika className="h-4 w-4" />}
-            nazvanie="Диагностика соединения"
-            poyasnenie="Проверка утечек и адреса выхода. Ничего не меняет, только смотрит"
+            nazvanie="Диагностика и журналы"
+            poyasnenie="Проверка соединения, запись диагностики и папка с логами"
             otkryt={otkryty.includes("diagnostika")}
             naZhmyh={() => perekluchit("diagnostika")}
             deti={
@@ -574,6 +576,8 @@ export function Nastroyki({
                     {zhdyot("checkExitIp") ? "Спрашиваю" : "Проверить"}
                   </Knopka>
                 </Ryad>
+                <Zhurnaly status={status} disabled={!mozhnoZvat} naKomandu={naKomandu}
+                  naPapku={naPapkuZhurnalov} zanyatyeKomandy={zanyatyeKomandy}/>
               </Panel>
             }
           />

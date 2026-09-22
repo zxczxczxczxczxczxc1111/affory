@@ -1,5 +1,5 @@
 import type { KatalogServisov, PravilaTrafika } from "../trafik";
-import { Marshruty, RazdelZhurnala } from "./Marshruty";
+import { Marshruty } from "./Marshruty";
 import type { OtkazNaEkrane, StatusOtvet } from "../protokol";
 import type { Zapushchennyy } from "../most";
 import { Knopka, Neudacha } from "./ui";
@@ -67,7 +67,7 @@ export function Pravila(props: PravilaProps) {
 }
 
 /** Правила не прочитаны. Раскладка та же, что у рабочего экрана: боковая
- *  колонка слева, содержимое справа, журнал под ним. Так переход из этого
+ *  колонка слева, содержимое справа. Так переход из этого
  *  состояния в рабочее ничего на экране не двигает.
  *
  *  Чего здесь нет намеренно: счёта правил и переключателя режима. Ноль правил
@@ -78,8 +78,6 @@ function PravilaBezDannyh({
   otlozheno,
   pravilaOtkaz = null,
   obnovitPravila,
-  naKomandu,
-  zanyatyeKomandy = {},
 }: PravilaProps) {
   const molchit = status.sostoyanie === "sluzhba-molchit";
   const zhdyomHello = otlozheno === null;
@@ -147,7 +145,6 @@ function PravilaBezDannyh({
             </div>
           )}
 
-          <RazdelZhurnala status={status} disabled={molchit || zhdyomHello} naKomandu={naKomandu} zanyatyeKomandy={zanyatyeKomandy} />
         </div>
       </div>
     </section>

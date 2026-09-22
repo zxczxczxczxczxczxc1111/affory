@@ -45,6 +45,10 @@ const SOBYTIE_KANALA = "kanal";
 const SOBYTIE_OKNA = "okno";
 const SOBYTIE_VKLADKI = "vkladka";
 
+export async function otkrytPapkuZhurnalov(): Promise<void> {
+  await Call.ByName("main.most.OtkrytPapkuZhurnalov");
+}
+
 /** Sends one command and returns the answer frame. The body travels as JSON
  *  text both ways; typing it is the caller's business. */
 export async function zvat(imya: string, telo: unknown = {}): Promise<Kadr> {
