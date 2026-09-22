@@ -73,6 +73,33 @@ func (v Vhod) kandidaty() []protokol.Server {
 	return []protokol.Server{v.Server}
 }
 
+// tegiAvto это кандидаты ГРУППЫ АВТО: все теги минус убранные человеком (A5).
+//
+// Пустой ответ невозможен: убрать последнего не даёт служба, но страхуем и
+// здесь. Набор мог прийти из чужого профиля или пережить обновление подписки,
+// после которого в области не осталось никого, а urltest без единого
+// исходящего это конфиг, который ядро отвергает целиком. Честнее вернуть
+// автомату всех, чем оставить человека без туннеля из-за настройки.
+func tegiAvto(v Vhod, tegi []string) []string {
+	if len(v.VneAvto) == 0 {
+		return tegi
+	}
+	vne := make(map[string]bool, len(v.VneAvto))
+	for _, id := range v.VneAvto {
+		vne[TegKandidata(id)] = true
+	}
+	ostavshiesya := make([]string, 0, len(tegi))
+	for _, t := range tegi {
+		if !vne[t] {
+			ostavshiesya = append(ostavshiesya, t)
+		}
+	}
+	if len(ostavshiesya) == 0 {
+		return tegi
+	}
+	return ostavshiesya
+}
+
 // gruppy строит urltest и selector.
 func gruppy(v Vhod, tegi []string, vybrannyy string) []any {
 	// urltest первым в списке селектора: «авто» это то, что человек включает,
@@ -86,7 +113,9 @@ func gruppy(v Vhod, tegi []string, vybrannyy string) []any {
 	}
 	return []any{
 		map[string]any{
-			"type": "urltest", "tag": TegAvto, "outbounds": tegi,
+			// Кандидаты АВТО, а не все теги: в селекторе убранный сервер
+			// остаётся и выбирается руками, в автомате его нет.
+			"type": "urltest", "tag": TegAvto, "outbounds": tegiAvto(v, tegi),
 			"url": UrltestURL, "interval": UrltestInterval,
 			"tolerance": UrltestTolerance, "idle_timeout": UrltestIdleTimeout,
 			// Существующие соединения НЕ рвём. Порог «TCP не рвутся дольше

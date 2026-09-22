@@ -114,6 +114,9 @@ export interface Server {
   nebezopasnyy_ignorirovan?: boolean;
   /** hy2 with pinSHA256: the pin stays in the service, only the mark travels. */
   s_pinom?: boolean;
+  /** Человек убрал сервер из автовыбора (A5). Выбрать его руками по-прежнему
+   *  можно: из группы автомата он ушёл, из списка нет. */
+  vne_avto?: boolean;
 }
 
 export interface Obnovlenie {

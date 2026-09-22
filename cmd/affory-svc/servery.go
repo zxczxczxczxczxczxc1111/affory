@@ -38,6 +38,10 @@ type Nabor struct {
 	// Правила исключений (волна 5). Рядом с серверами, а не отдельным файлом:
 	// один путь записи, один заслон, одно хранилище.
 	Pravila PravilaNabora `json:"pravila"`
+	// Серверы, убранные человеком из автовыбора (A5). Списком исключений, а не
+	// полем у сервера: записи из подписки пересобираются каждым обходом, и флаг
+	// на них не пережил бы ни одного обновления.
+	VneAvto []string `json:"vne_avto,omitempty"`
 }
 
 // rezhimNabora отвечает, каким режимом маршрута жить набору.
@@ -121,6 +125,9 @@ func (s *Sluzhba) naborIzHranilishcha() (Nabor, error) {
 	for i := range n.Podpiski {
 		n.Podpiski[i].Servery = aktualnyeServery(n.Podpiski[i].Servery)
 	}
+	// После чистки серверов, а не до: исключение автовыбора живо ровно до тех
+	// пор, пока жив сервер, на который оно указывает.
+	n.PrivestiAvtovybor()
 	return n, nil
 }
 

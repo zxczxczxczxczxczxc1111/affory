@@ -154,7 +154,7 @@ function polosaIz(telo: unknown, vremya: string): ZamerPolosy | null {
 }
 
 // Commands after which the server list on screen is stale.
-const MENYAYUT_SPISOK = new Set(["addServer", "removeServer", "setSubscription", "refreshSubscription", "setServer", "setRouteMode", "connect",
+const MENYAYUT_SPISOK = new Set(["addServer", "removeServer", "setSubscription", "refreshSubscription", "setServer", "setRouteMode", "setAutoMember", "connect",
   "addSubscription", "removeSubscription", "setActiveSubscription"]);
 // Команды, после которых меняется САМ список подписок. Переключение активной
 // сюда входит: строка «активна» переезжает на другую запись.

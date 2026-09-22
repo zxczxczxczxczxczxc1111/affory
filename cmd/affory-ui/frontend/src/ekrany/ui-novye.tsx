@@ -286,3 +286,67 @@ export function SegmentStolbik<T extends string>({ znacheniya, vybrano, naVybor,
     </div>
   );
 }
+
+/** Меню у курсора: открывается правой кнопкой по строке списка.
+ *
+ *  Своё, а не родное браузерное: пункты подписаны словами человека. Отдельно от
+ *  MenyuDeystviy выше, потому что вопрос другой. То меню это кнопка, видимая
+ *  всегда; это открывается только когда человек его просит, и за место на
+ *  экране не платит ничего - ради этого оно и заведено (просьба владельца
+ *  22.09.2026: «не мусорить на главном экране»).
+ *
+ *  Клавиатура закрыта тем же путём: `Shift+F10` и клавиша контекстного меню
+ *  открывают его у самой строки. Меню, доступное только мышью, это функция,
+ *  которой для половины людей нет вовсе.
+ */
+export function MenyuUKursora({ x, y, punkty, podpis, naZakrytie, testId }: {
+  x: number;
+  y: number;
+  punkty: { podpis: string; opasnyy?: boolean; aktiven?: boolean; naZhmyh: () => void }[];
+  podpis: string;
+  naZakrytie: () => void;
+  testId?: string;
+}) {
+  const koren = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const mimo = (e: MouseEvent) => { if (koren.current && !koren.current.contains(e.target as Node)) naZakrytie(); };
+    const pobeg = (e: KeyboardEvent) => { if (e.key === "Escape") naZakrytie(); };
+    document.addEventListener("mousedown", mimo);
+    document.addEventListener("keydown", pobeg);
+    // Прокрутка уводит строку из-под меню, и оно остаётся висеть над чужой.
+    window.addEventListener("scroll", naZakrytie, true);
+    return () => {
+      document.removeEventListener("mousedown", mimo);
+      document.removeEventListener("keydown", pobeg);
+      window.removeEventListener("scroll", naZakrytie, true);
+    };
+  }, [naZakrytie]);
+  // Фокус уезжает в меню сразу: иначе открытое с клавиатуры меню невозможно
+  // ни пройти стрелками, ни закрыть иначе как Escape вслепую.
+  useEffect(() => {
+    koren.current?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
+  }, []);
+  return (
+    <div
+      ref={koren}
+      role="menu"
+      aria-label={podpis}
+      data-testid={testId}
+      style={{ left: x, top: y }}
+      className="border-border bg-elevated fixed z-30 w-56 overflow-hidden rounded-lg border py-1 shadow-[0_12px_32px_rgba(0,0,0,0.6)]"
+    >
+      {punkty.map((p) => (
+        <button
+          key={p.podpis}
+          type="button"
+          role="menuitem"
+          disabled={p.aktiven === false}
+          onClick={(e) => { e.stopPropagation(); p.naZhmyh(); naZakrytie(); }}
+          className={`hover:bg-surface-hover flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-40 ${p.opasnyy ? "text-danger" : "text-fg-secondary hover:text-foreground"}`}
+        >
+          {p.podpis}
+        </button>
+      ))}
+    </div>
+  );
+}

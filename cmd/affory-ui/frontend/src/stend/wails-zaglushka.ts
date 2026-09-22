@@ -34,9 +34,14 @@ function parametr(imya: string, poumolchaniyu: string): string {
   }
 }
 
+import type { Server } from "../protokol";
+
 const SLUCHAY = parametr("sluchay", "podnyat");
 
-const osnovnyeServery = [
+// Тип берётся у протокола, а не выводится: без него поле, которого нет ни у
+// одной записи образца (vne_avto), не присвоить, а образец врал бы формой
+// ответа службы.
+const osnovnyeServery: Server[] = [
   { id: "nl", imya: "Нидерланды · Амстердам", transport: "reality-tcp", host: "203.0.113.11", port: 443, iz_podpiski: true },
   // Транспорты пишутся ровно теми словами, какими их называет служба
   // (`izvestnyeTransporty` в internal/genkonfig/vhod.go). До 19.09.2026 здесь
@@ -52,7 +57,7 @@ const osnovnyeServery = [
   { id: "svoy", imya: "Свой сервер", transport: "trojan", host: "203.0.113.15", port: 443, iz_podpiski: false },
 ];
 
-const zapasnyeServery = [{ id: "reserve-1", imya: "Запасной сервер", host: "203.0.113.20", port: 443, transport: "trojan", iz_podpiski: true }];
+const zapasnyeServery: Server[] = [{ id: "reserve-1", imya: "Запасной сервер", host: "203.0.113.20", port: 443, transport: "trojan", iz_podpiski: true }];
 let aktivnayaPodpiska = "osn";
 let servery = [...osnovnyeServery];
 
@@ -255,6 +260,14 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
     if (SLUCHAY === "pusto") {
       return { servery: [], vybran: "", podpiska_zadana: false, podpiska_uzel: "" };
     }
+    return { servery, versii: Object.fromEntries(servery.map(s => [s.id, `demo-v1-${s.id}`])), vybran: status.vybran_id, podpiska_zadana: true, podpiska_uzel: aktivnayaPodpiska === "osn" ? "panel.example" : "reserve.example" };
+  },
+  // Область автовыбора (A5). Заглушка правит СВОЙ список и отдаёт его целиком,
+  // как служба: без этого меню правой кнопки на стенде нажималось бы вхолостую.
+  setAutoMember: (v) => {
+    const id = stroka(v.id);
+    const srv = servery.find((s) => s.id === id);
+    if (srv) srv.vne_avto = v.uchastvuet !== true;
     return { servery, versii: Object.fromEntries(servery.map(s => [s.id, `demo-v1-${s.id}`])), vybran: status.vybran_id, podpiska_zadana: true, podpiska_uzel: aktivnayaPodpiska === "osn" ? "panel.example" : "reserve.example" };
   },
   addServer: () => ({ server: servery[servery.length - 1] }),

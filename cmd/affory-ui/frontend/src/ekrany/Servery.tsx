@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OtkazNaEkrane, OtkazStroki, Server, StatusOtvet } from "../protokol";
 import { slovoPosleChisla } from "../chisla";
-import { IkonkaKorzina, Karta, Knopka, Kolonka, Neudacha, Pole, Razdel, Ryad, Segment, Shapka, Teg } from "./ui";
+import { IkonkaKorzina, Karta, Knopka, Kolonka, MenyuUKursora, Neudacha, Pole, Razdel, Ryad, Segment, Shapka, Teg } from "./ui";
 import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
 
 // Servers tab (task 4.9). Pure over props like every screen: App fetches
@@ -179,6 +179,10 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // hovering is how a server disappears by accident.
   const [udalyayu, zadatUdalyayu] = useState<string | null>(null);
   const [udalyayuPodpisku, zadatUdalyayuPodpisku] = useState<string | null>(null);
+  // Меню правой кнопки: id строки и место, где его открыли. Место именно
+  // курсора, а не строки: меню, появляющееся в стороне от нажатия, читается как
+  // чужое.
+  const [menyu, zadatMenyu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const servery = spisok?.servery ?? [];
   const vidimye = useMemo(() => servery.filter((s) => sovpadaet(s, poisk)), [servery, poisk]);
@@ -189,6 +193,11 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   const vybranPropal = vybran !== "" && !servery.some((s) => s.id === vybran);
   const avto = status.rezhim_marshruta === "avto";
   const izPodpiski = servery.filter((s) => s.iz_podpiski).length;
+  // Область автовыбора (A5). Считается по ВСЕМУ списку, а не по видимому:
+  // поиск и свёрнутая полоса прячут строки на экране и не трогают то, из чего
+  // выбирает автомат. Прежде область нигде не называлась вовсе.
+  const vAvto = servery.filter((s) => !s.vne_avto).length;
+  const posledniyVAvto = vAvto <= 1;
 
   // Служба старее окна не знает команды listSubscriptions, и список приходит
   // пустым. Одна строка из полей listServers это не украшение, а единственное,
@@ -573,6 +582,15 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
               {zhdyot("measureDelays") ? "Меряю" : "Проверить"}
             </Knopka>
           </div>
+          {/* Из чего выбирает автомат, прежде не говорил ни один экран: политика
+              была, объяснения не было. Строка стоит над списком, а не внутри
+              карточки, потому что отвечает на вопрос про весь список сразу. */}
+          <p className="text-fg-muted text-xs" data-testid="oblast-avto">
+            {vAvto === servery.length
+              ? `Автовыбор перебирает все ${servery.length}: серверы активной подписки и добавленные вручную.`
+              : `Автовыбор перебирает ${vAvto} из ${servery.length}: остальные ты убрал правой кнопкой.`}
+            {" Серверы запасных подписок в него не входят."}
+          </p>
           <div
             role="listbox"
             aria-label="серверы"
@@ -597,7 +615,20 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                   tabIndex={0}
                   data-testid={`server-${s.id}`}
                   onClick={() => aktiven && naKomandu("setServer", { id: s.id })}
-                  onKeyDown={(e) => { if (e.key === "Enter" && aktiven) naKomandu("setServer", { id: s.id }); }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (aktiven) zadatMenyu({ id: s.id, x: e.clientX, y: e.clientY });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && aktiven) naKomandu("setServer", { id: s.id });
+                    // Тот же путь без мыши. Меню, доступное только правой
+                    // кнопкой, это функция, которой для половины людей нет.
+                    if ((e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) && aktiven) {
+                      e.preventDefault();
+                      const r = (e.target as HTMLElement).getBoundingClientRect();
+                      zadatMenyu({ id: s.id, x: r.left + 24, y: r.bottom });
+                    }
+                  }}
                   className={
                     "border-border hover:bg-fill-subtle group flex h-11 cursor-pointer items-center gap-3 border-t px-3.5 text-[13px] first:border-t-0 " +
                     (on ? "bg-fill-subtle shadow-[inset_2px_0_0_var(--color-accent-ink)]" : "")
@@ -618,6 +649,10 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                   {s.s_pinom && <Teg ton="akcent">пин сертификата</Teg>}
                   {s.nebezopasnyy_ignorirovan && <Teg ton="preduprezhdenie">проверка сертификата включена принудительно</Teg>}
                   {neset && <Teg ton="akcent">активен</Teg>}
+                  {/* Состояние, которое человек задал сам, обязано быть видно
+                      без открытия меню: иначе «почему автомат его не берёт»
+                      остаётся вопросом без ответа на экране. */}
+                  {s.vne_avto && <Teg testId={`vne-avto-${s.id}`}>не в автовыборе</Teg>}
                   {udalyayu === s.id ? (
                     <Knopka
                       rang="opasnaya"
@@ -647,6 +682,35 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
           </div>
         </Razdel>
       )}
+
+      {menyu && (() => {
+        const s = servery.find((x) => x.id === menyu.id);
+        if (!s) return null;
+        return (
+          <MenyuUKursora
+            x={menyu.x}
+            y={menyu.y}
+            testId="menyu-servera"
+            podpis={`Что сделать с сервером ${s.imya}`}
+            naZakrytie={() => zadatMenyu(null)}
+            punkty={[
+              s.vne_avto
+                ? {
+                    podpis: "Вернуть в автовыбор",
+                    naZhmyh: () => naKomandu("setAutoMember", { id: s.id, uchastvuet: true }),
+                  }
+                : {
+                    podpis: "Убрать из автовыбора",
+                    // Последнего убрать нельзя: пустой автомат это конфиг,
+                    // который ядро отвергнет целиком. Гасим пункт здесь, чтобы
+                    // человек не жал на кнопку ради отказа.
+                    aktiven: !posledniyVAvto,
+                    naZhmyh: () => naKomandu("setAutoMember", { id: s.id, uchastvuet: false }),
+                  },
+            ]}
+          />
+        );
+      })()}
     </Kolonka>
   );
 }

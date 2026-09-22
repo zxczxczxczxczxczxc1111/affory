@@ -39,7 +39,11 @@ func (s *Sluzhba) listServers(k protokol.Kadr) protokol.Kadr {
 	}
 	spisok := make([]protokol.Server, 0, len(n.Servery))
 	for _, srv := range n.Servery {
-		spisok = append(spisok, dlyaEkrana(srv))
+		e := dlyaEkrana(srv)
+		// Пометка ставится ЗДЕСЬ, а не в dlyaEkrana: та знает только сервер, а
+		// участие в автовыборе это свойство набора.
+		e.VneAvto = !n.UchastvuetVAvto(srv.Id)
+		spisok = append(spisok, e)
 	}
 	return otvet(k.Id, k.Imya, map[string]any{
 		"servery": spisok,

@@ -360,6 +360,27 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 
+	case "setAutoMember":
+		// Область автовыбора (A5). Ответ это список серверов, а не статус:
+		// изменилось участие сервера, и обновить экран надо именно им.
+		var telo struct {
+			Id         string `json:"id"`
+			Uchastvuet bool   `json:"uchastvuet"`
+		}
+		if err := json.Unmarshal(k.Telo, &telo); err != nil {
+			return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, "тело команды не разбирается")
+		}
+		if err := s.setAutoMember(telo.Id, telo.Uchastvuet); err != nil {
+			if errors.Is(err, errServerNeNayden) {
+				return otkaz(k.Id, k.Imya, protokol.KodSelectedServerGone, err.Error())
+			}
+			if errors.Is(err, errPoslednyyVAvto) {
+				return otkaz(k.Id, k.Imya, protokol.KodTeloNegodno, err.Error())
+			}
+			return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		}
+		return s.listServers(k)
+
 	case "setRouteMode":
 		var telo struct {
 			Rezhim protokol.Rezhim `json:"rezhim"`
@@ -456,7 +477,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 func imenaKomand() []string {
 	return []string{
 		"hello", "status", "listServers", "connect", "disconnect", "setServer",
-		"setRouteMode",
+		"setRouteMode", "setAutoMember",
 		"addServer", "removeServer", "setSubscription", "refreshSubscription",
 		"listSubscriptions", "addSubscription", "removeSubscription", "setActiveSubscription",
 		"setKillSwitch", "exportProfile", "importProfile",

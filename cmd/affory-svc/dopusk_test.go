@@ -37,6 +37,11 @@ var resheniyeOPravah = map[string]bool{
 	"startSpeedTest":   false, "speedTestStatus": false, "cancelSpeedTest": false,
 	"connect": false, "disconnect": false, "setServer": false,
 	"setRouteMode": false, "listServers": false, "listRules": false,
+	// Область автовыбора это тот же класс, что и выбор сервера: собственный
+	// набор на собственной машине. Худшее, что даёт чужая программа с этим
+	// доступом, это сузить автомат до одного узла, тогда как выбрать этот узел
+	// напрямую она могла и прежде командой setServer.
+	"setAutoMember": false,
 	"setAutostart": false, "setConnectOnStart": false,
 	// Полоса канала это число про домашний интернет, а не про права на машине:
 	// UAC на её правку означал бы запрос прав ради поля ввода. Худшее, что даёт
