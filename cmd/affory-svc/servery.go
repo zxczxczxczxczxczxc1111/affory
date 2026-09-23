@@ -127,6 +127,12 @@ func (s *Sluzhba) naborIzHranilishcha() (Nabor, error) {
 	for _, p := range n.snyatPravilaStavshieServisami() {
 		skazatRedko("набор починен на чтении: " + p)
 	}
+	// Пути с номером версии внутри (Discord, Claude, ChatGPT) чинятся ПОСЛЕ
+	// чистки: снятому правилу путь обновлять незачем. Трогает только те, чей
+	// файл исчез, поэтому на здоровом наборе это один os.Stat на программу.
+	for _, p := range n.osvezhitPutiProgramm() {
+		skazatRedko("набор починен на чтении: " + p)
+	}
 	n.Servery = aktualnyeServery(n.Servery)
 	for i := range n.Podpiski {
 		n.Podpiski[i].Servery = aktualnyeServery(n.Podpiski[i].Servery)
