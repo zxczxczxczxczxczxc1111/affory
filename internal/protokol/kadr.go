@@ -94,6 +94,14 @@ type StatusOtvet struct {
 	// удобств» §5). Obnovlenie есть только когда версия на сервере новее.
 	Obnovlenie          *ObnovlenieOtvet `json:"obnovlenie,omitempty"`
 	ObnovlenieProvereno *time.Time       `json:"obnovlenie_provereno,omitempty"`
+	// Чем кончилась ПОСЛЕДНЯЯ проверка, если она не удалась. Пусто значит
+	// «удалась», и отметка выше тогда свежая.
+	//
+	// Без этого поля мёртвая проверка выглядела здоровой: отметка ставится
+	// только при удаче, и окно неделю показывало бы «проверено 20.09, новее
+	// нет», пока расписание каждый час молча упирается в отказ сети (найдено
+	// 23.09.2026 разбором D3).
+	ObnovlenieOtkaz string `json:"obnovlenie_otkaz,omitempty"`
 }
 
 // ObnovlenieOtvet это то, что служба знает о новой версии на сервере

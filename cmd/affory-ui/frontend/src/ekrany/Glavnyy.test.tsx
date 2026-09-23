@@ -217,3 +217,48 @@ describe("главный экран: версия в подвале", () => {
     expect(document.body).toHaveTextContent(/Affory 1\.1\.0/);
   });
 });
+
+// D3, 23.09.2026: находку видели только те, кто сам зашёл в настройки и раскрыл
+// раздел. Трей говорит о ней один раз и забывает, а подвал главного на экране
+// всегда.
+describe("главный экран: новая версия в подвале", () => {
+  const sNahodkoy = {
+    sostoyanie: "podnyat" as const,
+    versiya_programmy: "1.4.2",
+    obnovlenie: { versiya: "1.5.0", razmer: 26934390, provereno: "2026-09-23T10:00:00Z" },
+  };
+
+  it("без находки плашки нет", () => {
+    render(<Glavnyy status={{ sostoyanie: "podnyat", versiya_programmy: "1.4.2" }} kObnovleniyu={vi.fn()} />);
+    expect(screen.queryByTestId("est-obnovlenie")).toBeNull();
+  });
+
+  it("называет номер новой версии рядом со своим", () => {
+    render(<Glavnyy status={sNahodkoy} kObnovleniyu={vi.fn()} />);
+    expect(screen.getByTestId("est-obnovlenie")).toHaveTextContent("Есть версия 1.5.0");
+    expect(document.body).toHaveTextContent(/Affory 1\.4\.2/);
+  });
+
+  it("нажатие ведёт к обновлению", () => {
+    const vedi = vi.fn();
+    render(<Glavnyy status={sNahodkoy} kObnovleniyu={vedi} />);
+    fireEvent.click(screen.getByTestId("est-obnovlenie"));
+    expect(vedi).toHaveBeenCalledTimes(1);
+  });
+
+  // Плашка, которая никуда не ведёт, хуже её отсутствия: человек жмёт и ничего
+  // не происходит.
+  it("без обработчика не рисуется вовсе", () => {
+    render(<Glavnyy status={sNahodkoy} />);
+    expect(screen.queryByTestId("est-obnovlenie")).toBeNull();
+  });
+
+  // Человек нажал «Установить» в настройках и ушёл на главную: загрузка идёт
+  // минуту, и звать начать заново на этой минуте нельзя.
+  it("во время обновления говорит о ходе, а не зовёт начать", () => {
+    render(<Glavnyy status={sNahodkoy} kObnovleniyu={vi.fn()} podmenaIdet />);
+    const plashka = screen.getByTestId("est-obnovlenie");
+    expect(plashka).toHaveTextContent("Обновляюсь до 1.5.0");
+    expect(plashka).not.toHaveTextContent("Есть версия");
+  });
+});

@@ -293,6 +293,9 @@ type Sluzhba struct {
 	skachatFayl         func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error)
 	obnovlenie          *protokol.ObnovlenieOtvet
 	obnovlenieProvereno *time.Time
+	// Причина последнего неудавшегося захода. Держится до первой удачи: пока
+	// проверка не прошла, человеку нужна причина, а не пустота.
+	obnovlenieOtkaz string
 	// Правило IPv6 живёт ровно столько же, сколько туннель, и НЕ зависит от
 	// режима. Шов нужен не для красоты: без него тест опускания идёт заводить
 	// настоящее правило в брандмауэре машины разработчика.
@@ -569,6 +572,7 @@ func (s *Sluzhba) Status() protokol.StatusOtvet {
 		VersiyaProgrammy:     versiyaDlyaEkrana(),
 		Obnovlenie:           s.obnovlenie,
 		ObnovlenieProvereno:  s.obnovlenieProvereno,
+		ObnovlenieOtkaz:      s.obnovlenieOtkaz,
 	}
 }
 

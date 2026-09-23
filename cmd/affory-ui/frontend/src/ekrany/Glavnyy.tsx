@@ -12,6 +12,7 @@ import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
 import sphere from "../assets/affory-sphere.png";
 import { Knopka, Poisk, PROCHERK, Segment } from "./ui";
+import { IkVniz } from "../ikonki";
 import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
 import { KatalogServerov, gruppyServerov } from "./KatalogServerov";
 import { slovoPosleChisla } from "../chisla";
@@ -54,6 +55,13 @@ export interface GlavnyyProps {
   naDeystvie?: () => void;
   naServery?: () => void;
   naRezhim?: (r: Rezhim) => void;
+  /** Ведёт к карточке обновления в настройках. Без него плашки в подвале нет
+   *  вовсе: подпись, которая никуда не ведёт, хуже её отсутствия. */
+  kObnovleniyu?: () => void;
+  /** Обновление УЖЕ идёт. Плашка тогда не зовёт начинать заново: человек
+   *  нажал «Установить» в настройках и ушёл на главную, а загрузка длится
+   *  минуту. */
+  podmenaIdet?: boolean;
 }
 
 function imyaServera(
@@ -142,6 +150,8 @@ export function Glavnyy({
   naProverit,
   proverkaIdet = false,
   naPravila,
+  kObnovleniyu,
+  podmenaIdet = false,
 }: GlavnyyProps) {
   const izvestnye = servery ?? spisok?.servery ?? [];
   const podnyat = status.sostoyanie === "podnyat";
@@ -397,13 +407,31 @@ export function Glavnyy({
           Адрес выхода{" "}
           <b className="text-fg-secondary font-medium">{podnyat ? statistika?.adres_vyhoda || PROCHERK : PROCHERK}</b>
         </span>
-        {/* Без номера, а не со словом «dev»: версия приходит от службы, и её
-            отсутствие значит «служба молчит», что и так написано выше. Во
-            время обновления служба молчит намеренно, и подпись «Affory dev»
-            прочли 13.09.2026 как подмену сборкой разработчика. */}
-        <span>
-          Affory{" "}
-          {status.versiya_programmy && <b className="text-fg-secondary font-medium">{status.versiya_programmy}</b>}
+        <span className="flex items-center gap-3">
+          {/* Новая версия рядом с номером своей (D3, 23.09.2026, просьба
+              владельца). В настройках находку видно только тому, кто туда
+              зашёл и раскрыл раздел, а трей говорит о ней один раз и молча
+              забывает. Подвал главного человек видит всегда. */}
+          {status.obnovlenie && kObnovleniyu && (
+            <button
+              type="button"
+              data-testid="est-obnovlenie"
+              onClick={kObnovleniyu}
+              title={podmenaIdet ? "Показать ход обновления" : "Открыть настройки и обновиться"}
+              className="bg-accent text-foreground flex items-center gap-1.5 rounded-md px-2.5 py-[3px] text-[12px] font-medium hover:brightness-110"
+            >
+              <IkVniz className="h-3.5 w-3.5" />
+              {podmenaIdet ? `Обновляюсь до ${status.obnovlenie.versiya}` : `Есть версия ${status.obnovlenie.versiya}`}
+            </button>
+          )}
+          {/* Без номера, а не со словом «dev»: версия приходит от службы, и её
+              отсутствие значит «служба молчит», что и так написано выше. Во
+              время обновления служба молчит намеренно, и подпись «Affory dev»
+              прочли 13.09.2026 как подмену сборкой разработчика. */}
+          <span>
+            Affory{" "}
+            {status.versiya_programmy && <b className="text-fg-secondary font-medium">{status.versiya_programmy}</b>}
+          </span>
         </span>
       </footer>
 

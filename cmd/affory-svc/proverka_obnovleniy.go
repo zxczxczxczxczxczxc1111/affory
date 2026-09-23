@@ -365,6 +365,13 @@ func (s *Sluzhba) proveritObnovlenie(ctx context.Context) (*protokol.ObnovlenieO
 	}
 	v, err := s.posledniyVypuskUporno(ctx)
 	if err != nil {
+		// Причина остаётся в состоянии, а не только в журнале. Отметка проверки
+		// ставится ТОЛЬКО при удаче, поэтому без этой строки окно неделю
+		// показывало бы «проверено 20.09, новее нет» на проверке, которая с
+		// тех пор падает каждый час.
+		s.mu.Lock()
+		s.obnovlenieOtkaz = err.Error()
+		s.mu.Unlock()
 		return nil, err
 	}
 	seychas := s.seychas()
@@ -375,6 +382,7 @@ func (s *Sluzhba) proveritObnovlenie(ctx context.Context) (*protokol.ObnovlenieO
 	s.mu.Lock()
 	bylo := s.obnovlenie
 	s.obnovlenie, s.obnovlenieProvereno = nahodka, &seychas
+	s.obnovlenieOtkaz = ""
 	s.mu.Unlock()
 	// Новая версия это событие состояния: трей скажет об этом один раз.
 	if nahodka != nil && (bylo == nil || bylo.Versiya != nahodka.Versiya) {

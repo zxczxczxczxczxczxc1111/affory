@@ -415,6 +415,34 @@ describe("настройки: обновление с сервера", () => {
     expect(naKomandu).toHaveBeenCalledWith("downloadUpdate", {});
   });
 
+  // 23.09.2026, разбор D3: отметка ставится только при удаче, поэтому мёртвая
+  // проверка неделю выглядела здоровой - «проверено 20.09, новее нет» на
+  // сервере, который с тех пор молчит.
+  it("отказ проверки назван причиной, а не подменён словами «новее нет»", () => {
+    polnyy({
+      versiya_programmy: "1.4.2",
+      obnovlenie_provereno: "2026-09-20T10:00:00Z",
+      obnovlenie_otkaz: "описание выпуска не получено: код ответа 403",
+    });
+    const ryad = screen.getByTestId("obnovlenie");
+    expect(ryad).toHaveTextContent(/последняя проверка не удалась/i);
+    expect(ryad).toHaveTextContent(/403/);
+    expect(ryad).not.toHaveTextContent(/новее нет/i);
+  });
+
+  // Находка важнее отказа: выпуск уже найден, ставить его можно, и старая
+  // причина на карточке только мешала бы нажать кнопку.
+  it("при живой находке прежний отказ карточку не занимает", () => {
+    polnyy({
+      versiya_programmy: "1.4.2",
+      obnovlenie: { versiya: "1.5.0", razmer: 9244901, provereno: "2026-09-23T10:00:00Z" },
+      obnovlenie_otkaz: "описание выпуска не получено: код ответа 403",
+    });
+    const ryad = screen.getByTestId("obnovlenie");
+    expect(ryad).toHaveTextContent(/есть 1\.5\.0/i);
+    expect(ryad).not.toHaveTextContent(/не удалась/i);
+  });
+
   it("ни разу не проверялось: так и написано, кнопка проверки есть", () => {
     polnyy({ versiya_programmy: "0.6.2" });
     expect(screen.getByTestId("obnovlenie")).toHaveTextContent(/ещё не проверялось/i);

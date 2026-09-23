@@ -38,6 +38,15 @@ import type { Server } from "../protokol";
 
 const SLUCHAY = parametr("sluchay", "podnyat");
 
+/** Номер выпуска, который находит подставная проверка: следующий минор от своей
+ *  версии. Числом здесь стоять нельзя - оно разошлось бы с VERSIYA ровно так,
+ *  как уже разошлись снимки README, и стенд предлагал бы обновиться назад. */
+function sleduyushchayaVersiya(): string {
+  const ch = VERSIYA.split(".").map((n) => Number.parseInt(n, 10));
+  if (ch.length !== 3 || ch.some((n) => !Number.isFinite(n))) return "1.0.0";
+  return `${ch[0]}.${ch[1] + 1}.0`;
+}
+
 // Тип берётся у протокола, а не выводится: без него поле, которого нет ни у
 // одной записи образца (vne_avto), не присвоить, а образец врал бы формой
 // ответа службы.
@@ -256,7 +265,14 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
   setJournal: tumbler("zhurnal"),
   setDiagnostics: tumbler("diagnostika"),
   clearJournal: () => status,
-  checkUpdate: () => status,
+  // Проверка НАХОДИТ выпуск: до 23.09.2026 заглушка отдавала свой же статус, и
+  // ни плашку в подвале главного, ни карточку с кнопкой «Установить» обход
+  // увидеть не мог - их рисует только находка.
+  checkUpdate: () => {
+    status.obnovlenie = { versiya: sleduyushchayaVersiya(), razmer: 26934390, provereno: new Date().toISOString() };
+    status.obnovlenie_provereno = new Date().toISOString();
+    return status;
+  },
   downloadUpdate: () => ({ zapushchena: true, srok_s: 90 }),
   installUpdate: () => ({ zapushchena: true, srok_s: 90 }),
   setBandwidth: () => status,

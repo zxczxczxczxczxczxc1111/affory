@@ -476,3 +476,61 @@ func TestZakrytyyRepozitoriyObyasnyaetsya(t *testing.T) {
 		t.Fatalf("по тексту не понять, что смотреть некуда: %v", err)
 	}
 }
+
+// Мёртвая проверка обязана выглядеть мёртвой (23.09.2026, разбор D3).
+//
+// Отметка `obnovlenie_provereno` ставится ТОЛЬКО при удаче, и до этой правки
+// окно неделю показывало бы «проверено 20.09, новее нет», пока расписание
+// каждый час упирается в отказ сети. Тот же класс, что дефект №2 от 22.09:
+// поломка, которая на экране выглядит здоровьем.
+func TestOtkazProverkiVidenVStatuse(t *testing.T) {
+	s := sVersiey(t, "1.4.1")
+	s.skachatFayl = func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
+		return nil, errors.New("dial tcp 140.82.121.5:443: i/o timeout")
+	}
+	if _, err := s.proveritObnovlenie(context.Background()); err == nil {
+		t.Fatal("мёртвая сеть прошла как успех")
+	}
+	st := s.Status()
+	if st.ObnovlenieOtkaz == "" {
+		t.Fatal("отказ проверки не доехал до статуса: окно покажет «новее нет» на молчащем сервере")
+	}
+	if !strings.Contains(st.ObnovlenieOtkaz, "i/o timeout") {
+		t.Fatalf("причина потерялась по дороге: %q", st.ObnovlenieOtkaz)
+	}
+	if st.ObnovlenieProvereno != nil {
+		t.Fatal("отметка проверки поставлена на неудавшейся проверке")
+	}
+}
+
+// Удача снимает прежний отказ: строка, которая переживает починку, врёт ровно
+// так же, как её отсутствие.
+func TestUdachnayaProverkaSnimaetPrezhniyOtkaz(t *testing.T) {
+	s := sVersiey(t, "1.4.1")
+	set := vypuskVSeti("1.4.2", hex.EncodeToString(bytes.Repeat([]byte{1}, 32)), nil, nil)
+	zhivaya := false
+	s.skachatFayl = func(ctx context.Context, adres string, predel int64, hod func(bylo, vsego int64)) ([]byte, error) {
+		if !zhivaya {
+			return nil, errors.New("сети нет")
+		}
+		return set(ctx, adres, predel, hod)
+	}
+	if _, err := s.proveritObnovlenie(context.Background()); err == nil {
+		t.Fatal("мёртвая сеть прошла как успех")
+	}
+	if s.Status().ObnovlenieOtkaz == "" {
+		t.Fatal("отказ не записан, снимать будет нечего")
+	}
+	zhivaya = true
+	n, err := s.proveritObnovlenie(context.Background())
+	if err != nil || n == nil || n.Versiya != "1.4.2" {
+		t.Fatalf("живая сеть обязана отдать находку: %+v %v", n, err)
+	}
+	st := s.Status()
+	if st.ObnovlenieOtkaz != "" {
+		t.Fatalf("прежний отказ остался при удачной проверке: %q", st.ObnovlenieOtkaz)
+	}
+	if st.ObnovlenieProvereno == nil {
+		t.Fatal("отметка проверки не поставлена при удаче")
+	}
+}

@@ -74,6 +74,10 @@ export interface StatusOtvet {
   /** A newer version seen on the update server (service checks daily). */
   obnovlenie?: Obnovlenie;
   obnovlenie_provereno?: string;
+  /** Чем кончилась последняя проверка, если не удалась. Пусто значит «удалась».
+   *  Отметка выше ставится только при удаче, и без этой причины мёртвая
+   *  проверка выглядела на экране здоровой (23.09.2026). */
+  obnovlenie_otkaz?: string;
   oshibka?: Oshibka;
 }
 

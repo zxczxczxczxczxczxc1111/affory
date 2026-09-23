@@ -863,6 +863,13 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
 
   const naRezhim = useCallback((rezhim: Rezhim) => void vypolnit("setRouteMode", { rezhim }), [vypolnit]);
   const naServery = useCallback(() => zadatVkladku("servery"), []);
+  // Плашка из подвала главного ведёт туда же, куда пункт трея: на настройки, с
+  // подсветкой карточки. Счётчик тот же, поэтому второе нажатие подсвечивает
+  // снова, даже когда вкладка уже открыта.
+  const kObnovleniyu = useCallback(() => {
+    zadatVkladku("nastroyki");
+    zadatVesti((n) => n + 1);
+  }, []);
 
   // Screens take a whole StatusOtvet and have no "not asked yet" case: while
   // svyaz is `zhdyom` they are not drawn at all, so this stand-in is only ever
@@ -978,6 +985,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             naDeystvie={naGlavnoe}
             naServery={naServery}
             naRezhim={naRezhim}
+            kObnovleniyu={kObnovleniyu}
+            podmenaIdet={hodObnovleniya !== null}
           />
         ) : vkladka === "servery" ? (
           // The refusal is drawn BY the tab now, not instead of it: the screen
