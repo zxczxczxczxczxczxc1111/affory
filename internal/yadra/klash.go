@@ -83,7 +83,7 @@ func zaderzhkaURL(ctx context.Context, adres, sekret, teg, cel string) (time.Dur
 	case kod == http.StatusGatewayTimeout:
 		return 0, fmt.Errorf("%w: не отвечает дольше %s", ErrProbaNeUspela, SrokZamera)
 	case kod != http.StatusOK:
-		return 0, fmt.Errorf("%w: ядро отклонило пробу (код %d)", ErrServerOtvergKlyuchi, kod)
+		return 0, fmt.Errorf("%w (код ответа %d)", ErrServerOtvergKlyuchi, kod)
 	}
 
 	var o struct {
@@ -110,7 +110,7 @@ func zaderzhkaURL(ctx context.Context, adres, sekret, teg, cel string) (time.Dur
 //
 // НЕ покрывает 401 и 403: там отвечает не наш сервер, а не принявший секрет
 // clash_api или чужой клиент на нашем порту, и человеку туда идти незачем.
-var ErrServerOtvergKlyuchi = errors.New("сервер не принял рукопожатие")
+var ErrServerOtvergKlyuchi = errors.New("сервер не принял ключ")
 
 // ErrProbaNeUspela значит: ядро живо, исходящий существует, а ответа в срок не
 // пришло. Причина может быть где угодно по пути, и ключи тут ни при чём.

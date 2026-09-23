@@ -398,7 +398,17 @@ export function Marshruty({
           <p className="text-fg-muted mt-2 text-[13px] leading-relaxed">
             Явные маршруты сохраняются при смене режима
           </p>
-          <p className="text-fg-muted mt-2 flex flex-wrap gap-x-3 text-[13px] leading-relaxed"><span className="whitespace-nowrap">Приложения: {apps.length}</span><span className="whitespace-nowrap">Сайты: {domains.length}</span><span className="whitespace-nowrap">Сервисы: {services.length}</span></p>
+          {/* Сеткой, а не flex-wrap: три пары в 240 мм колонки не помещались, и
+              «Сервисы» переносились на вторую строку, ломая ряд. Числа стоят
+              своей колонкой и выровнены, поэтому читаются столбиком. */}
+          <dl className="text-fg-muted mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[13px] leading-relaxed">
+            <dt>Приложения</dt>
+            <dd className="text-fg-secondary tabular-nums">{apps.length}</dd>
+            <dt>Сайты</dt>
+            <dd className="text-fg-secondary tabular-nums">{domains.length}</dd>
+            <dt>Сервисы</dt>
+            <dd className="text-fg-secondary tabular-nums">{services.length}</dd>
+          </dl>
         </div>
         {status.sostoyanie === "vyklyuchen" && (
           <p className="text-fg-muted text-[13px] leading-relaxed">
@@ -558,16 +568,22 @@ export function Marshruty({
                       )}
                       {estKlient && !explicit && nechemuMarshrut && (
                         <p className="text-fg-muted px-4 pb-2 text-[12px]" data-testid={`klient-${service.id}`}>
-                          Приложение не запущено. Запусти его, и маршрут можно будет выбрать
+                          {/* Одной строкой: у лаунчеров эта подпись стоит на
+                              четырёх карточках подряд, и длинная фраза
+                              превращала ряд в простыню одинакового текста. */}
+                          Запусти приложение, чтобы выбрать маршрут
                         </p>
                       )}
                       {(pereopredeleniya.get(service.id)?.length ?? 0)>0 && <p className="text-warn px-4 pb-2 text-[12px]">Есть другой маршрут в правилах сайтов</p>}
 
+                      {/* mt-auto прижимает строку к низу: соседка по ряду
+                          растягивает карточку предупреждением, и без этого
+                          разделитель вставал посреди пустоты. */}
                       <button
                         type="button"
                         aria-expanded={otkryt}
                         onClick={() => setRaskryto({ ...raskryto, [service.id]: !otkryt })}
-                        className="group border-border hover:bg-surface-hover flex items-center gap-2 border-t px-4 py-2.5 text-left transition-colors"
+                        className="group border-border hover:bg-surface-hover mt-auto flex items-center gap-2 border-t px-4 py-2.5 text-left transition-colors"
                       >
                         <IkTreugolnik className={`text-fg-muted h-3 w-3 shrink-0 transition-transform ${otkryt ? "rotate-90" : ""}`} />
                         <span className="text-fg-muted group-hover:text-fg-secondary text-[13px]">
@@ -1141,15 +1157,17 @@ export function Marshruty({
                 </div>
               )}
 
+              {/* Разделы идут одним сплошным списком: gap-5 родителя раздвигал
+                  одинаковые полосы, и низ экрана читался как пустой. */}
+              <div className="flex flex-col">
               <OhvatPravil key={tab} vid={tab} trafik={trafik} katalog={pravila?.katalog} chernovik={dirty} ozhidayut={pravila?.trebuet_podyoma} bezRu={bezRu} killSwitch={status.kill_switch===true} disabled={disabled} proverit={proveritSoedineniya} proveritPrilozhenie={proveritPrilozhenie} vybratFayl={naVyborPrilozheniya} zamenit={(oldPath,newPath)=>{
                 const key=newPath.trim().toLowerCase();
                 if(apps.some(a=>a.put!==oldPath && a.put.toLowerCase()===key))throw new Error("Для этого файла уже есть правило. Измени его в списке приложений.");
                 return save({...trafik,prilozheniya:apps.map(a=>a.put===oldPath?{...a,put:newPath.trim(),imya:newPath.trim().split(/[/\\]/).pop() || a.imya}:a)});
               }} naSbros={()=>save(tab==="apps"?{...trafik,prilozheniya:[]}:{...trafik,domeny:[]})}/>
-              <div className="flex flex-col">
                 {tab === "apps" && (
                   <Svorachivaemyy
-                    zagolovok="Что попадает под правило приложения"
+                    zagolovok="Как работает правило приложения"
                     deti={
                       <div className="flex flex-col gap-2">
                         <p>
@@ -1169,28 +1187,30 @@ export function Marshruty({
                           Явные правила сайтов и сервисов, локальные имена и российский список проверяются раньше.
                           Поэтому маршрут соединения и поиск адреса могут различаться.
                         </p>
+                        {/* Абзац из бывшего раздела «Дополнительно»: он был
+                            продолжением этого же объяснения, а отдельной полосой
+                            только удлинял частокол. */}
+                        <p>
+                          Правило по пути, а не по имени: две копии одного файла из разных папок это
+                          два разных правила. Переименованный или перенесённый файл под правило
+                          перестаёт попадать, путь придётся указать заново.
+                        </p>
                       </div>
                     }
                   />
                 )}
-                <Svorachivaemyy
-                  zagolovok="Дополнительно"
-                  deti={
-                    tab === "apps" ? (
-                      <p>
-                        Правило по пути, а не по имени: две копии одного файла из разных папок это
-                        два разных правила. Переименованный или перенесённый файл под правило
-                        перестаёт попадать, путь придётся указать заново.
-                      </p>
-                    ) : (
+                {tab === "sites" && (
+                  <Svorachivaemyy
+                    zagolovok="Как работает правило сайта"
+                    deti={
                       <p>
                         Правило накрывает домен и все его поддомены: example.com действует и на
                         api.example.com. Программа, которая обращается к адресу без имени, под правило
                         сайта не попадает, для неё есть вкладка «Приложения».
                       </p>
-                    )
-                  }
-                />
+                    }
+                  />
+                )}
               </div>
             </div>
           )}

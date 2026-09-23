@@ -88,7 +88,7 @@ test("отказ подъёма объяснён целиком и виден в
   // Человеческая строка и подлинный текст службы рядом: первая объясняет,
   // вторая доказывает. Код server-auth-failed настоящий, см. заглушку.
   await expect(page.getByTestId("otkaz-tekst")).toHaveText("Сервер не принял ключ, проверь подписку", { ignoreCase: true });
-  await expect(page.getByTestId("otkaz-prichina")).toContainText("не понёс трафик");
+  await expect(page.getByTestId("otkaz-prichina")).toContainText("данные через него не пошли");
   await expect(page.getByTestId("otkaz-deystvie")).toHaveText("Обновить подписку", { ignoreCase: true });
 
   // Баннер ВНУТРИ окна, а не за его кромкой.

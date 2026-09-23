@@ -389,7 +389,7 @@ it("карточке без сайтов и без запущенного кли
   render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={rules} otlozheno={{}} naKomandu={vi.fn()}
     zapushchennye={[]} obnovitProtsessy={vi.fn()}/>);
   expect(screen.getByRole("combobox",{name:"Маршрут сервиса Steam"})).toBeDisabled();
-  expect(screen.getByTestId("klient-steam")).toHaveTextContent("Запусти его");
+  expect(screen.getByTestId("klient-steam")).toHaveTextContent("Запусти приложение, чтобы выбрать маршрут");
 });
 
 it("включённая карточка говорит, что накрывает и приложение", () => {

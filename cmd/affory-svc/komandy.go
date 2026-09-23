@@ -1145,7 +1145,12 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) (itogErr error) {
 	// следующей команды, и разойтись им нельзя.
 	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
 		Kod:   kodNepodnyavshegosya(poslednyaya),
-		Tekst: fmt.Sprintf("VPN поднялся, но не понёс трафик (%d попытки по %s): %v", popytokPodyoma, zhdatPodyoma, poslednyaya),
+		// Человеческой фразой, а не сводкой замера: «не понёс трафик (2 попытки
+		// по 15s)» читалось как строка журнала, случайно попавшая на экран
+		// (владелец, 23.09.2026). Число попыток и срок остались - они говорят,
+		// что программа не сдалась после первой неудачи, - но словами.
+		Tekst: fmt.Sprintf("VPN включился, но данные через него не пошли. Попыток: %d, по %d секунд каждая. Причина: %v",
+			popytokPodyoma, int(zhdatPodyoma.Seconds()), poslednyaya),
 	})
 	return fmt.Errorf("VPN не понёс трафик за %d попытки по %s: %w", popytokPodyoma, zhdatPodyoma, poslednyaya)
 }

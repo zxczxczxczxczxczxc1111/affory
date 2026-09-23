@@ -6,13 +6,19 @@ import claude from "../assets/services/claude.svg";
 import telegram from "../assets/services/telegram.svg";
 import spotify from "../assets/services/spotify.svg";
 import soundcloud from "../assets/services/soundcloud.svg";
+import steam from "../assets/services/steam.svg";
+import epicgames from "../assets/services/epicgames.svg";
+import battlenet from "../assets/services/battledotnet.svg";
+import riot from "../assets/services/riotgames.svg";
+import ubisoft from "../assets/services/ubisoft.svg";
 import { ZnachokServisa } from "./ui";
 
 const icons: Readonly<Record<string, string>> = {
   youtube, discord, chatgpt, instagram, claude, telegram, spotify, soundcloud,
+  steam, epicgames, battlenet, riot, ubisoft,
 };
 
-/** Знак сервиса одним цветом. Восемь чужих логотипов в своих палитрах
+/** Знак сервиса одним цветом. Тринадцать чужих логотипов в своих палитрах
  *  превращали строгий экран в набор наклеек, поэтому цвет здесь берётся у
  *  текста, а от файла остаётся только форма. Незнакомый сервис показывает
  *  две буквы имени: каталог обновляется отдельно от программы. */

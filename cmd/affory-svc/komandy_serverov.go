@@ -422,7 +422,7 @@ func (s *Sluzhba) setRouteMode(ctx context.Context, r protokol.Rezhim) (trebuetP
 		log.Printf("режим не переписан в конфиге, перезапуск ядра его отменит: %v", err)
 		s.postavit(s.Status().Sostoyanie, &protokol.Oshibka{
 			Kod:   protokol.KodPereklyuchenieNeDoehalo,
-			Tekst: "режим не записан в конфиг: перезапуск ядра вернёт прежний маршрут",
+			Tekst: "режим выбран, но не сохранён: после перезапуска VPN вернётся прежний",
 		})
 	}
 	return false, nil
@@ -606,7 +606,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		log.Printf("выбор не переписан в конфиге, перезапуск ядра его отменит: %v", err)
 		s.postavit(s.Status().Sostoyanie, &protokol.Oshibka{
 			Kod:   protokol.KodPereklyuchenieNeDoehalo,
-			Tekst: "выбор не записан в конфиг: перезапуск ядра вернёт прежний сервер",
+			Tekst: "сервер выбран, но не сохранён: после перезапуска VPN вернётся прежний",
 		})
 	}
 	return nil

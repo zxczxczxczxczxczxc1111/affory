@@ -1,7 +1,11 @@
 # Service icons
 
-Eight marks from [Simple Icons 15.0.0](https://github.com/simple-icons/simple-icons/tree/15.0.0/icons):
-youtube, discord, openai (ChatGPT), instagram, claude, telegram, spotify, soundcloud.
+Thirteen marks from [Simple Icons 15.0.0](https://github.com/simple-icons/simple-icons/tree/15.0.0/icons):
+youtube, discord, openai (ChatGPT), instagram, claude, telegram, spotify, soundcloud,
+steam, epicgames, battledotnet (Battle.net), riotgames (Riot Client), ubisoft.
+
+The five launcher marks were added on 23.09.2026: until then those cards showed a
+two-letter tile next to real logos, and one screen carried two families of marks.
 
 SVG geometry is unchanged. Colour comes from the screen: the marks are drawn as a CSS mask,
 so a brand palette never leaks into a monochrome interface.

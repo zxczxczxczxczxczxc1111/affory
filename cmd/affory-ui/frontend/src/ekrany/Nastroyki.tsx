@@ -314,15 +314,21 @@ export function Nastroyki({
             </Ryad>
           </Panel>
         )}
-        {!killSwitch && pochemuNelzyaVklyuchit && <div className="flex flex-col gap-2 text-[13px]">
-          {trafik && !estChernovikPravil && <p className="text-warn">Блокировка несовместима с прямыми маршрутами. В правилах выбери для них VPN или удали их. Автоматически правила не меняются.</p>}
+        {/* Карточкой, как всё вокруг: голый абзац под панелью читался выпавшим
+            из вёрстки, а кнопка под ним стояла сиротой. */}
+        {!killSwitch && pochemuNelzyaVklyuchit && <div className="border-border bg-surface flex flex-col gap-2 rounded-xl border px-4 py-3 text-[13px]">
+          {trafik && !estChernovikPravil && <p className="text-warn leading-relaxed">Блокировка несовместима с прямыми маршрутами. В правилах выбери для них VPN или удали их. Автоматически правила не меняются.</p>}
           <div className="flex flex-wrap gap-2">
             {naPravila && <Knopka rang="tekst" onClick={naPravila}>Открыть правила</Knopka>}
             {!trafik && obnovitPravila && <Knopka rang="vtoraya" aktiven={mozhnoZvat} onClick={obnovitPravila}>Обновить правила</Knopka>}
           </div>
         </div>}
 
-        <div className="mt-1 flex flex-col">
+        {/* Раскрывающиеся разделы отделены линией от карточек выше: без неё
+            голые строки прилипали к панели и читались её продолжением.
+            Своей карточки им не дать - внутри уже есть панель, а карточка в
+            карточке это разнобой похуже. */}
+        <div className="border-border mt-3 flex flex-col border-t pt-1">
           {/* Полоса канала. Нужна ровно одному протоколу, hysteria2, у которого
               объявление полосы и ЕСТЬ переключатель Brutal: отдельного флага нет.
               Поэтому здесь не «ограничить скорость», а «сказать протоколу, какой

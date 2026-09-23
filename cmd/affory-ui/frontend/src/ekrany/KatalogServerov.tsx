@@ -97,7 +97,10 @@ export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, ne
         <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium" title={s.imya}>{s.imya}</span>
           <span className="text-fg-muted block truncate text-xs" title={`${g.imya} · ${s.host}:${s.port}`}>{s.transport}{zakreplen ? ` · ${g.imya}` : ""}</span></span>
         <span className="text-fg-secondary shrink-0 text-xs tabular-nums" title={`VPN ${latency}${m?.realping_otkaz ? `: ${m.realping_otkaz}` : ""} · узел ${typeof m?.tcping_ms === "number" ? `${m.tcping_ms} мс` : m?.tcping_otkaz || "не измерен"}`}>{latency}</span>
-        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${active || selected ? "bg-accent border-accent text-foreground" : "border-border-active"}`}>
+        {/* Отметка стоит только у выбранного. Пустой кружок в каждой строке
+            ничего не сообщал: выбран ровно один, и это видно по нему одному.
+            Место под отметку держится всегда, иначе колонка замера прыгает. */}
+        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${active || selected ? "bg-accent text-foreground" : ""}`}>
           {(active || selected) && <IkGalka className="h-3 w-3" />}
         </span>
       </button>
