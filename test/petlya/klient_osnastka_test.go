@@ -3,6 +3,7 @@ package petlya
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"net/url"
@@ -82,6 +83,46 @@ func (k *Klient) NavyazatVybor(t *testing.T, teg string) {
 	}
 	if err := yadra.PostavitVybor(ctx, k.AdresKlash, k.SekretKlash, genkonfig.TegSelector, teg); err != nil {
 		t.Fatalf("выбор не навязался: %v", err)
+	}
+}
+
+// Срок и шаг ожидания взяты у продукта: srokDosprosaPoUmolchaniyu и
+// shagDosprosaPoUmolchaniyu в cmd/affory-svc/komandy.go. Свои числа означали бы,
+// что тест требует от ядра не того, чего требует служба.
+const (
+	srokVyboraGruppy = 20 * time.Second
+	shagVyboraGruppy = 200 * time.Millisecond
+)
+
+// ZhdatNesushchego ждёт, пока группа назовёт несущего, и отдаёт его тег.
+//
+// Пустой ответ urltest это ФАЗА, а не отказ: группа не закончила первую пробу
+// задержки. Для неё в продукте заведён отдельный yadra.ErrNeVybrala с замером
+// в комментарии: через 1.23 с после подъёма now пуст, через 5.63 с назван.
+// Служба эту фазу ждёт доспросом (dosprositNesushchego), а тесты читали ответ
+// ОДИН раз сразу после команды и поэтому плавали: при полном `go test ./...`
+// примерно каждый пятый прогон печатал «несущий не прочитался: группа ещё не
+// назвала выбор: avto». Изолированно фаза успевала закончиться, потому что
+// машина была свободна (разбор 23.09.2026).
+func (k *Klient) ZhdatNesushchego(t *testing.T) string {
+	t.Helper()
+	ctx, otmena := context.WithTimeout(context.Background(), srokVyboraGruppy)
+	defer otmena()
+	for {
+		teg, err := yadra.Nesyot(ctx, k.AdresKlash, k.SekretKlash, genkonfig.TegSelector, genkonfig.TegAvto)
+		if err == nil {
+			return teg
+		}
+		// Ждём ТОЛЬКО фазу. Любой другой отказ это отказ, и глотать его значило
+		// бы менять красное на двадцать секунд ожидания и то же красное.
+		if !errors.Is(err, yadra.ErrNeVybrala) {
+			t.Fatalf("несущий не прочитался: %v (журнал: %s)", err, k.Zhurnal())
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("группа не назвала несущего за %v (журнал: %s)", srokVyboraGruppy, k.Zhurnal())
+		case <-time.After(shagVyboraGruppy):
+		}
 	}
 }
 

@@ -403,10 +403,28 @@ func SvobodnyyPortUDP(t *testing.T) int {
 
 // Shadowsocks открывает оба протокола. Windows может резервировать UDP-порт,
 // даже когда такой же номер свободен для TCP (например, рядом с Hyper-V).
+//
+// Неудачные сокеты УДЕРЖИВАЮТСЯ до конца поиска, и это главное здесь.
+// Закрытый сокет Windows отдаёт следующему запросу тот же номер, поэтому
+// прежний цикл мог все 64 попытки топтаться на одном запрещённом порте и
+// падать словами «общий порт TCP/UDP не найден: ... forbidden by its access
+// permissions» (поймано 23.09.2026). Удержание заставляет ОС выдавать новые
+// номера, и запрещённый блок проходится подряд.
+//
+// Размер блока берётся из самой машины: `netsh int ipv4 show excludedportrange
+// tcp` на рабочем ПК 23.09.2026 показал семь блоков по 100 портов, причём два
+// из них смежные (59482-59581 и 59582-59681), то есть 200 подряд. Триста
+// попыток покрывают это с запасом.
 func SvobodnyyPortTCPUDP(t *testing.T) int {
 	t.Helper()
 	var last error
-	for attempt := 0; attempt < 64; attempt++ {
+	var uderzhannye []net.PacketConn
+	defer func() {
+		for _, c := range uderzhannye {
+			c.Close()
+		}
+	}()
+	for popytka := 0; popytka < 300; popytka++ {
 		udp, err := net.ListenPacket("udp4", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
@@ -419,9 +437,9 @@ func SvobodnyyPortTCPUDP(t *testing.T) int {
 			return port
 		}
 		last = err
-		udp.Close()
+		uderzhannye = append(uderzhannye, udp)
 	}
-	t.Fatalf("общий порт TCP/UDP не найден: %v", last)
+	t.Fatalf("общий порт TCP/UDP не найден за 300 попыток: %v", last)
 	return 0
 }
 

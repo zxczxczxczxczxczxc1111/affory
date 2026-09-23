@@ -60,6 +60,12 @@ func TestAvtoVybiraetZhivogo(t *testing.T) {
 		Rezhim: protokol.RezhimAvto,
 	})
 
+	// Пока первая проба задержки не закончена, группа несёт мёртвого, и запрос
+	// рвётся на ровном месте: «outbound/urltest[avto]: dial tcp ...: connection
+	// refused» в журнале ядра. Это фаза подъёма, а не дефект выбора, и вопрос
+	// теста начинается после неё (разбор 23.09.2026).
+	k.ZhdatNesushchego(t)
+
 	if imya := k.SprositCherezProksi(t, zhivoy.Adres); imya != zhivoy.Imya {
 		t.Errorf("авто несёт %q, а живой это %q", imya, zhivoy.Imya)
 	}
@@ -167,10 +173,10 @@ func TestPerehodRuchnogoVAvto(t *testing.T) {
 	}
 	// Несущего у группы спрашивают отдельным продуктовым вызовом: селектор
 	// показывает группу, а не сервер, и «кто именно несёт» это другой вопрос.
-	nesyot, err := yadra.Nesyot(ctx, k.AdresKlash, k.SekretKlash, genkonfig.TegSelector, genkonfig.TegAvto)
-	if err != nil {
-		t.Fatalf("несущий не прочитался: %v", err)
-	}
+	// Ответ ждут, а не хватают: до конца первой пробы задержки группа честно
+	// отвечает «ещё не назвала», и один выстрел в это окно давал плавающее
+	// красное раз в пять прогонов.
+	nesyot := k.ZhdatNesushchego(t)
 	if nesyot != a.Uzel.Teg(t) && nesyot != b.Uzel.Teg(t) {
 		t.Errorf("несущим объявлен %q, а кандидатов было двое: %q и %q",
 			nesyot, a.Uzel.Teg(t), b.Uzel.Teg(t))

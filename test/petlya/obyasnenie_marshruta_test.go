@@ -3,6 +3,7 @@ package petlya
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -157,7 +158,7 @@ func TestRealCoreDNSExplanation(t *testing.T) {
 				route["rule_set"] = []any{map[string]any{"type": "inline", "tag": "test-list", "rules": []any{map[string]any{"domain_suffix": []string{"listed.test"}}}}}
 			}
 			dnsPort := SvobodnyyPortTCPUDP(t)
-			PodnyatYadro(t, map[string]any{
+			y := PodnyatYadro(t, map[string]any{
 				"inbounds": []any{
 					map[string]any{"type": "mixed", "listen": "127.0.0.1", "listen_port": SvobodnyyPort(t)},
 					map[string]any{"type": "direct", "tag": "dns-test", "listen": "127.0.0.1", "listen_port": dnsPort},
@@ -166,15 +167,21 @@ func TestRealCoreDNSExplanation(t *testing.T) {
 			resolver := net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				return (&net.Dialer{}).DialContext(ctx, "udp", fmt.Sprintf("127.0.0.1:%d", dnsPort))
 			}}
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			ips, err := resolver.LookupIP(ctx, "ip4", tc.host+".")
 			want := "192.0.2.2"
 			if tc.local {
 				want = "192.0.2.1"
 			}
+			// Запрос повторяется до срока, а не стреляет один раз.
+			//
+			// Проверяется ВЫБОР DNS-сервера, а не срок ответа: один выстрел с
+			// жёсткими тремя секундами давал при полном `go test ./...`
+			// «i/o timeout» на ровном месте, потому что под чужой нагрузкой
+			// ядро не успевало ответить в это окно (поймано 23.09.2026).
+			// Ответ не тот роняет тест сразу: ждать тут нечего, и ожидание
+			// прикрыло бы настоящий дефект маршрутизации.
+			ips, err := zhdatOtvetDNS(t, &resolver, tc.host+".", want)
 			if err != nil || len(ips) != 1 || ips[0].String() != want {
-				t.Fatalf("DNS selection got=%v err=%v want=%s", ips, err, want)
+				t.Fatalf("DNS selection got=%v err=%v want=%s (журнал ядра: %s)", ips, err, want, y.Zhurnal())
 			}
 		})
 	}
@@ -246,5 +253,36 @@ func TestRealCoreApplicationAndSiteExplanation(t *testing.T) {
 				t.Fatalf("route allowed=%v want=%v err=%v\n%s", allowed, tc.allow, err, y.Zhurnal())
 			}
 		})
+	}
+}
+
+// zhdatOtvetDNS повторяет запрос, пока ядро молчит, и отдаёт первый ответ.
+//
+// Молчание это единственное, что здесь ждут: оно бывает от чужой нагрузки на
+// машине и к выбору DNS-сервера отношения не имеет. НАЗВАННЫЙ адрес
+// возвращается сразу, даже неверный: ждать его смены значило бы дать
+// маршрутизации второй шанс и потерять настоящий дефект.
+func zhdatOtvetDNS(t *testing.T, resolver *net.Resolver, imya, zhdyom string) ([]net.IP, error) {
+	t.Helper()
+	const srok = 12 * time.Second
+	do := time.Now().Add(srok)
+	var posledniy error
+	for {
+		ctx, otmena := context.WithTimeout(context.Background(), 3*time.Second)
+		ips, err := resolver.LookupIP(ctx, "ip4", imya)
+		otmena()
+		if err == nil {
+			return ips, nil
+		}
+		posledniy = err
+		// Молчание ядра выглядит как i/o timeout; всё остальное это ответ.
+		var setevaya net.Error
+		if !errors.As(err, &setevaya) || !setevaya.Timeout() {
+			return ips, err
+		}
+		if time.Now().After(do) {
+			return nil, fmt.Errorf("ядро молчало все %v, ждали %s: %w", srok, zhdyom, posledniy)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
