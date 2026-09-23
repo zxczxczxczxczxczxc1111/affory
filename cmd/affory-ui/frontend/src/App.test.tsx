@@ -726,7 +726,7 @@ it("кнопка папки журналов вызывает нативный �
   render(<App/>);
   fireEvent.click(await screen.findByRole("tab",{name:"Настройки"}));
   fireEvent.click(await screen.findByTestId("razdel-diagnostika"));
-  fireEvent.click(screen.getByRole("button",{name:"Открыть папку с логами"}));
+  fireEvent.click(screen.getByRole("button",{name:"Открыть папку с журналами"}));
   await waitFor(()=>expect(stend.s.sled.some(v=>v.chto==="otkrytPapkuZhurnalov")).toBe(true));
   expect(most.skolkoRaz("clearJournal")).toBe(0);
 });
@@ -761,7 +761,7 @@ it("настройки получают сохранённые прямые ма
   most.otvechatTelom("listRules",{protsessy:[],domeny:[],trafik:{po_umolchaniyu:"vpn",servisy:[{id:"youtube",marshrut:"direct"}],domeny:[],prilozheniya:[]}});
   render(<App/>);
   fireEvent.click(await screen.findByRole("tab",{name:"Настройки"}));
-  await screen.findByText("Напрямую настроены: сервисы: 1.");
+  await screen.findByText("Напрямую настроено: 1 сервис");
   expect(screen.getByTestId("ves-trafik")).toBeDisabled();
   fireEvent.click(screen.getByTestId("ves-trafik"));
   expect(most.skolkoRaz("setKillSwitch")).toBe(0);

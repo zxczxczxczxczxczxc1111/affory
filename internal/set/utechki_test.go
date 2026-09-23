@@ -40,7 +40,7 @@ func punkt(t *testing.T, r RezultatProverki, imya string) PunktProverki {
 
 func TestProverkaNazyvaetChegoNeVidit(t *testing.T) {
 	r := ProveritUtechki(context.Background(), vhodProverki(true))
-	p := punkt(t, r, "DoH браузера")
+	p := punkt(t, r, "браузер со своим поиском адресов (DoH)")
 	if p.Itog != ItogNeVidim {
 		t.Fatalf("DoH выдан за проверенный: %+v", p)
 	}

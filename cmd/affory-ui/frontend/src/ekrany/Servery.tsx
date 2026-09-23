@@ -225,17 +225,17 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
     return [
       {
         klyuch: "podpiska",
-        podpis: imyaPodpiski ? `из подписки ${imyaPodpiski}` : "из подписки",
+        podpis: imyaPodpiski ? `Из подписки ${imyaPodpiski}` : "Из подписки",
         servery: vidimye.filter((s) => s.iz_podpiski && !s.uderzhan),
       },
       {
         klyuch: "uderzhannye",
-        podpis: "пропали из подписки, работают до переподключения",
+        podpis: "Пропали из подписки, работают до переподключения",
         servery: vidimye.filter((s) => s.uderzhan),
       },
       {
         klyuch: "ruchnye",
-        podpis: "добавлены вручную",
+        podpis: "Добавлены вручную",
         servery: vidimye.filter((s) => !s.iz_podpiski && !s.uderzhan),
       },
     ].filter((p) => p.servery.length > 0);
@@ -470,7 +470,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
       {!pervyyZapusk && dobavlyayu && forma}
 
       {spisok !== null && (spisok.podpiska_zadana || stroki.length > 0) && (
-        <Razdel nazvanie={stroki.length > 1 ? "подписки" : "подписка"}>
+        <Razdel nazvanie={stroki.length > 1 ? "Подписки" : "Подписка"}>
           <Karta testId="podpiska">
             {stroki.map((p) => (
               <Ryad
@@ -550,7 +550,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
       )}
 
       {pervyyZapusk && (
-        <Razdel nazvanie="первый сервер" aria-label="Первый сервер">
+        <Razdel nazvanie="Первый сервер" aria-label="Первый сервер">
           <p className="text-fg-secondary text-sm" data-testid="pusto">
             серверов пока нет: вставь ссылку на сервер или адрес подписки
           </p>
@@ -559,7 +559,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
       )}
 
       {spisok !== null && servery.length > 0 && (
-        <Razdel nazvanie="серверы" aria-label="Список серверов">
+        <Razdel nazvanie="Серверы" aria-label="Список серверов">
           <div className="flex items-center gap-2">
             <Pole
               tip="search"
@@ -567,7 +567,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
               aria-label="поиск"
               znachenie={poisk}
               naVvod={zadatPoisk}
-              placeholder="поиск по имени или адресу"
+              placeholder="Поиск по имени или адресу"
               className="w-full"
             />
             {/* Работает и при опущенном туннеле: tcping туннеля не требует, а
@@ -646,7 +646,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                     </span>
                   </div>
                   <Zaderzhka zamer={poZaderzhkam.get(s.id)} />
-                  {s.s_pinom && <Teg ton="akcent">пин сертификата</Teg>}
+                  {s.s_pinom && <Teg ton="akcent">сертификат закреплён</Teg>}
                   {s.nebezopasnyy_ignorirovan && <Teg ton="preduprezhdenie">проверка сертификата включена принудительно</Teg>}
                   {neset && <Teg ton="akcent">активен</Teg>}
                   {/* Состояние, которое человек задал сам, обязано быть видно

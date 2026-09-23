@@ -1,3 +1,5 @@
+import { slovoPosleChisla } from "./chisla";
+
 // Routes describe intent explicitly; changing a default must not flip every switch.
 export type Marshrut = "vpn" | "direct";
 export interface PraviloPrilozheniya {
@@ -75,14 +77,23 @@ export function zadatMarshrutServisa(trafik:PravilaTrafika,id:string,value:Vybor
   return {...trafik,servisy:bylo?trafik.servisy.map(s=>s.id===id?pravilo:s):[...trafik.servisy,pravilo]};
 }
 
+// Перечисление словами, а не парами «слово: число». «Напрямую настроены:
+// приложения: 2; сайты: 1» ставило двоеточие внутрь двоеточия и читалось
+// строкой отчёта (владелец, 23.09.2026).
 export function prichinaPryamogoTrafika(trafik:PravilaTrafika):string|null {
   const parts:string[]=[];
   if(trafik.po_umolchaniyu==="direct")parts.push("общий режим «Только выбранное»");
   const apps=trafik.prilozheniya.filter(r=>r.marshrut==="direct").length;
   const sites=trafik.domeny.filter(r=>r.marshrut==="direct").length;
   const services=trafik.servisy.filter(r=>r.marshrut==="direct").length;
-  if(apps)parts.push(`приложения: ${apps}`);
-  if(sites)parts.push(`сайты: ${sites}`);
-  if(services)parts.push(`сервисы: ${services}`);
-  return parts.length?`Напрямую настроены: ${parts.join("; ")}.`:null;
+  if(apps)parts.push(`${apps} ${slovoPosleChisla(apps,"приложение","приложения","приложений")}`);
+  if(sites)parts.push(`${sites} ${slovoPosleChisla(sites,"сайт","сайта","сайтов")}`);
+  if(services)parts.push(`${services} ${slovoPosleChisla(services,"сервис","сервиса","сервисов")}`);
+  return parts.length?`Напрямую настроено: ${perechislit(parts)}`:null;
+}
+
+/** «а, б и в»: последний соединяется союзом, а не запятой. */
+function perechislit(chasti:string[]):string {
+  if(chasti.length<2)return chasti[0]??"";
+  return `${chasti.slice(0,-1).join(", ")} и ${chasti[chasti.length-1]}`;
 }

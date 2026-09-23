@@ -23,9 +23,9 @@ it("папка открывается даже без связи со служб
   fireEvent.click(screen.getByTestId("razdel-diagnostika"));
   expect(screen.getByTestId("zhurnal")).toBeDisabled();
   expect(screen.getByTestId("diagnostika")).toBeDisabled();
-  fireEvent.click(screen.getByRole("button",{name:"Открыть папку с логами"}));
+  fireEvent.click(screen.getByRole("button",{name:"Открыть папку с журналами"}));
   expect(await screen.findByRole("alert")).toHaveTextContent("Папка недоступна");
-  fireEvent.click(screen.getByRole("button",{name:"Открыть папку с логами"}));
+  fireEvent.click(screen.getByRole("button",{name:"Открыть папку с журналами"}));
   await waitFor(()=>expect(screen.queryByText("Папка недоступна")).toBeNull());
   expect(open).toHaveBeenCalledTimes(2);
 });

@@ -127,7 +127,7 @@ func (s *Sluzhba) sloyYadra(ctx context.Context) sloyProverki {
 			Podrobno: "сервер не ответил: " + err.Error(), Dlitelnost: s.seychas().Sub(nach)})
 	}
 	return sloy("yadro", "Связь с сервером", proby.Itog{Proshlo: true, Dlitelnost: t,
-		Podrobno: fmt.Sprintf("ответ за %v", t.Round(time.Millisecond))})
+		Podrobno: fmt.Sprintf("ответ за %s", proby.Millisekundy(t))})
 }
 
 // sloyMestnogoRezolvera проверяет путь МИМО туннеля: российское имя через

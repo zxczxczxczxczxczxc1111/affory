@@ -74,7 +74,7 @@ describe("серверы: список", () => {
   // которых одно и то же пояснение повторялось построчно.
   it("ручная запись лежит в своей полосе, пометка сертификата остаётся в строке", () => {
     risovat(spisok([server(1, { iz_podpiski: false }), server(2, { nebezopasnyy_ignorirovan: true })]));
-    const ruchnye = screen.getByRole("group", { name: "добавлены вручную" });
+    const ruchnye = screen.getByRole("group", { name: "Добавлены вручную" });
     expect(within(ruchnye).getAllByRole("option")).toHaveLength(1);
     expect(within(ruchnye).getByTestId("server-id1")).toBeTruthy();
     expect(screen.getByTestId("server-id2")).toHaveTextContent(/проверка сертификата/);
@@ -82,8 +82,8 @@ describe("серверы: список", () => {
 
   it("удержанная запись лежит в полосе про переподключение, а не среди ручных", () => {
     risovat(spisok([server(1, { iz_podpiski: false, uderzhan: true }), server(2, { iz_podpiski: false })]));
-    const uderzhannye = screen.getByRole("group", { name: /пропали из подписки/ });
-    const ruchnye = screen.getByRole("group", { name: "добавлены вручную" });
+    const uderzhannye = screen.getByRole("group", { name: /Пропали из подписки/ });
+    const ruchnye = screen.getByRole("group", { name: "Добавлены вручную" });
     expect(within(uderzhannye).getByTestId("server-id1")).toBeTruthy();
     expect(within(ruchnye).getByTestId("server-id2")).toBeTruthy();
     expect(within(uderzhannye).queryByTestId("server-id2")).toBeNull();
@@ -98,15 +98,15 @@ describe("серверы: список", () => {
       { id: "p1", uzel: "hi.affory.space", aktivnaya: true, serverov: 6 },
       { id: "p2", uzel: "zxc123.affory.space", aktivnaya: false, serverov: 8 },
     ]);
-    expect(screen.getByRole("group", { name: "из подписки hi.affory.space" })).toBeTruthy();
-    expect(screen.getByRole("group", { name: "добавлены вручную" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Из подписки hi.affory.space" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Добавлены вручную" })).toBeTruthy();
   });
 
-  it("пометка строки: пин сертификата у hy2 с pinSHA256", () => {
+  it("пометка строки: сертификат закреплён у hy2 с pinSHA256", () => {
     risovat(spisok([server(1, { transport: "hy2", s_pinom: true }), server(2, { transport: "hy2" })]));
     const rows = screen.getAllByRole("option");
-    expect(rows[0]).toHaveTextContent(/пин сертификата/);
-    expect(rows[1]).not.toHaveTextContent(/пин сертификата/);
+    expect(rows[0]).toHaveTextContent(/сертификат закреплён/);
+    expect(rows[1]).not.toHaveTextContent(/сертификат закреплён/);
   });
 
   it("поиск фильтрует по имени и по адресу", () => {

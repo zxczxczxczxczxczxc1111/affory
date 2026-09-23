@@ -22,7 +22,7 @@ export function Zhurnaly({ status, disabled, naKomandu, naPapku, zanyatyeKomandy
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h3 className="text-foreground text-sm font-medium">Журналы</h3>
       <Knopka rang="vtoraya" aktiven={!!naPapku && !opening} zhdyot={opening} onClick={() => void open()}>
-        {opening ? "Открываю…" : "Открыть папку с логами"}
+        {opening ? "Открываю…" : "Открыть папку с журналами"}
       </Knopka>
     </div>
     {error && <p role="alert" className="text-danger text-[13px]">{error}</p>}

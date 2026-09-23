@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Knopka } from "./ui";
 
 // Uninstall dialog. The one irreversible screen in the program, so it asks
 // the one question that matters out loud: keep the keys or erase them. The
@@ -17,48 +18,46 @@ export function Udalenie({ naUdalenie, naOtmenu }: UdalenieProps) {
     <section
       role="dialog"
       aria-label="Удаление программы"
-      className="border-border bg-surface flex max-w-xl flex-col gap-4 rounded-lg border p-6"
+      className="border-border bg-surface flex max-w-xl flex-col gap-4 rounded-xl border p-6"
     >
-      <h3 className="text-foreground text-lg font-semibold">удалить программу</h3>
-      <p className="text-fg-secondary text-sm">
-        снимутся правила брандмауэра, VPN, служба и автозапуск, потом каталог программы.
-        ключи серверов лежат отдельно и переживают снятие службы, поэтому вопрос
+      {/* Экран писался до редизайна и остался со строчными заголовками,
+          своими кнопками и чужим радиусом. Приведён к остальному окну
+          23.09.2026; вопрос и порядок ответов те же. */}
+      <h3 className="text-foreground text-lg font-semibold">Удалить программу</h3>
+      <p className="text-fg-secondary text-sm leading-relaxed">
+        Снимутся защита сети, VPN, служба и автозапуск, потом удалится папка программы.
+        Ключи серверов лежат отдельно и переживают удаление службы, поэтому о них отдельный вопрос.
       </p>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-foreground text-sm font-medium">что делать с ключами</legend>
-        <label className="text-foreground flex items-start gap-2 text-sm">
-          <input type="radio" name="klyuchi" checked={vybor === "ostavit"} onChange={() => zadatVybor("ostavit")} />
+        <legend className="text-foreground mb-1 text-sm font-medium">Что делать с ключами</legend>
+        <label className="text-foreground flex items-start gap-2 text-sm leading-relaxed">
+          <input type="radio" name="klyuchi" className="mt-0.5 accent-[var(--color-accent)]" checked={vybor === "ostavit"} onChange={() => zadatVybor("ostavit")} />
           <span>
-            оставить <span className="text-fg-muted" data-testid="umolchanie">(оставить это безопасный ответ: переустановка найдёт серверы на месте)</span>
+            <span data-testid="umolchanie">Оставить <span className="text-fg-muted">- безопасный ответ: после переустановки серверы окажутся на месте</span></span>
           </span>
         </label>
-        <label className="text-foreground flex items-start gap-2 text-sm">
-          <input type="radio" name="klyuchi" checked={vybor === "steret"} onChange={() => zadatVybor("steret")} />
+        <label className="text-foreground flex items-start gap-2 text-sm leading-relaxed">
+          <input type="radio" name="klyuchi" className="mt-0.5 accent-[var(--color-danger)]" checked={vybor === "steret"} onChange={() => zadatVybor("steret")} />
           <span>
-            стереть <span className="text-danger">(насовсем, восстановить будет нечем)</span>
+            Стереть <span className="text-danger">- насовсем, восстановить будет нечем</span>
           </span>
         </label>
       </fieldset>
 
-      <div className="flex gap-3">
-        <button
-          type="button"
-          data-testid="podtverdit"
-          disabled={vybor === null}
+      <div className="flex gap-2">
+        <Knopka
+          rang="opasnaya"
+          bolshaya
+          testId="podtverdit"
+          aktiven={vybor !== null}
           onClick={() => vybor !== null && naUdalenie(vybor === "steret")}
-          className="bg-danger text-background disabled:bg-fill disabled:text-fg-faint rounded-md px-4 py-2 text-sm font-medium"
         >
           Удалить
-        </button>
-        <button
-          type="button"
-          data-testid="otmena"
-          onClick={naOtmenu}
-          className="text-fg-secondary hover:text-foreground rounded-md px-4 py-2 text-sm"
-        >
+        </Knopka>
+        <Knopka rang="tekst" bolshaya testId="otmena" onClick={naOtmenu}>
           Отмена
-        </button>
+        </Knopka>
       </div>
     </section>
   );

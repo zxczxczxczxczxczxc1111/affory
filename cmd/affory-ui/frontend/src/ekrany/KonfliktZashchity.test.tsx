@@ -45,7 +45,7 @@ it("конфликтующий черновик сохраняется, испр
   fireEvent.click(screen.getByRole("tab",{name:/Сайты/}));fireEvent.click(screen.getByRole("button",{name:"Добавить"}));
   fireEvent.change(screen.getByLabelText("Домен сайта"),{target:{value:"example.org"}});fireEvent.click(screen.getByRole("button",{name:"Добавить в черновик"}));
   view.rerender(<Pravila {...props} status={{sostoyanie:"vyklyuchen",kill_switch:true}}/>);
-  expect(screen.getByRole("alert")).toHaveTextContent("сайты: 1");
+  expect(screen.getByRole("alert")).toHaveTextContent("1 сайт");
   expect(screen.getByRole("button",{name:"Применить изменения"})).toBeDisabled();
   fireEvent.click(screen.getByRole("button",{name:"Применить изменения"}));expect(send).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("combobox",{name:"Маршрут example.org"}));fireEvent.click(screen.getByRole("option",{name:"Через VPN"}));

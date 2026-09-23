@@ -62,9 +62,9 @@ func Imya(ctx context.Context, imya string) Itog {
 	defer otmena()
 	adresa, err := net.DefaultResolver.LookupHost(ctx, imya)
 	if err != nil {
-		return nePoluchilos(nach, fmt.Sprintf("%s не разрешается: %v", imya, korotko(err)))
+		return nePoluchilos(nach, fmt.Sprintf("%s не находится по имени: %v", imya, korotko(err)))
 	}
-	return poluchilos(nach, fmt.Sprintf("%s -> %s", imya, adresa[0]))
+	return poluchilos(nach, fmt.Sprintf("%s это %s", imya, adresa[0]))
 }
 
 // ItogUDP это ответ пробы UDP. Потери и разброс собираются серией: один пакет
@@ -121,8 +121,8 @@ func UDP(ctx context.Context, adres string) ItogUDP {
 	// Проба СЧИТАЕТ, а не судит: решение «рвать или нет» остаётся снаружи.
 	// Потеря половины пакетов это ещё рабочая мобильная сеть, и обрывать по ней
 	// связь значит обрывать её на ровном месте.
-	itog.Itog = poluchilos(nach, fmt.Sprintf("получено %d из %d, среднее %v, разброс %v",
-		itog.Poluchheno, itog.Otpravleno, itog.Sredniy.Round(time.Millisecond), itog.Razbros.Round(time.Millisecond)))
+	itog.Itog = poluchilos(nach, fmt.Sprintf("получено %d из %d, среднее %s, разброс %s",
+		itog.Poluchheno, itog.Otpravleno, Millisekundy(itog.Sredniy), Millisekundy(itog.Razbros)))
 	return itog
 }
 
@@ -189,4 +189,18 @@ func korotko(err error) string {
 		return "нет ответа за отведённый срок"
 	}
 	return err.Error()
+}
+
+// Millisekundy печатает длительность по-русски.
+//
+// time.Duration печатает себя сам и всегда латиницей: «41ms», «1.2s». В
+// журнале это неважно, а на экране рядом с русским текстом читается
+// машинно (владелец, 23.09.2026). Округление до миллисекунды здесь и
+// нужно: доли миллисекунды на экране не значат ничего.
+func Millisekundy(d time.Duration) string {
+	ms := d.Round(time.Millisecond).Milliseconds()
+	if ms < 1000 {
+		return fmt.Sprintf("%d мс", ms)
+	}
+	return fmt.Sprintf("%.1f с", d.Seconds())
 }

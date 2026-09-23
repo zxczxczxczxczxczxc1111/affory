@@ -48,10 +48,10 @@ func ProveritUtechki(ctx context.Context, v VhodProverki) RezultatProverki {
 	r.Punkty = append(r.Punkty, r.punktVyhoda(ctx, v))
 	r.Punkty = append(r.Punkty, punktIPv6(v))
 	r.Punkty = append(r.Punkty,
-		PunktProverki{Imya: "DNS", Itog: ItogNeVidim,
-			Tekst: "запросы к системному резолверу перехватывает hijack-dns внутри TUN; куда уходят пакеты, служба не видит, это меряет стенд по pktmon"},
-		PunktProverki{Imya: "DoH браузера", Itog: ItogNeVidim,
-			Tekst: "браузер с включённым DoH резолвит сам, мимо системного резолвера; правила по доменам его не видят, проверка тоже"},
+		PunktProverki{Imya: "поиск сайтов по имени", Itog: ItogNeVidim,
+			Tekst: "эти запросы забирает на себя VPN. Куда они уходят дальше, программа со своей стороны увидеть не может: это проверяется отдельно, на испытательной машине"},
+		PunktProverki{Imya: "браузер со своим поиском адресов (DoH)", Itog: ItogNeVidim,
+			Tekst: "такой браузер ищет адреса сам, своим DoH, и общую настройку обходит. Правила по сайтам на него не действуют, и эта проверка его тоже не видит"},
 	)
 	return r
 }
