@@ -387,7 +387,12 @@ export function Marshruty({
           onChange={(value) => save({ ...trafik, po_umolchaniyu: value })}
         />
         <p className="text-fg-muted text-sm leading-relaxed">
-          {status.kill_switch?"Защита сети включена: весь трафик идёт через VPN. Прямые маршруты можно задать, но работать они начнут после выключения защиты":trafik.po_umolchaniyu === "vpn"
+          {/* Под защитой это место говорит и про неё, и про спящие правила:
+              двумя абзацами в одной колонке (второй стоял в самом низу) одно
+              и то же читалось как два разных сообщения. */}
+          {status.kill_switch?(pryamyeSpyat
+            ?"Защита сети включена: весь трафик идёт через VPN. Прямые маршруты сейчас не действуют и заработают снова после её выключения"
+            :"Защита сети включена: весь трафик идёт через VPN"):trafik.po_umolchaniyu === "vpn"
             ? "VPN для всего интернета. Добавь приложения и сайты, которые должны работать напрямую"
             : "Прямой интернет. Через VPN идёт только то, что добавлено в правила"}
         </p>
@@ -428,7 +433,6 @@ export function Marshruty({
           <Knopka rang="glavnaya" aktiven={!disabled && !conflict} zhdyot={applying} onClick={() => void apply()}>Применить изменения</Knopka>
           <Knopka rang="vtoraya" aktiven={!disabled} onClick={() => {setDraft(null);setPath("");setDomain("");setAdding(false);setApplyError("");setNotice("Черновик отменён");}}>Отменить изменения</Knopka>
         </div>}
-        {pryamyeSpyat && <p className="text-fg-muted text-[13px] leading-relaxed">Защита сети включена, поэтому прямые маршруты сейчас не действуют: весь трафик идёт через VPN. Они снова заработают, когда выключишь защиту в настройках</p>}
         {notice && <p role="status" className="text-fg-secondary text-[13px]">{notice}</p>}
         {applyError && <p role="alert" className="text-danger text-[13px]">{applyError}</p>}
         {pravila?.trebuet_podyoma && (

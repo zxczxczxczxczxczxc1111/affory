@@ -115,3 +115,36 @@ describe("строка, карточка, шапка, сегмент", () => {
     expect(screen.getByTestId("tg").className).toMatch(/text-warn/);
   });
 });
+
+// Стрелка в группе переключателей до 23.09.2026 не делала ничего: с
+// клавиатуры режим менялся только Tab и пробелом, а стрелку человек пробует
+// первой. По практике ARIA стрелка и двигает фокус, и меняет выбор.
+describe("стрелки в группе переключателей", () => {
+  const znacheniya = [
+    { z: "vpn" as const, podpis: "Всё через VPN" },
+    { z: "direct" as const, podpis: "Только выбранное" },
+  ];
+
+  it("двигают выбор по кругу и ведут за собой фокус", () => {
+    const na = vi.fn();
+    render(<Segment znacheniya={znacheniya} vybrano="vpn" naVybor={na} aria-label="Куда идёт трафик" />);
+    const gruppa = screen.getByRole("radiogroup");
+    fireEvent.keyDown(gruppa, { key: "ArrowRight" });
+    expect(na).toHaveBeenCalledExactlyOnceWith("direct");
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Только выбранное" }));
+    // Круг замкнут: со второго назад возвращает к первому.
+    na.mockClear();
+    fireEvent.keyDown(gruppa, { key: "ArrowLeft" });
+    expect(na).toHaveBeenCalledExactlyOnceWith("direct");
+  });
+
+  it("молчат у выключенной группы и на чужих клавишах", () => {
+    const na = vi.fn();
+    const { rerender } = render(<Segment znacheniya={znacheniya} vybrano="vpn" naVybor={na} aktiven={false} aria-label="Куда идёт трафик" />);
+    fireEvent.keyDown(screen.getByRole("radiogroup"), { key: "ArrowRight" });
+    expect(na).not.toHaveBeenCalled();
+    rerender(<Segment znacheniya={znacheniya} vybrano="vpn" naVybor={na} aria-label="Куда идёт трафик" />);
+    fireEvent.keyDown(screen.getByRole("radiogroup"), { key: "Home" });
+    expect(na).not.toHaveBeenCalled();
+  });
+});

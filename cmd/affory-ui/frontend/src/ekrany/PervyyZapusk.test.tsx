@@ -62,3 +62,18 @@ it("до нажатия и после отказа полосы нет", () => {
   rerender(<PervyyZapusk sostoyanie="otkaz" prichina="UAC отклонён" naUstanovku={() => undefined} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
 });
+
+// Заголовок обязан идти за состоянием. «Служба не установлена» над бегущей
+// полосой установки противоречило само себе: человек читает первую строку и
+// решает, что нажатие не сработало (23.09.2026).
+it("во время установки заголовок говорит про установку, а не про её отсутствие", () => {
+  const { rerender } = render(<PervyyZapusk sostoyanie="net-sluzhby" naUstanovku={() => undefined} />);
+  expect(screen.getByRole("heading")).toHaveTextContent("Служба не установлена");
+  rerender(<PervyyZapusk sostoyanie="ustanavlivaetsya" naUstanovku={() => undefined} />);
+  expect(screen.getByRole("heading")).not.toHaveTextContent("не установлена");
+});
+
+it("после отказа кнопка зовёт попробовать снова", () => {
+  render(<PervyyZapusk sostoyanie="otkaz" prichina="запрос прав отклонён" naUstanovku={() => undefined} />);
+  expect(screen.getByTestId("ustanovit")).toHaveTextContent(/снова/i);
+});

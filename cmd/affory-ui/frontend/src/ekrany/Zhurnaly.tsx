@@ -29,7 +29,7 @@ export function Zhurnaly({ status, disabled, naKomandu, naPapku, zanyatyeKomandy
     <div className="flex items-center justify-between gap-4">
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-fg-secondary text-sm">Журнал соединений</span>
-        <span className="text-fg-muted text-[13px]">Приложение, адрес и маршрут каждого соединения. Помогает проверить работу правил.</span>
+        <span className="text-fg-muted text-[13px]">Приложение, адрес и маршрут каждого соединения. Помогает проверить работу правил</span>
       </span>
       <Tumbler testId="zhurnal" podpis="Журнал соединений" aktiven={!disabled && !zanyatyeKomandy.setJournal}
         vkl={status.zhurnal ?? false} naSmenu={vkl => naKomandu("setJournal", {vkl})}/>
@@ -37,14 +37,14 @@ export function Zhurnaly({ status, disabled, naKomandu, naPapku, zanyatyeKomandy
     <div className="flex items-center justify-between gap-4">
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-fg-secondary text-sm">Подробный журнал для отладки</span>
-        <span className="text-fg-muted text-[13px]">Раз в секунду: порты, соединения, скорость и задержка. Нужен при нестабильной связи.</span>
+        <span className="text-fg-muted text-[13px]">Раз в секунду: порты, соединения, скорость и задержка. Нужен при нестабильной связи</span>
       </span>
       <Tumbler testId="diagnostika" podpis="Подробный журнал для отладки" aktiven={!disabled && !zanyatyeKomandy.setDiagnostics}
         vkl={status.diagnostika ?? false} naSmenu={vkl => naKomandu("setDiagnostics", {vkl})}/>
     </div>
     <div><Knopka rang="vtoraya" testId="ochistit-zhurnal" aktiven={!disabled && !zanyatyeKomandy.clearJournal}
       zhdyot={!!zanyatyeKomandy.clearJournal} onClick={() => naKomandu("clearJournal", {})}>
-      {zanyatyeKomandy.clearJournal ? "Стираю" : "Очистить журнал"}
+      {zanyatyeKomandy.clearJournal ? "Стираю…" : "Очистить журнал"}
     </Knopka></div>
   </div>;
 }

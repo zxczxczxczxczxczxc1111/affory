@@ -17,6 +17,8 @@
 //     ?sluchay=molchit      служба не отвечает
 //     ?sluchay=otkaz        подъём не удался, окно показывает объяснение
 //     ?sluchay=pusto        подписки нет, список серверов пуст
+//     ?sluchay=novyy        службы нет вовсе: экран первого запуска
+//     ?sluchay=novyy-otkaz  тот же экран, но установку отклонили
 //
 // Три последних в госте не воспроизводятся без нарочной поломки продукта, и
 // именно поэтому экраны отказов не проверял никто.
@@ -37,6 +39,11 @@ function parametr(imya: string, poumolchaniyu: string): string {
 import type { Server } from "../protokol";
 
 const SLUCHAY = parametr("sluchay", "podnyat");
+
+/** Первый запуск: службы в системе нет, канал молчит, и единственное, что
+ *  делает окно, это кнопка установки. Флаг живой - подставная установка его
+ *  снимает, и окно само уходит на обычный экран, как в жизни после UAC. */
+let sluzhbaEst = SLUCHAY !== "novyy" && SLUCHAY !== "novyy-otkaz";
 
 /** Номер выпуска, который находит подставная проверка: следующий минор от своей
  *  версии. Числом здесь стоять нельзя - оно разошлось бы с VERSIYA ровно так,
@@ -84,8 +91,12 @@ const status: Record<string, unknown> = {
     : SLUCHAY === "otkaz" ? "ne-neset"
     : "vyklyuchen",
   vybran_id: "nl",
-  nesushchiy_id: SLUCHAY === "podnyat" ? "nl" : "",
-  nesushchiy_imya: SLUCHAY === "podnyat" ? "Нидерланды · Амстердам" : "",
+  // Пустой строки тут быть не может: оба поля в протоколе с omitempty, то
+  // есть служба их просто НЕ ШЛЁТ, пока никто ничего не несёт. Пустая строка
+  // стояла здесь до 23.09.2026 и показывала на выключенном окне «Сервер не
+  // выбран» при выбранном сервере - экран, которого в жизни не бывает.
+  nesushchiy_id: SLUCHAY === "podnyat" ? "nl" : undefined,
+  nesushchiy_imya: SLUCHAY === "podnyat" ? "Нидерланды · Амстердам" : undefined,
   rezhim_marshruta: "ruchnoy",
   trafik_po_umolchaniyu: "vpn",
   kill_switch: false,
@@ -122,8 +133,8 @@ function perevesti(komanda: string): void {
   }
   if (komanda === "disconnect") {
     status.sostoyanie = "vyklyuchen";
-    status.nesushchiy_id = "";
-    status.nesushchiy_imya = "";
+    status.nesushchiy_id = undefined;
+    status.nesushchiy_imya = undefined;
     status.oshibka = undefined;
   }
 }
@@ -309,7 +320,31 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
       zapushchennye:included?[{pid:24680,created:"134000000000000001",put:child,imya:child.split("\\").pop(),cherez:launcher?[root.put,child]:[root.put],marshrut:winner.marshrut,pravilo_put:winner.put,pravilo_imya:winner.imya,pereopredelen:winner.put!==root.put}]:[],
       neizvestno:1,neizvestnye:["C:\\Apps\\Separate.exe"],ogranichen:false};
   },
-  listConnections: () => ({yadro:status.sostoyanie==="podnyat",vremya:new Date().toISOString(),ogranichen:false,soedineniya:[]}),
+  // Пустой список стоял здесь до 23.09.2026, и проверка охвата всегда падала
+  // в ветку «подходящих соединений не обнаружено»: сам список соединений в
+  // окне не видел никто. Фильтр учитывается, иначе проба любого домена
+  // показывала бы чужие строки.
+  listConnections: (v) => {
+    const domen = stroka(v.domen).toLowerCase();
+    const put = stroka(v.put).toLowerCase();
+    // Значения ровно той формы, какую отдаёт clash_api: выход это первое
+    // звено цепочки («srv-nl», «direct»), правило это строка sing-box вида
+    // «domain_suffix=x => srv-nl», путь процесса полный. Своя форма показала
+    // бы «не удалось определить» на каждой строке.
+    const hrom = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+    const vse = [
+      { Id: "1", Host: "youtube.com", Adres: "203.0.113.60", Port: 443, Protsess: hrom, Vyhod: "srv-nl", Pravilo: "rule_set=service-youtube => srv-nl", Nachalo: new Date(Date.now() - 42 * 1000).toISOString() },
+      { Id: "2", Host: "rr3---sn-5hne6nsy.googlevideo.com", Adres: "203.0.113.61", Port: 443, Protsess: hrom, Vyhod: "srv-nl", Pravilo: "domain_suffix=googlevideo.com => srv-nl", Nachalo: new Date(Date.now() - 9 * 1000).toISOString() },
+      { Id: "3", Host: "gosuslugi.ru", Adres: "198.51.100.7", Port: 443, Protsess: hrom, Vyhod: "direct", Pravilo: "domain_suffix=gosuslugi.ru => direct", Nachalo: new Date(Date.now() - 4 * 60 * 1000).toISOString() },
+      { Id: "4", Host: "", Adres: "203.0.113.62", Port: 443, Protsess: "C:\\Users\\home\\AppData\\Local\\Discord\\app-1.0.9187\\Discord.exe", Vyhod: "srv-nl", Pravilo: "final => vybor", Nachalo: new Date(Date.now() - 77 * 1000).toISOString() },
+    ];
+    const podhodit = (s: typeof vse[number]) => {
+      if (domen) return s.Host === domen || s.Host.endsWith(`.${domen}`);
+      if (put) return put.endsWith(`\\${s.Protsess.toLowerCase()}`);
+      return true;
+    };
+    return { yadro: status.sostoyanie === "podnyat", vremya: new Date().toISOString(), ogranichen: false, soedineniya: vse.filter(podhodit) };
+  },
   setRules: (v) => {
     if (v.trafik && typeof v.trafik === "object") {
       pravila.trafik = { ...pravila.trafik, ...(v.trafik as Record<string, unknown>) } as typeof pravila.trafik;
@@ -367,11 +402,11 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
     ],
   }),
   startSpeedTest: (v) => {
-    skorost = { id: Date.now(), phase: "download", path: "vpn", provider: stroka(v.provider) || "ookla", name: "Speedtest", attempt: 1 };
+    skorost = { id: Date.now(), phase: "download", path: "vpn", provider: stroka(v.provider) || "librespeed", name: "LibreSpeed · Helsinki", attempt: 1 };
     setTimeout(() => {
       skorost = {
         ...skorost, phase: "complete",
-        result: { name: "Speedtest", download_mbps: 284.6, upload_mbps: 92.1, attempts: [{ name: "Speedtest" }] },
+        result: { name: "LibreSpeed · Helsinki", download_mbps: 284.6, upload_mbps: 92.1, attempts: [{ name: "LibreSpeed · Helsinki" }] },
       };
     }, 600);
     return skorost;
@@ -416,12 +451,22 @@ export const Call = {
   async ByName(imya: string, ...args: unknown[]): Promise<unknown> {
     if (imya === "main.most.VybratPrilozhenie") throw new Error("В браузерном стенде выбор файла недоступен. В установленном Affory откроется окно выбора приложения.");
     if (imya === "main.most.OtkrytPapkuZhurnalov") throw new Error("В браузерном стенде Проводник недоступен. В установленном Affory кнопка открывает папку журналов.");
-    if (imya === "main.most.SluzhbaUstanovlena") return true;
+    if (imya === "main.most.SluzhbaUstanovlena") return sluzhbaEst;
+    if (imya === "main.most.UstanovitSluzhbu") {
+      if (SLUCHAY === "novyy-otkaz") throw new Error("права не выданы: запрос отклонён");
+      // Служба появляется не мгновенно: окно должно успеть показать полосу
+      // хода, иначе эта ветка так и останется непройденной.
+      setTimeout(() => { sluzhbaEst = true; }, 4000);
+      return null;
+    }
     // Запущенные программы стенда. Без них карточки сервисов с клиентом
     // выглядели бы «не запущено» на всех снимках, а у Steam маршрут вовсе
     // нельзя было бы выбрать: путь берётся среди запущенных.
     if (imya === "main.most.SpisokProtsessov") return ZAPUSHCHENNYE;
     if (imya === "main.most.Zvat") {
+      // Канала нет, пока нет службы: окно ловит это исключением и спрашивает
+      // диспетчер, установлена ли она вообще.
+      if (!sluzhbaEst) throw new Error("канал недоступен: нет службы");
       const komanda = String(args[0]);
       // Тело запроса приезжает вторым доводом строкой JSON (см. most.ts).
       // Раньше заглушка его выбрасывала, и выбор сервера не доезжал никуда:

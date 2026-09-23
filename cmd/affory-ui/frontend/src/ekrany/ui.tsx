@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { TEKST_BEZ_KODA, tekstOtkaza } from "./otkazy";
-import { Vertushka } from "./ui-novye";
+import { strelkiRadio, Vertushka } from "./ui-novye";
 
 // Примитивы редизайна лежат рядом и выходят наружу отсюда: для экранов
 // адрес один, а править их можно, не трогая старую грамматику.
@@ -263,7 +263,8 @@ export function Segment<T extends string>({ znacheniya, vybrano, naVybor, aktive
   "aria-label"?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={podpis} className={`bg-elevated border-border inline-flex rounded-lg border p-1 text-[13px] ${rastyanut ? "w-full" : ""}`}>
+    <div role="radiogroup" aria-label={podpis} onKeyDown={aktiven ? strelkiRadio(znacheniya, vybrano, naVybor) : undefined}
+      className={`bg-elevated border-border inline-flex rounded-lg border p-1 text-[13px] ${rastyanut ? "w-full" : ""}`}>
       {znacheniya.map(({ z, podpis: p, disabled }) => {
         const on = z === vybrano;
         return (

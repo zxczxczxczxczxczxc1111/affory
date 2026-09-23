@@ -50,7 +50,9 @@ export function Skorost({ snapshot, error, pending, disabled, start, cancel }: {
         <div className="mt-3 grid grid-cols-2 gap-3" role="status">
           <Storona podpis="↓ Замер приёма" chislo={format(result.download_mbps)} />
           <Storona podpis="↑ Замер отдачи" chislo={format(result.upload_mbps)} />
-          <p className="text-fg-muted col-span-2 text-[13px]">{result.name}</p>
+          {/* Голое имя сервиса под числами читалось обрывком: «LibreSpeed ·
+              Helsinki» само по себе не говорит, чем оно приходится замеру. */}
+          <p className="text-fg-muted col-span-2 text-[13px]">Замер через {result.name}</p>
         </div>
       )}
 

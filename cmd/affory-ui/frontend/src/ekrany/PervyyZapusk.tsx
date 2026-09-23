@@ -1,4 +1,4 @@
-import { Polosa } from "./ui";
+import { Knopka, Polosa } from "./ui";
 // First run (spec §9.2): the service is not installed, and exactly one thing
 // is active, the install button. Pure over props; App owns the UAC call and
 // the status polling that follows it.
@@ -20,7 +20,11 @@ export function PervyyZapusk({ sostoyanie, prichina, naUstanovku }: PervyyZapusk
     // экран. Заголовок с прописной, как у всех остальных экранов.
     <section className="flex h-full flex-col items-center justify-center gap-4 p-8" aria-label="Первый запуск">
       <div className="flex w-full max-w-prose flex-col gap-4">
-      <h2 className="text-foreground text-2xl font-semibold">Служба не установлена</h2>
+      {/* Заголовок идёт ЗА состоянием: «Служба не установлена» над бегущей
+          полосой установки противоречило само себе. */}
+      <h2 className="text-foreground text-xl font-semibold leading-tight">
+        {idyot ? "Устанавливается служба" : "Служба не установлена"}
+      </h2>
       <p className="text-fg-secondary max-w-prose text-sm">
         VPN поднимает служба Windows, и ей нужны права администратора один раз,
         при установке; дальше программа работает без запросов
@@ -30,8 +34,8 @@ export function PervyyZapusk({ sostoyanie, prichina, naUstanovku }: PervyyZapusk
       )}
       {idyot ? (
         <div className="flex flex-col gap-2">
-          <p className="text-fg-muted text-sm" data-testid="hod">
-            установка идёт, ответь на запрос Windows и подожди
+          <p className="text-fg-secondary text-sm" data-testid="hod">
+            Ответь на запрос Windows и подожди
           </p>
           {/* Запрос UAC может оказаться за окном, а служба поднимается
               несколько секунд: без движения на экране это неотличимо от
@@ -39,14 +43,9 @@ export function PervyyZapusk({ sostoyanie, prichina, naUstanovku }: PervyyZapusk
           <Polosa podpis="ход установки службы" />
         </div>
       ) : (
-        <button
-          type="button"
-          data-testid="ustanovit"
-          onClick={naUstanovku}
-          className="bg-accent text-foreground hover:brightness-110 self-start rounded-md px-5 py-2.5 text-base font-medium"
-        >
-          Установить службу
-        </button>
+        <Knopka rang="glavnaya" bolshaya testId="ustanovit" onClick={naUstanovku} className="self-start">
+          {sostoyanie === "otkaz" ? "Попробовать снова" : "Установить службу"}
+        </Knopka>
       )}
       </div>
     </section>

@@ -34,10 +34,17 @@ it("при включённой защите прямой режим и вари
   expect(screen.getByRole("combobox",{name:"Маршрут сервиса YouTube"})).toHaveTextContent("Напрямую");
 });
 
-it("под защитой окно говорит, что прямые маршруты сейчас не действуют",()=>{
+it("под защитой окно говорит, что прямые маршруты сейчас не действуют, и говорит это ОДИН раз",()=>{
   render(<Pravila status={{sostoyanie:"podnyat",kill_switch:true}} otlozheno={{}} naKomandu={vi.fn()}
     pravila={{...rules,trafik:{...trafik,domeny:[{domen:"example.org",marshrut:"direct"}]}}}/>);
+  // getBy, а не getAllBy: до 23.09.2026 то же самое стояло в колонке дважды,
+  // вверху и в самом низу, и читалось как два разных сообщения.
   expect(screen.getByText(/прямые маршруты сейчас не действуют/i)).toBeInTheDocument();
+});
+it("без прямых правил защита не поминает спящие маршруты",()=>{
+  render(<Pravila status={{sostoyanie:"podnyat",kill_switch:true}} otlozheno={{}} naKomandu={vi.fn()} pravila={rules}/>);
+  expect(screen.getByText(/Защита сети включена: весь трафик идёт через VPN$/)).toBeInTheDocument();
+  expect(screen.queryByText(/не действуют/i)).toBeNull();
 });
 
 it("новая форма при защите предлагает исключение и добавляет его",()=>{

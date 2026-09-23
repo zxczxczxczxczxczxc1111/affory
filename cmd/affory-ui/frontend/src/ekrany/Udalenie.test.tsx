@@ -46,3 +46,15 @@ describe("удаление программы", () => {
     expect(na).not.toHaveBeenCalled();
   });
 });
+
+// Кнопка «Удалить» исчезает вместе с рядом, когда открывается диалог, и
+// фокус после неё улетал в начало страницы: с клавиатуры человек заново шёл
+// по всей вкладке до вопроса про ключи (23.09.2026).
+it("диалог забирает фокус себе и закрывается по Esc", () => {
+  const otmena = vi.fn();
+  render(<Udalenie naUdalenie={() => undefined} naOtmenu={otmena} />);
+  const dialog = screen.getByRole("dialog");
+  expect(document.activeElement).toBe(dialog);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(otmena).toHaveBeenCalledOnce();
+});

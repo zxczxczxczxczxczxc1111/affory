@@ -161,7 +161,9 @@ export function Glavnyy({
     status.sostoyanie === "vosstanavlivaetsya";
   const molchit = status.sostoyanie === "sluzhba-molchit";
   const rezhim = status.rezhim_marshruta ?? "avto";
-  const selected = status.nesushchiy_id ?? status.vybran_id ?? spisok?.vybran;
+  // `||`, а не `??`: пустая строка это тоже «никто не несёт», и через `??`
+  // она прошла бы дальше выбранным сервером, оставив экран без имени.
+  const selected = status.nesushchiy_id || status.vybran_id || spisok?.vybran;
   const loading = spisok === null && servery === undefined && !spisokOtkaz;
   const route = pravila?.trafik?.po_umolchaniyu ?? "vpn";
   const [query, setQuery] = useState("");

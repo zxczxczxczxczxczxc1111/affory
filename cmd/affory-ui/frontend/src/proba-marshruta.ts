@@ -19,7 +19,7 @@ export function opisatPraviloSoedineniya(rule:string):string {
   if(condition==="inbound=proksi-in") return "Соединение пришло через локальный прокси Affory";
   if(condition.startsWith("rule_set=")) return "Сработал набор доменов";
   if(condition==="ip_is_private=true" || condition==="ip_is_private") return "Сработало исключение для локального IP-адреса";
-  return "Причина выбора доступна в технических сведениях ядра";
+  return "Причина выбора видна в технических сведениях ниже";
 }
 
 // This is a settings preview, not a network probe. Unknown launch history and
@@ -69,7 +69,13 @@ export function obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,trafik,katal
   else dns={marshrut:dnsDefault,prichina:programmy.some(a=>a.marshrut==="vpn")?"DNS по умолчанию через VPN: хотя бы одно приложение направлено в VPN":"DNS по общему режиму"};
   primechaniya.push("Расчёт DNS относится к обычным DNS-запросам, перехваченным Affory. Защищённый DNS самого браузера и поиск адреса на VPN-сервере им не проверяются.");
   primechaniya.push("Правило сайта сработает, только если Affory видит его имя. Если имя скрыто, правило приложения надёжнее.");
-  const invalid=killSwitch && (trafik.po_umolchaniyu==="direct" || [...trafik.prilozheniya,...trafik.domeny,...trafik.servisy].some(r=>r.marshrut==="direct"));
-  if(invalid) return {dannye:{marshrut:null,prichina:"Эти настройки нельзя применить: прямые маршруты конфликтуют с блокировкой сети вне VPN"},dns:{marshrut:null,prichina:"Сначала устрани конфликт настроек"},primechaniya};
+  // Под защитой прямых маршрутов не бывает: служба собирает конфиг без них
+  // (`bezPryamyh` в internal/genkonfig/trafik.go), и правило человека просто
+  // спит до выключения защиты. До 23.09.2026 здесь стоял отказ «настройки
+  // нельзя применить» - он остался от времени, когда защита и прямое правило
+  // и вправду не сходились, и после снятия того запрета проба врала.
+  if(killSwitch && dannye.marshrut!=="vpn"){
+    dannye={marshrut:"vpn",prichina:"Защита сети включена: прямые маршруты сейчас не действуют, весь трафик идёт через VPN. Они заработают снова, когда выключишь защиту"};
+  }
   return {dannye,dns,primechaniya};
 }

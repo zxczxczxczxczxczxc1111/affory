@@ -47,10 +47,23 @@ it("DNS по умолчанию для VPN-приложения, локальн�
   expect(normalizovatProbuDomena("127.0.0.1")).toBe("");
   expect(normalizovatProbuDomena("a".repeat(64)+".org")).toBe("");
 });
-it("не выдаёт конфликт блокировки за применимый маршрут",()=>{
-  expect(obyasnitMarshrut({...base,killSwitch:true}).dannye.prichina).toContain("нельзя применить");
+// Под защитой прямых маршрутов не бывает: служба собирает конфиг без них, а
+// правило человека спит до выключения защиты. Прежде проба отвечала «эти
+// настройки нельзя применить» - остаток запрета, снятого 23.09.2026.
+it("под защитой прямое правило отвечает VPN и говорит, что спит",()=>{
+  const pryamoe={...trafik,prilozheniya:[{...trafik.prilozheniya[0],marshrut:"direct" as const}]};
+  const p=obyasnitMarshrut({...base,trafik:pryamoe,killSwitch:true});
+  expect(p.dannye.marshrut).toBe("vpn");
+  expect(p.dannye.prichina).toContain("не действуют");
+  expect(p.dannye.prichina).not.toContain("нельзя применить");
   const valid={...trafik,po_umolchaniyu:"vpn" as const,domeny:[]};
   expect(obyasnitMarshrut({...base,trafik:valid,killSwitch:true,bezRu:false}).dns.marshrut).toBe("vpn");
+});
+it("под защитой правило со своим VPN объясняется собой, а не защитой",()=>{
+  const vpnPravilo={...trafik,po_umolchaniyu:"vpn" as const,prilozheniya:[],servisy:[],domeny:[{domen:"example.com",marshrut:"vpn" as const}]};
+  const p=obyasnitMarshrut({...base,trafik:vpnPravilo,killSwitch:true,domen:"example.com",put:""});
+  expect(p.dannye.marshrut).toBe("vpn");
+  expect(p.dannye.prichina).toContain("example.com");
 });
 
 // D2. Карточка сервиса накрывает и клиента. Проба, знающая только свои

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Knopka } from "./ui";
 
 // Uninstall dialog. The one irreversible screen in the program, so it asks
@@ -13,12 +13,22 @@ export interface UdalenieProps {
 
 export function Udalenie({ naUdalenie, naOtmenu }: UdalenieProps) {
   const [vybor, zadatVybor] = useState<"ostavit" | "steret" | null>(null);
+  const svoy = useRef<HTMLElement>(null);
+
+  // Кнопка, открывшая диалог, исчезает вместе с рядом, и фокус после неё
+  // уходил в начало страницы: с клавиатуры до вопроса про ключи надо было
+  // пройти всю вкладку заново. Фокус на самом диалоге, а не на кнопке:
+  // сначала читается вопрос, а уже потом выбирается ответ.
+  useEffect(() => { svoy.current?.focus(); }, []);
 
   return (
     <section
+      ref={svoy}
+      tabIndex={-1}
       role="dialog"
       aria-label="Удаление программы"
-      className="border-border bg-surface flex max-w-xl flex-col gap-4 rounded-xl border p-6"
+      onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); naOtmenu(); } }}
+      className="border-border bg-surface flex max-w-xl flex-col gap-4 rounded-xl border p-6 outline-none"
     >
       {/* Экран писался до редизайна и остался со строчными заголовками,
           своими кнопками и чужим радиусом. Приведён к остальному окну

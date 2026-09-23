@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { ReactNode, Ref } from "react";
+import type { KeyboardEvent as SobytieKlavishi, ReactNode, Ref } from "react";
 import { IkPoisk, IkStrelkaVniz, IkTochki, IkTreugolnik } from "../ikonki";
 
 // Примитивы редизайна. Отдельным файлом, а не внутри ui.tsx, потому что ui.tsx
@@ -253,6 +253,33 @@ export function ZnachokServisa({ src, className = "" }: { src: string; className
   );
 }
 
+/** Стрелки внутри группы переключателей.
+ *
+ *  По практике ARIA стрелка в radiogroup и двигает фокус, и меняет выбор -
+ *  это первое, что пробует человек с клавиатуры. До 23.09.2026 не
+ *  происходило ничего: обе группы окна слушали только Tab и пробел. */
+export function strelkiRadio<T extends string>(
+  znacheniya: { z: T; disabled?: boolean }[],
+  tekushchiy: T,
+  naVybor: (z: T) => void,
+): (e: SobytieKlavishi<HTMLDivElement>) => void {
+  return e => {
+    const vpered = e.key === "ArrowRight" || e.key === "ArrowDown";
+    const nazad = e.key === "ArrowLeft" || e.key === "ArrowUp";
+    if (!vpered && !nazad) return;
+    const dostupnye = znacheniya.filter(v => !v.disabled);
+    if (dostupnye.length < 2) return;
+    const seychas = dostupnye.findIndex(v => v.z === tekushchiy);
+    const sled = dostupnye[((seychas < 0 ? 0 : seychas) + (vpered ? 1 : -1) + dostupnye.length) % dostupnye.length];
+    e.preventDefault();
+    naVybor(sled.z);
+    // Фокус идёт за выбором. Иначе стрелка меняет режим, а следующий пробел
+    // на неподвинувшемся фокусе возвращает прежний.
+    const knopki = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=radio]:not(:disabled)")];
+    knopki[dostupnye.indexOf(sled)]?.focus();
+  };
+}
+
 /** Сегмент в столбик. Тот же выбор, что и Segment, но в узкой боковой
  *  колонке: две подписи в строку там не помещаются, а обрезать их значит
  *  спрятать разницу между режимами ровно в том месте, где её и выбирают. */
@@ -264,7 +291,8 @@ export function SegmentStolbik<T extends string>({ znacheniya, vybrano, naVybor,
   "aria-label": string;
 }) {
   return (
-    <div role="radiogroup" aria-label={podpis} className="bg-elevated border-border flex flex-col rounded-lg border p-1">
+    <div role="radiogroup" aria-label={podpis} onKeyDown={aktiven ? strelkiRadio(znacheniya, vybrano, naVybor) : undefined}
+      className="bg-elevated border-border flex flex-col rounded-lg border p-1">
       {znacheniya.map(({ z, podpis: p, disabled }) => {
         const on = z === vybrano;
         return (
