@@ -1144,7 +1144,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) (itogErr error) {
 	// команды выбирает kodPodklyucheniya, а состояние живёт на Главной до
 	// следующей команды, и разойтись им нельзя.
 	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
-		Kod:   kodNepodnyavshegosya(poslednyaya),
+		Kod: kodNepodnyavshegosya(poslednyaya),
 		// Человеческой фразой, а не сводкой замера: «не понёс трафик (2 попытки
 		// по 15s)» читалось как строка журнала, случайно попавшая на экран
 		// (владелец, 23.09.2026). Число попыток и срок остались - они говорят,

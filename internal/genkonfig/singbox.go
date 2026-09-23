@@ -28,6 +28,13 @@ func SingBox(v Vhod) ([]byte, error) {
 	if err := v.proverit(); err != nil {
 		return nil, err
 	}
+	// Блокировка сети вне VPN снимает прямые правила с применения ОДНИМ местом,
+	// здесь. Ниже их просто нет, поэтому ни сборка правил, ни DNS, ни наборы
+	// не знают про этот режим ничего особенного, и новое правило, добавленное
+	// потом, не придётся вспоминать чинить отдельно.
+	if v.VesTrafik {
+		v.Trafik = bezPryamyh(v.Trafik)
+	}
 	if err := sveritKandidatov(v); err != nil {
 		return nil, err
 	}

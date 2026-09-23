@@ -756,17 +756,17 @@ it("поздний ответ списка программ не перетир�
   expect(screen.getByRole("button", { name: /^Свежий,/ })).toBeInTheDocument();
 });
 
-it("настройки получают сохранённые прямые маршруты и не отправляют включение блокировки",async()=>{
+// Прямые маршруты включению защиты больше не мешают (23.09.2026): под ней они
+// спят, а набор человека остаётся как есть.
+it("настройки видят сохранённые прямые маршруты и включают защиту поверх них",async()=>{
   const most=mostProby();
   most.otvechatTelom("listRules",{protsessy:[],domeny:[],trafik:{po_umolchaniyu:"vpn",servisy:[{id:"youtube",marshrut:"direct"}],domeny:[],prilozheniya:[]}});
   render(<App/>);
   fireEvent.click(await screen.findByRole("tab",{name:"Настройки"}));
-  await screen.findByText("Напрямую настроено: 1 сервис");
-  expect(screen.getByTestId("ves-trafik")).toBeDisabled();
+  await screen.findByText(/Напрямую настроено: 1 сервис/);
+  expect(screen.getByTestId("ves-trafik")).toBeEnabled();
   fireEvent.click(screen.getByTestId("ves-trafik"));
-  expect(most.skolkoRaz("setKillSwitch")).toBe(0);
-  fireEvent.click(screen.getByRole("button",{name:"Открыть правила"}));
-  expect(screen.getByRole("tab",{name:"Правила"})).toHaveAttribute("aria-selected","true");
+  expect(most.skolkoRaz("setKillSwitch")).toBe(1);
 });
 
 describe("баннер отказа", () => {

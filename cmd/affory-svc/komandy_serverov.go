@@ -778,12 +778,8 @@ func (s *Sluzhba) zamenitNaborBlobom(telo []byte) error {
 		if _, err := proveritTrafik(*imported.Pravila.Trafik, *imported.Pravila.Trafik); err != nil {
 			return err
 		}
-		s.mu.Lock()
-		strict := s.killSwitch
-		s.mu.Unlock()
-		if strict && estPryamoyTrafik(*imported.Pravila.Trafik) {
-			return fmt.Errorf("перед импортом прямых маршрутов выключи блокировку сети вне VPN")
-		}
+		// Прямые маршруты в профиле защите не мешают: под ней они не
+		// применяются, а после выключения возвращаются в дело.
 	}
 
 	if err := s.sekretyPisat(telo); err != nil {

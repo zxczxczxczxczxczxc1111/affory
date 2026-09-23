@@ -179,7 +179,13 @@ export function Nastroyki({
   const podnyat = status.sostoyanie === "podnyat";
   const killSwitch = status.kill_switch ?? false;
   const nahodka = status.obnovlenie ?? null;
-  const pochemuNelzyaVklyuchit=estChernovikPravil?"Сначала примени или отмени черновик правил.":!trafik?"Правила ещё не прочитаны. Обнови их перед включением блокировки.":prichinaPryamogoTrafika(trafik);
+  // Прямые маршруты включению защиты больше не мешают (23.09.2026): под
+  // защитой они не применяются, а набор человека остаётся как есть. Осталась
+  // ровно одна помеха - незавершённый черновик правил: применять его придётся
+  // всё равно, и делать это посреди смены режима нельзя.
+  const pochemuNelzyaVklyuchit=estChernovikPravil?"Сначала примени или отмени черновик правил":null;
+  // Что именно уснёт под защитой. Не запрет, а предупреждение до нажатия.
+  const usnutPodZashchitoy=trafik?prichinaPryamogoTrafika(trafik):null;
   // Disabling protection stays available even when rule inspection failed.
   const rezhimZanyat=zanyatyeKomandy.setKillSwitch===true || zanyatyeKomandy.setRules===true;
   const mozhnoRezhim = mozhnoZvat && !rezhimZanyat && (killSwitch || !pochemuNelzyaVklyuchit);
@@ -262,7 +268,8 @@ export function Nastroyki({
               VPN переподключится под новый режим, все соединения разорвутся и поднимутся заново.
               Загрузки и звонки оборвутся
             </p>
-            {vopros && pochemuNelzyaVklyuchit && <p role="alert" className="text-warn text-[13px]">{pochemuNelzyaVklyuchit} Включение блокировки недоступно.</p>}
+            {vopros && pochemuNelzyaVklyuchit && <p role="alert" className="text-warn text-[13px]">{pochemuNelzyaVklyuchit}. Включение защиты недоступно</p>}
+            {vopros && !pochemuNelzyaVklyuchit && usnutPodZashchitoy && <p className="text-fg-secondary text-[13px] leading-relaxed" data-testid="usnut-pravila">{usnutPodZashchitoy}. Пока защита включена, они не действуют - весь трафик идёт через VPN. Правила остаются на месте и заработают снова, когда выключишь защиту</p>}
             <div className="flex gap-2">
               {/* За кнопкой стоит расстановка правил брандмауэра, а это
                   секунды, а не мгновение. */}
@@ -281,7 +288,12 @@ export function Nastroyki({
               testId="ves-trafik-ryad"
               nazvanie="Блокировать сеть при обрыве VPN"
               poyasnenie={
-                !killSwitch && pochemuNelzyaVklyuchit ? pochemuNelzyaVklyuchit : "Действует во время подключения, после отключения сеть освобождается"
+                // Состав прямых правил назван и ДО включения: при выключенном
+                // VPN подтверждения нет вовсе, и человек узнал бы об уснувших
+                // правилах только по их молчанию.
+                !killSwitch && pochemuNelzyaVklyuchit ? pochemuNelzyaVklyuchit
+                  : usnutPodZashchitoy ? `${usnutPodZashchitoy}. ${killSwitch ? "Сейчас они не действуют: всё идёт через VPN" : "Под защитой они не будут действовать"}`
+                  : "Действует во время подключения, после отключения сеть освобождается"
               }
               aktiven={mozhnoRezhim}
             >
@@ -315,9 +327,12 @@ export function Nastroyki({
           </Panel>
         )}
         {/* Карточкой, как всё вокруг: голый абзац под панелью читался выпавшим
-            из вёрстки, а кнопка под ним стояла сиротой. */}
-        {!killSwitch && pochemuNelzyaVklyuchit && <div className="border-border bg-surface flex flex-col gap-2 rounded-xl border px-4 py-3 text-[13px]">
-          {trafik && !estChernovikPravil && <p className="text-warn leading-relaxed">Блокировка несовместима с прямыми маршрутами. В правилах выбери для них VPN или удали их. Автоматически правила не меняются.</p>}
+            из вёрстки, а кнопка под ним стояла сиротой. Остался один случай -
+            незавершённый черновик правил; прямые маршруты защите не мешают. */}
+        {!killSwitch && !trafik && <div className="border-border bg-surface flex flex-col gap-2 rounded-xl border px-4 py-3 text-[13px]">
+          {/* Про черновик говорит сам ряд защиты: два одинаковых объяснения на
+              одном экране человек читает как две разные помехи. */}
+          <p className="text-fg-secondary leading-relaxed">Правила ещё не прочитаны. Обнови их, чтобы увидеть, что изменится под защитой</p>
           <div className="flex flex-wrap gap-2">
             {naPravila && <Knopka rang="tekst" onClick={naPravila}>Открыть правила</Knopka>}
             {!trafik && obnovitPravila && <Knopka rang="vtoraya" aktiven={mozhnoZvat} onClick={obnovitPravila}>Обновить правила</Knopka>}

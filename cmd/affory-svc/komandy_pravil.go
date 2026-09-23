@@ -114,12 +114,8 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 		if err != nil {
 			return err
 		}
-		s.mu.Lock()
-		strict := s.killSwitch
-		s.mu.Unlock()
-		if p.Trafik != nil && strict && estPryamoyTrafik(*p.Trafik) {
-			return fmt.Errorf("%w: сначала выключи блокировку сети вне VPN в настройках защиты", errPraviloNegodno)
-		}
+		// Прямое правило при включённой защите принимается и сохраняется: под
+		// защитой оно просто не применяется, а после её выключения работает.
 		n.Pravila, pravila = p, p
 		return nil
 	}); err != nil {

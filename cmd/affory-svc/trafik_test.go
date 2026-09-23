@@ -91,18 +91,39 @@ func TestIdentichnyePravilaNePerepodklyuchayutYadro(t *testing.T) {
 	}
 }
 
-func TestProtectionAndDirectPolicyConflictIsRejectedBeforeSaving(t *testing.T) {
+// Прямое правило принимается и при включённой защите (23.09.2026): под защитой
+// оно не применяется, а после её выключения работает. Прежде тут стоял отказ, и
+// человеку с прямыми правилами защита была недоступна, пока он не перепишет их
+// руками. Набор при этом сохраняется КАК ЗАДАН: переписывать его на VPN значило
+// бы потерять настройку человека необратимо.
+func TestPryamoePraviloSohranyaetsyaIPriZashchite(t *testing.T) {
 	s := podstavnaya(t, nil)
 	if err := s.SetKillSwitch(true); err != nil {
 		t.Fatal(err)
 	}
 	r := s.Obrabotat(ctxAdmina(), protokol.Kadr{Id: 1, Imya: "setRules", Telo: []byte(`{"trafik":{"po_umolchaniyu":"direct"}}`)})
-	if r.Oshib == nil {
-		t.Fatal("saved a route that firewall would block")
+	if r.Oshib != nil {
+		t.Fatalf("прямое правило отвергнуто при защите: %+v", r.Oshib)
 	}
 	n, _ := s.nabor()
-	if n.Pravila.Trafik != nil {
-		t.Fatal("conflict changed saved rules")
+	if n.Pravila.Trafik == nil || n.Pravila.Trafik.PoUmolchaniyu != protokol.TrafikPryamo {
+		t.Fatalf("набор не сохранил прямой маршрут: %+v", n.Pravila.Trafik)
+	}
+}
+
+// Защита включается при уже заданных прямых правилах.
+func TestZashchitaVklyuchaetsyaPriPryamyhPravilah(t *testing.T) {
+	s := podstavnaya(t, nil)
+	r := s.Obrabotat(ctxAdmina(), protokol.Kadr{Id: 1, Imya: "setRules", Telo: []byte(`{"trafik":{"po_umolchaniyu":"direct"}}`)})
+	if r.Oshib != nil {
+		t.Fatalf("правило не сохранилось: %+v", r.Oshib)
+	}
+	if err := s.SetKillSwitch(true); err != nil {
+		t.Fatalf("защита не включилась при прямом правиле: %v", err)
+	}
+	n, _ := s.nabor()
+	if n.Pravila.Trafik == nil || n.Pravila.Trafik.PoUmolchaniyu != protokol.TrafikPryamo {
+		t.Fatal("включение защиты переписало набор человека")
 	}
 }
 

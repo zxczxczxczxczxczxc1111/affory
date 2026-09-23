@@ -127,12 +127,70 @@ func TestNeizvestnyySeriviNeRushitKonfigINeDayotPravil(t *testing.T) {
 	}
 }
 
-func TestStrictDirectConflictOtvergaetsya(t *testing.T) {
+// Блокировка сети вне VPN больше не ОТВЕРГАЕТ прямые правила, а перестаёт их
+// применять (23.09.2026). До этого сборка падала, и окно запрещало включать
+// защиту, пока человек сам не перепишет каждое правило; теперь его набор
+// остаётся на диске целиком и возвращается в дело, когда защиту выключат.
+func TestPryamyeNeMeshayutBlokirovke(t *testing.T) {
 	v := obraztsovyyVhod()
-	v.Trafik = &protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikVPN}
-	v.Trafik.PoUmolchaniyu, v.VesTrafik = protokol.TrafikPryamo, true
-	if _, err := SingBox(v); err == nil {
-		t.Fatal("strict protection accepted direct traffic")
+	v.Trafik = &protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikPryamo}
+	v.VesTrafik = true
+	if _, err := SingBox(v); err != nil {
+		t.Fatalf("блокировка с прямым умолчанием не собралась: %v", err)
+	}
+}
+
+func TestBlokirovkaNePrimenyaetPryamyePravila(t *testing.T) {
+	v := obraztsovyyVhod()
+	v.Trafik = &protokol.PravilaTrafika{
+		PoUmolchaniyu: protokol.TrafikPryamo,
+		Prilozheniya: []protokol.PraviloPrilozheniya{
+			{Put: `C:\Games\Steam\steam.exe`, Potomki: true, Marshrut: protokol.TrafikVPN},
+			{Put: `C:\Windows
+otepad.exe`, Potomki: false, Marshrut: protokol.TrafikPryamo},
+		},
+		Domeny:  []protokol.PraviloDomena{{Domen: "work.example", Marshrut: protokol.TrafikPryamo}},
+		Servisy: []protokol.PraviloServisa{{Id: "youtube", Marshrut: protokol.TrafikPryamo}},
+	}
+	v.VesTrafik = true
+	telo, err := SingBox(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vidno := string(telo)
+	for _, chuzhoe := range []string{"notepad.exe", "work.example", "youtube.com"} {
+		if strings.Contains(vidno, chuzhoe) {
+			t.Fatalf("прямое правило %q попало в конфиг под блокировкой", chuzhoe)
+		}
+	}
+	if !strings.Contains(vidno, "steam.exe") {
+		t.Fatal("правило через VPN пропало вместе с прямыми")
+	}
+	// Тег direct остаётся среди исходящих: на нём держатся петлевые исключения.
+	// Значение имеет то, куда уходит ВЕСЬ остальной трафик.
+	var k map[string]any
+	if err := json.Unmarshal(telo, &k); err != nil {
+		t.Fatal(err)
+	}
+	final := k["route"].(map[string]any)["final"]
+	if final != TegSelector {
+		t.Fatalf("итоговый маршрут под блокировкой %v, а не через VPN", final)
+	}
+}
+
+// Набор человека НЕ меняется: отсечение живёт в копии на время сборки.
+func TestBlokirovkaNeTrogaetNaborCheloveka(t *testing.T) {
+	v := obraztsovyyVhod()
+	trafik := &protokol.PravilaTrafika{
+		PoUmolchaniyu: protokol.TrafikPryamo,
+		Domeny:        []protokol.PraviloDomena{{Domen: "work.example", Marshrut: protokol.TrafikPryamo}},
+	}
+	v.Trafik, v.VesTrafik = trafik, true
+	if _, err := SingBox(v); err != nil {
+		t.Fatal(err)
+	}
+	if trafik.PoUmolchaniyu != protokol.TrafikPryamo || len(trafik.Domeny) != 1 {
+		t.Fatalf("сборка переписала набор человека: %+v", trafik)
 	}
 }
 

@@ -48,8 +48,8 @@ export function Skorost({ snapshot, error, pending, disabled, start, cancel }: {
 
       {result && (
         <div className="mt-3 grid grid-cols-2 gap-3" role="status">
-          <Storona podpis="↓ Приём" chislo={format(result.download_mbps)} />
-          <Storona podpis="↑ Отдача" chislo={format(result.upload_mbps)} />
+          <Storona podpis="↓ Замер приёма" chislo={format(result.download_mbps)} />
+          <Storona podpis="↑ Замер отдачи" chislo={format(result.upload_mbps)} />
           <p className="text-fg-muted col-span-2 text-[13px]">{result.name}</p>
         </div>
       )}

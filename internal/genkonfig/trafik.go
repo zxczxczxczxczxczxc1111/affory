@@ -17,9 +17,12 @@ func proveritMarshruty(v Vhod) error {
 		if r != protokol.TrafikVPN && r != protokol.TrafikPryamo {
 			return fmt.Errorf("неизвестный маршрут: %q", r)
 		}
-		if v.VesTrafik && r == protokol.TrafikPryamo {
-			return fmt.Errorf("для прямого трафика сначала выключи блокировку сети вне VPN")
-		}
+		// Прямой маршрут при включённой блокировке больше НЕ отказ (23.09.2026).
+		// Раньше сборка падала, поэтому окно запрещало включать защиту, пока
+		// человек своими руками не переведёт каждое правило в VPN или не удалит
+		// их. Теперь такие правила просто не применяются, пока защита включена,
+		// и возвращаются в дело сами, когда её выключают: набор человека не
+		// трогается вовсе. Отсекает их bezPryamyh ниже.
 		return nil
 	}
 	if err := valid(v.Trafik.PoUmolchaniyu); err != nil {
@@ -154,4 +157,41 @@ func programmyTrafika(v Vhod) []protokol.PraviloPrilozheniya {
 		}
 	}
 	return itog
+}
+
+// bezPryamyh убирает прямые маршруты из набора правил.
+//
+// Нужна ровно в режиме блокировки сети вне VPN. Там прямой маршрут это не
+// «трафик мимо VPN», а «трафик в никуда»: брандмауэр режет всё, что идёт не в
+// туннель, и правило, обещающее прямой путь, обещает тишину.
+//
+// Набор ЧЕЛОВЕКА при этом не меняется. Он остаётся на диске целиком, а
+// выключение защиты возвращает его в дело без единого действия с его стороны -
+// ровно так же поступает ProtonVPN с раздельным туннелированием. Переписывать
+// правила на VPN было бы необратимо: обратно они сами уже не вернулись бы, и
+// человек не нашёл бы, куда делась его настройка.
+//
+// Общий режим «Только выбранное» становится «Всё через VPN» по той же причине:
+// это его прямой маршрут для всего остального.
+func bezPryamyh(t *protokol.PravilaTrafika) *protokol.PravilaTrafika {
+	if t == nil {
+		return nil
+	}
+	chistyy := &protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikVPN}
+	for _, a := range t.Prilozheniya {
+		if a.Marshrut == protokol.TrafikVPN {
+			chistyy.Prilozheniya = append(chistyy.Prilozheniya, a)
+		}
+	}
+	for _, d := range t.Domeny {
+		if d.Marshrut == protokol.TrafikVPN {
+			chistyy.Domeny = append(chistyy.Domeny, d)
+		}
+	}
+	for _, s := range t.Servisy {
+		if s.Marshrut == protokol.TrafikVPN {
+			chistyy.Servisy = append(chistyy.Servisy, s)
+		}
+	}
+	return chistyy
 }
