@@ -64,11 +64,11 @@ export function Skorost({ snapshot, error, pending, disabled, start, cancel }: {
           <div className="flex flex-col gap-2">
             <div className="max-w-[280px]">
               <Vybor label="Первый сервис замера" value={provider} disabled={running || pending} onChange={setProvider}
-                options={[{value: "", label: "Автоматически"}, {value: "librespeed", label: "LibreSpeed · Helsinki"}, {value: "clouvider", label: "Clouvider · Amsterdam"}, {value: "openspeedtest", label: "OpenSpeedTest"}, {value: "cloudflare", label: "Cloudflare"}]} />
+                options={[{value: "", label: "Автоматически"}, {value: "clouvider", label: "Clouvider · Amsterdam"}, {value: "cloudflare", label: "Cloudflare"}, {value: "librespeed", label: "LibreSpeed · Helsinki"}, {value: "openspeedtest", label: "OpenSpeedTest"}]} />
             </div>
             <p>
-              Если сервис недоступен, Affory попробует следующий. До минуты и примерно 550 МБ при
-              четырёх попытках: замер меряет скорость до тестового сервиса, а не до сервера подписки
+              Если сервис недоступен, Affory попробует следующий. Замер идёт до полутора минут и на быстром
+              канале тратит до 512 МБ на сервис: он меряет скорость до тестового сервиса, а не до сервера подписки
             </p>
             {snapshot?.result?.attempts.map((attempt, i) => (
               <p key={i}>{attempt.name}: {attempt.error || "Оба направления измерены"}</p>

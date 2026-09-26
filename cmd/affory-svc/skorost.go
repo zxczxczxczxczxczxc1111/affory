@@ -82,7 +82,9 @@ func (s *Sluzhba) startSpeedTest(k protokol.Kadr) protokol.Kadr {
 		s.mu.Unlock()
 		return otkaz(k.Id, k.Imya, protokol.KodTeloNegodno, "дождитесь завершения подключения")
 	}
-	ctx, cancel := context.WithTimeout(s.fonCtx, 60*time.Second)
+	// Фаза идёт 10 секунд, сервис это две фазы, попыток до четырёх: полторы
+	// минуты вмещают все четыре. Прежние 60 секунд были под фазы по 7.
+	ctx, cancel := context.WithTimeout(s.fonCtx, 90*time.Second)
 	job := &speedJob{snapshot: speedSnapshot{ID: time.Now().UnixMilli(), Phase: "download", Path: path, Started: time.Now()}, cancel: cancel}
 	s.speed = job
 	run := s.speedRunner
