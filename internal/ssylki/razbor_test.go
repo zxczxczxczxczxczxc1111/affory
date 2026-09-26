@@ -56,6 +56,9 @@ func TestRazborPoFiksturam(t *testing.T) {
 		// Три бывшие «чужие» фикстуры: с 03.09.2026 это наши транспорты.
 		// Ядро умело их и раньше, поддержки не было только у нас.
 		{fayl: "nash-trojan.txt", transport: "trojan"},
+		// base64-пароль с «+», «/» и «=», закодированный один раз, как пишут
+		// v2rayN и v2rayNG (26.09.2026).
+		{fayl: "trojan-plyus-v-parole.txt", transport: "trojan"},
 		{fayl: "nash-vmess.txt", transport: "vmess"},
 		{fayl: "nash-httpupgrade.txt", transport: "httpupgrade"},
 

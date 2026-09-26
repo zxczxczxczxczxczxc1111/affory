@@ -2,6 +2,9 @@ package ssylki
 
 import (
 	"encoding/base64"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -26,6 +29,48 @@ func TestTrojanRazbiraetsya(t *testing.T) {
 	}
 	if s.BezTLS {
 		t.Fatal("trojan без TLS не бывает, флаг выставлен неверно")
+	}
+}
+
+// Пароль trojan раскодируется РОВНО один раз, и «+» в нём остаётся плюсом.
+//
+// Стандарт ссылок Xray (XTLS/Xray-core, обсуждение 716) требует для userinfo
+// один encodeURIComponent. v2rayN пишет Uri.EscapeDataString и читает одним
+// Uri.UnescapeDataString, v2rayNG пишет URLEncoder с «+» в %20 и читает
+// java.net.URI.getUserInfo; ни один не считает «+» пробелом. До 26.09.2026 мы
+// снимали кодирование дважды, второй раз по правилам строки запроса, и
+// base64-пароль «kX9+q/Zt4=» становился «kX9 q/Zt4=»: сервер добавлялся и
+// отвечал отказом проверки подлинности.
+func TestTrojanParolRaskodiruetsyaOdinRaz(t *testing.T) {
+	for _, sl := range []struct{ ssylka, parol string }{
+		// как пишут v2rayN, v2rayNG и стандарт: «+», «/», «=» закодированы
+		{"trojan://kX9%2Bq%2FZt4%3D@example.org:443", "kX9+q/Zt4="},
+		// панель не закодировала вовсе: «+» и «=» законны в userinfo как есть
+		{"trojan://kX9+qZt4=@example.org:443", "kX9+qZt4="},
+		// буквальный процент в пароле закодирован один раз и обязан выжить
+		{"trojan://a%2541@example.org:443", "a%41"},
+	} {
+		s, err := Razobrat(sl.ssylka)
+		if err != nil {
+			t.Fatalf("%s: %v", sl.ssylka, err)
+		}
+		if s.Parol != sl.parol {
+			t.Errorf("%s: пароль %q, ждали %q", sl.ssylka, s.Parol, sl.parol)
+		}
+	}
+}
+
+func TestTrojanParolIzFikstury(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "trojan-plyus-v-parole.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := Razobrat(strings.TrimSpace(string(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Parol != "kX9+q/Zt4=" {
+		t.Fatalf("пароль %q, ждали %q", s.Parol, "kX9+q/Zt4=")
 	}
 }
 
