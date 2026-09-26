@@ -629,6 +629,38 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     });
   }, []);
 
+  // Подписка на статистику уходит в службу по ОДНОЙ команде за раз.
+  //
+  // Служба выполняет каждую команду соединения своим потоком (obsluzhivanie.go),
+  // и две команды, посланные разом, применяются в любом порядке. Возврат окна
+  // слал отписку и две подписки почти одновременно, и отписка, выполненная
+  // последней, оставляла окно без цифр до следующего сворачивания. Жалоба
+  // 26.09.2026: «окно с замером скорости иногда умирает само по себе».
+  //
+  // Следующая команда уходит только после ответа на прежнюю и несёт ПОСЛЕДНЕЕ
+  // желание, промежуточные схлопываются. Счётчик, а не сравнение с посланным:
+  // после возврата канала подписку надо послать заново и с тем же желанием,
+  // потому что новое соединение службы о ней не знает.
+  const podpiska = useRef({ vkl: false, zaprosheno: 0, poslano: 0, idyot: false });
+  const soobshchitPodpisku = useCallback((vkl: boolean) => {
+    const p = podpiska.current;
+    p.vkl = vkl;
+    p.zaprosheno += 1;
+    if (p.idyot) return;
+    p.idyot = true;
+    void (async () => {
+      while (p.poslano < p.zaprosheno) {
+        p.poslano = p.zaprosheno;
+        try {
+          await zvat("subscribeStats", { vkl: p.vkl });
+        } catch (e: unknown) {
+          zhaloba("subscribeStats", e);
+        }
+      }
+      p.idyot = false;
+    })();
+  }, [zhaloba]);
+
   // Everything the window asks for at startup, in one place: the reconnect
   // path below repeats exactly this list and nothing else.
   const sprositVsyo = useCallback(() => {
@@ -639,11 +671,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     // висела на размонтировании компонента, которого при уходе в трей не
     // случается никогда: окно прячется, а не закрывается. Отдельный эффект
     // ниже включает и выключает её по видимости.
-    void zvat("subscribeStats", { vkl: oknoVidno }).catch((e: unknown) => zhaloba("subscribeStats", e));
+    soobshchitPodpisku(oknoVidno);
     // listRules is NOT here: it is fetched by the effect below, once hello
     // has said the command exists. Asking a deferred command for data would
     // turn its refusal into a banner about a wave that has not landed yet.
-  }, [obnovitSpisok, zagruzitOtlozhennye, zhaloba, oknoVidno]);
+  }, [obnovitSpisok, zagruzitOtlozhennye, soobshchitPodpisku, oknoVidno]);
 
   useEffect(() => {
     void oprosit();
@@ -670,9 +702,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     });
     return () => {
       otpisatsya();
-      void zvat("subscribeStats", { vkl: false }).catch(() => undefined);
+      soobshchitPodpisku(false);
     };
-  }, [oprosit, sprositVsyo]);
+  }, [oprosit, sprositVsyo, soobshchitPodpisku]);
 
   // Подписка на статистику следует за видимостью окна. Отдельным эффектом, а
   // не внутри sprositVsyo: тот зовётся ещё и на возврате канала, а тут вопрос
@@ -684,12 +716,12 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       pervayaVidimost.current = false;
       return;
     }
-    void zvat("subscribeStats", { vkl: oknoVidno }).catch(() => undefined);
+    soobshchitPodpisku(oknoVidno);
     // Вернувшееся окно спрашивает статус СРАЗУ, а не через период: человек
     // развернул программу, чтобы посмотреть, и снимок пятисекундной давности
     // это не то, за чем он её разворачивал.
     if (oknoVidno) void oprositTiho();
-  }, [oknoVidno, oprositTiho]);
+  }, [oknoVidno, oprositTiho, soobshchitPodpisku]);
 
   // Обновление меняет файл программы, а не этот процесс. Windows держит
   // открытый образ, подмена отодвигает его в .ubrat, и окно продолжает рисовать

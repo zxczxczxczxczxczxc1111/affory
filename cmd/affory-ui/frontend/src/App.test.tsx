@@ -62,6 +62,13 @@ const stend = vi.hoisted(() => {
     putZagruzki: "",
     soderzhimoeFayla: "",
     zapisano: null as { put: string; profil: string } | null,
+    /** Подписка на статистику, как её видит служба: применяется в момент
+     *  ОТВЕТА, а не отправки. Служба выполняет каждую команду соединения своим
+     *  потоком (obsluzhivanie.go), и порядок ответов не обязан совпадать с
+     *  порядком отправки. */
+    podpiskaSluzhby: null as boolean | null,
+    /** Задержки ответов subscribeStats по порядку вызова; кончились - сразу. */
+    zaderzhkiPodpiski: [] as number[],
   };
 
   function telo(imya: string): unknown {
@@ -93,6 +100,11 @@ const stend = vi.hoisted(() => {
     s.schet.set(imya, (s.schet.get(imya) ?? 0) + 1);
     s.poslannoe.set(imya, poslano);
     s.sled.push({ chto: "zvat " + imya, args: [poslano] });
+    if (imya === "subscribeStats") {
+      const zaderzhka = s.zaderzhkiPodpiski.shift() ?? 0;
+      if (zaderzhka > 0) await new Promise((r) => setTimeout(r, zaderzhka));
+      if (s.zhiv) s.podpiskaSluzhby = (poslano as { vkl?: boolean } | undefined)?.vkl ?? null;
+    }
     if (s.zaderzhkaMs > 0) await new Promise((r) => setTimeout(r, s.zaderzhkaMs));
     if (!s.zhiv) throw new KanalNedostupen("канал закрыт");
     if (s.bityeKadry.has(imya)) throw new Error("кадр не разбирается");
@@ -275,6 +287,14 @@ function mostProby() {
     perezapuskovOkna(): number {
       return s.perezapuskov;
     },
+    /** Подписка на статистику, какой её оставила служба после всех ответов. */
+    podpiskaSluzhby(): boolean | null {
+      return s.podpiskaSluzhby;
+    },
+    /** Следующие ответы subscribeStats придут с этими задержками, по порядку. */
+    zaderzhatPodpisku(...ms: number[]) {
+      s.zaderzhkiPodpiski.push(...ms);
+    },
     /** Окно ушло в трей или свернулось: ровно то, что делает крестик. */
     okno(vidno: boolean) {
       for (const n of [...s.nablyudateliOkna]) n(vidno);
@@ -324,6 +344,8 @@ beforeEach(() => {
   s.putZagruzki = "";
   s.soderzhimoeFayla = "";
   s.zapisano = null;
+  s.podpiskaSluzhby = null;
+  s.zaderzhkiPodpiski = [];
 });
 
 afterEach(cleanup);
@@ -1040,6 +1062,25 @@ describe("замер полосы", () => {
     await waitFor(() => expect(most.teloKomandy("subscribeStats")).toEqual({ vkl: false }));
     most.okno(true);
     await waitFor(() => expect(most.teloKomandy("subscribeStats")).toEqual({ vkl: true }));
+  });
+
+  // Жалоба 26.09.2026: «окно с замером скорости иногда умирает само по себе».
+  // При возврате окна эффекты слали отписку и две подписки почти разом, а служба
+  // выполняет команды одного соединения каждую своим потоком. Отписка,
+  // выполненная последней, оставляла окно без цифр до следующего сворачивания:
+  // скорость гасла в прочерк, итоги и задержка стояли от последнего снимка.
+  it("подписка на статистику переживает ответы службы не по порядку", async () => {
+    const most = mostProby();
+    render(<App periodOprosaMs={BYSTRO} />);
+    await waitFor(() => expect(most.podpiskaSluzhby()).toBe(true));
+    most.okno(false);
+    await waitFor(() => expect(most.podpiskaSluzhby()).toBe(false));
+
+    // Первый ответ после возврата окна приходит позже остальных.
+    most.zaderzhatPodpisku(150, 0, 0);
+    most.okno(true);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(most.podpiskaSluzhby()).toBe(true);
   });
 
   // Опрос статуса тоже стоит: он ходил раз в пять секунд ровно затем, чтобы
