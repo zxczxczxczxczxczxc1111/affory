@@ -211,12 +211,32 @@ func vless(s string) (protokol.Server, error) {
 				"%w: vless поверх %q без reality", ErrTransportNePodderzhan, tip)
 		}
 		transport = "reality-tcp"
-	case "ws", "grpc":
+	case "grpc":
+		// reality поверх grpc это ДРУГОЙ транспорт, а не grpc с лишними
+		// параметрами. До 26.09.2026 ветка была общей с ws: pbk и sid
+		// попадали в запись, генератор строил обычный TLS, и профиль
+		// vpn-reality-grpc-110 из своей же подписки добавлялся без единой
+		// ошибки и молча не поднимался, пока Happ с той же ссылкой работал.
+		transport = "grpc"
+		if bezopasnost == "reality" {
+			transport = "reality-grpc"
+		}
+	case "ws", "httpupgrade":
+		// httpupgrade это тот же смысл, что у ws, но без веб-сокетов: одно
+		// рукопожатие Upgrade и дальше голый поток. Ядро несёт его без
+		// отдельного тега.
+		//
+		// reality под ними клиент не несёт, и ссылка с этой парой отвергается.
+		// До 26.09.2026 она становилась обычным TLS и не могла подняться ни с
+		// каким сервером, а на экране стояла рабочая запись. Xray такой сервер
+		// не собирает вовсе, sing-box собирает (`sing-box check` 26.09.2026),
+		// но живого такого сервера мы не видели, и поднятие не проверено.
+		// Поддержку добавлять замером, а не догадкой.
+		if bezopasnost == "reality" {
+			return protokol.Server{}, fmt.Errorf(
+				"%w: reality поверх %q, клиент несёт reality только поверх tcp и grpc", ErrTransportNePodderzhan, tip)
+		}
 		transport = tip
-	case "httpupgrade":
-		// Тот же смысл, что у ws, но без веб-сокетов: одно рукопожатие
-		// Upgrade и дальше голый поток. Ядро несёт его без отдельного тега.
-		transport = "httpupgrade"
 	default:
 		return protokol.Server{}, fmt.Errorf("%w: type=%s", ErrTransportNePodderzhan, tip)
 	}
@@ -251,7 +271,7 @@ func vless(s string) (protokol.Server, error) {
 		}
 		srv.Put = put
 	}
-	if transport == "grpc" {
+	if tip == "grpc" {
 		srv.Put = q.Get("serviceName")
 	}
 

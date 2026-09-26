@@ -295,6 +295,10 @@ func profili() map[string]Vhod {
 			// на значения на него опираться можно.
 			Uuid: baza.Server.Uuid, PublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
 			ShortId: "01ab", Sni: "www.example.com", Flow: "xtls-rprx-vision"},
+		// Добавлено 26.09.2026: вход vpn-reality-grpc-110 своей подписки.
+		"reality-grpc": {Id: "rg", Transport: "reality-grpc", Host: "203.0.113.15", Port: 110,
+			Uuid: baza.Server.Uuid, PublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+			ShortId: "01ab", Sni: "www.example.com", Put: "5d69fee28fa9"},
 		"ws":   {Id: "ws", Transport: "ws", Host: "203.0.113.11", Port: 443, Uuid: baza.Server.Uuid, Put: "/ws", Sni: "www.example.com"},
 		"grpc": {Id: "gr", Transport: "grpc", Host: "203.0.113.12", Port: 443, Uuid: baza.Server.Uuid, Put: "gun", Sni: "www.example.com"},
 		"hy2":  {Id: "h2", Transport: "hy2", Host: "203.0.113.13", Port: 443, Parol: "parol", Sni: "www.example.com"},
@@ -389,7 +393,8 @@ func TestInvariant8ProfiliProhodyatCheck(t *testing.T) {
 	//
 	// Число проверяется ЯВНО. По «PASS на каждом имени» нельзя отличить
 	// сделанное от несделанного: молча потерянный профиль тоже даёт зелёный.
-	const skolkoZhdyom = 20
+	// 21 с 26.09.2026: добавлен reality поверх grpc.
+	const skolkoZhdyom = 21
 	if n := len(profili()); n != skolkoZhdyom {
 		t.Fatalf("профилей %d, а ожидалось %d: профиль потерян или добавлен молча", n, skolkoZhdyom)
 	}
@@ -484,7 +489,7 @@ func TestBezProksiVhodTolkoOdin(t *testing.T) {
 func TestFlowTolkoTamGdeOnSushchestvuet(t *testing.T) {
 	baza := obraztsovyyVhod()
 	nesut := map[string]bool{"reality-tcp": true}
-	for _, transport := range []string{"reality-tcp", "ws", "grpc", "httpupgrade"} {
+	for _, transport := range []string{"reality-tcp", "reality-grpc", "ws", "grpc", "httpupgrade"} {
 		t.Run(transport, func(t *testing.T) {
 			s := protokol.Server{
 				Id: "f", Transport: transport, Host: "203.0.113.30", Port: 443,
@@ -934,6 +939,36 @@ func TestPinDoezzhaetDoTLSVsehTransportov(t *testing.T) {
 				t.Fatal("insecure включён: пин это проверка, а не её отключение")
 			}
 		})
+	}
+}
+
+// reality поверх grpc обязан нести ключ reality. До 26.09.2026 такая ссылка
+// становилась grpc с обычным TLS: check принимал конфиг молча, ядро стартовало,
+// а рукопожатие кончалось таймаутом, пока Happ с той же ссылкой работал.
+func TestRealityPoverhGrpcNesyotKlyuch(t *testing.T) {
+	v := obraztsovyyVhod()
+	v.Server = profili()["reality-grpc"].Server
+	v.Servery = []protokol.Server{v.Server}
+	v.Kandidaty = []netip.Addr{netip.MustParseAddr(v.Server.Host)}
+	telo, err := SingBox(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := ishodyashchiyPoTegu(t, telo, TegKandidata(v.Server.Id))
+	tls, _ := o["tls"].(map[string]any)
+	r, _ := tls["reality"].(map[string]any)
+	if r["enabled"] != true || r["public_key"] != v.Server.PublicKey || r["short_id"] != v.Server.ShortId {
+		t.Fatalf("ключа reality в tls нет: %v", tls)
+	}
+	if u, _ := tls["utls"].(map[string]any); u["enabled"] != true {
+		t.Fatalf("utls нет, а без него reality не рукопожимается: %v", tls)
+	}
+	if tls["server_name"] != v.Server.Sni {
+		t.Fatalf("server_name %v, а в ссылке %s", tls["server_name"], v.Server.Sni)
+	}
+	tr, _ := o["transport"].(map[string]any)
+	if tr["type"] != "grpc" || tr["service_name"] != v.Server.Put {
+		t.Fatalf("транспорт %v", tr)
 	}
 }
 

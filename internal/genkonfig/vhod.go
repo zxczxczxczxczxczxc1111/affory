@@ -49,6 +49,10 @@ var izvestnyeTransporty = map[string]bool{
 	// результат означает поддержку, а не молчание декодера.
 	"anytls": true,
 	"tuic":   true,
+	// Добавлено 26.09.2026: reality поверх grpc, вход vpn-reality-grpc-110
+	// своей подписки. Прежде такая ссылка разбиралась в grpc и получала
+	// обычный TLS. Тегов сборки не требует: reality и grpc ядро несёт и так.
+	"reality-grpc": true,
 }
 
 // Izvestnyy отвечает, умеет ли ядро такой транспорт.

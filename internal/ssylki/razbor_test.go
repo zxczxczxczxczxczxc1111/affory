@@ -227,7 +227,7 @@ func TestIdRazlichaetAdresPortITransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	drugoyPort, err := ssylki.Razobrat(vzyat(t, "realno-ws-9443.txt"))
+	drugoyPort, err := ssylki.Razobrat(vzyat(t, "realno-ws-9443-tls.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,10 @@ func TestFormyZhivoyPodpiski(t *testing.T) {
 	})
 
 	t.Run("нестандартный порт и заголовок host", func(t *testing.T) {
-		srv, err := ssylki.Razobrat(vzyat(t, "realno-ws-9443.txt"))
+		// Живая форма несла security=reality, а reality поверх ws клиент с
+		// 26.09.2026 отвергает (TestRealityPodWsOtvergaetsya). Порт и host
+		// проверяются на той же форме по tls.
+		srv, err := ssylki.Razobrat(vzyat(t, "realno-ws-9443-tls.txt"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -325,6 +328,53 @@ func TestFormyZhivoyPodpiski(t *testing.T) {
 			}
 		}
 	})
+}
+
+// reality поверх grpc это свой транспорт. До 26.09.2026 ссылка разбиралась в
+// grpc, ключ reality лежал в записи мёртвым грузом, и профиль своей же
+// подписки добавлялся без ошибки и молча не поднимался.
+func TestRealityPoverhGrpcEtoSvoyTransport(t *testing.T) {
+	srv, err := ssylki.Razobrat(vzyat(t, "vless-reality-grpc.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Transport != "reality-grpc" {
+		t.Fatalf("транспорт %q: reality снова спрятан в grpc", srv.Transport)
+	}
+	if srv.PublicKey == "" || srv.ShortId != "a213aa21b288980e" {
+		t.Fatalf("ключ reality потерян: pbk %q, sid %q", srv.PublicKey, srv.ShortId)
+	}
+	if srv.Put != "5d69fee28fa9" || srv.Sni != "static.example.net" || srv.Fp != "edge" {
+		t.Fatalf("serviceName %q, sni %q, fp %q", srv.Put, srv.Sni, srv.Fp)
+	}
+	if srv.BezTLS {
+		t.Fatal("reality разобран как открытый транспорт")
+	}
+	// Та же точка по tls остаётся grpc: транспорт решает security, а не type.
+	tls, err := ssylki.Razobrat(vzyat(t, "vless-grpc.txt"))
+	if err != nil || tls.Transport != "grpc" || tls.PublicKey != "" {
+		t.Fatalf("grpc поверх tls: транспорт %q, pbk %q, ошибка %v", tls.Transport, tls.PublicKey, err)
+	}
+}
+
+// reality под ws и httpupgrade клиент не несёт. Принять ссылку значило бы
+// построить обычный TLS и показать рабочую запись, которая не поднимется
+// никогда. Живая форма такого ключа (realno-ws-9443.txt) отвергается тоже.
+func TestRealityPodWsOtvergaetsya(t *testing.T) {
+	if _, err := ssylki.Razobrat(vzyat(t, "realno-ws-9443.txt")); !errors.Is(err, ssylki.ErrTransportNePodderzhan) {
+		t.Fatalf("живая форма reality поверх ws принята: %v", err)
+	}
+	for _, tip := range []string{"ws", "httpupgrade"} {
+		s := "vless://11111111-2222-3333-4444-555555555555@203.0.113.5:443?security=reality&type=" + tip +
+			"&path=%2F&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=a213aa21b288980e&sni=www.example.com#R-" + tip
+		srv, err := ssylki.Razobrat(s)
+		if !errors.Is(err, ssylki.ErrTransportNePodderzhan) {
+			t.Fatalf("%s: reality принят (%v, транспорт %q)", tip, err, srv.Transport)
+		}
+		if !strings.Contains(err.Error(), "reality") {
+			t.Fatalf("%s: причина отказа не называет reality: %v", tip, err)
+		}
+	}
 }
 
 func TestIstekshayaPodpiskaEtoUvedomlenie(t *testing.T) {

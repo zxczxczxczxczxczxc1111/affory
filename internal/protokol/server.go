@@ -5,7 +5,7 @@ package protokol
 type Server struct {
 	Id        string `json:"id"`
 	Imya      string `json:"imya"`
-	Transport string `json:"transport"` // reality-tcp | ws | grpc | httpupgrade | hy2 | ss | trojan | trojan-ws | vmess | vmess-ws
+	Transport string `json:"transport"` // reality-tcp | reality-grpc | ws | grpc | httpupgrade | hy2 | ss | trojan | trojan-ws | vmess | vmess-ws | anytls | tuic
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
 	Uuid      string `json:"uuid,omitempty"`

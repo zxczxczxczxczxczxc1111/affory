@@ -126,6 +126,9 @@ const TRANSPORT: Record<string, string> = {
   // compares this map against the core registry, so a transport added without
   // a name here fails the build instead of showing an empty cell.
   anytls: "anytls", tuic: "tuic",
+  // Added 26.09.2026: reality over grpc became its own transport once the link
+  // parser stopped folding it into plain grpc with ordinary TLS.
+  "reality-grpc": "reality + grpc",
 };
 
 /** "3 ч назад" for the subscription row; `undefined` when unknown. */

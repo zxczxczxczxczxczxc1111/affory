@@ -317,14 +317,17 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 	switch s.Transport {
 	case "reality-tcp":
 		o := vless(s, teg)
-		o["tls"] = map[string]any{
-			"enabled": true, "server_name": sni,
-			"reality": map[string]any{
-				"enabled": true, "public_key": s.PublicKey, "short_id": s.ShortId,
-			},
-			"utls": map[string]any{"enabled": true, "fingerprint": otpechatok},
-		}
+		o["tls"] = tlsReality(s, sni, otpechatok)
 		dobavitAlpn(o, s)
+		return o, nil
+
+	case "reality-grpc":
+		// Тот же reality, что выше, плюс транспорт grpc. Flow здесь нет и быть
+		// не может: vision живёт только на голом TCP (см. flowVozmozhen).
+		o := vless(s, teg)
+		o["tls"] = tlsReality(s, sni, otpechatok)
+		dobavitAlpn(o, s)
+		o["transport"] = map[string]any{"type": "grpc", "service_name": putIli(s.Put, "gun")}
 		return o, nil
 
 	case "ws":
@@ -560,6 +563,18 @@ func vless(s protokol.Server, teg string) map[string]any {
 // оказывается без flow, и это верная сторона для ошибки. Обратный список молча
 // раздал бы flow всему, что добавят потом.
 func flowVozmozhen(transport string) bool { return transport == "reality-tcp" }
+
+// tlsReality это TLS-блок reality. У reality без utls рукопожатие не
+// состоится вовсе, поэтому отпечаток входит в блок всегда.
+func tlsReality(s protokol.Server, sni, otpechatok string) map[string]any {
+	return map[string]any{
+		"enabled": true, "server_name": sni,
+		"reality": map[string]any{
+			"enabled": true, "public_key": s.PublicKey, "short_id": s.ShortId,
+		},
+		"utls": map[string]any{"enabled": true, "fingerprint": otpechatok},
+	}
+}
 
 // Отпечатки, проверенные живым подъёмом. Пополнять ТОЛЬКО прогоном на стенде:
 // негодный отпечаток не отвергается ядром, а тихо не несёт трафик.

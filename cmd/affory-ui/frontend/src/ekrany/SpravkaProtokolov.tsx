@@ -42,6 +42,14 @@ export const OPISANIYA: Record<string, { horosho: string; ceny: string }> = {
     horosho: "Маскируется под известный сторонний сайт. Выручает, когда не работает ничего.",
     ceny: "На плохом интернете отвечает медленнее остальных.",
   },
+  // Добавлено 26.09.2026, когда reality в подписке стал только поверх grpc.
+  // Польза замерена в тот же день: 64 подключения разом через него прошли все,
+  // а reality без grpc после такого шквала провайдер глушил на минуты. Цена
+  // та же, что у grpc ниже: всё идёт одним каналом.
+  "reality-grpc": {
+    horosho: "Маскируется под сторонний сайт и не глохнет, когда открыто много вкладок сразу.",
+    ceny: "Когда браузер грузит много всего сразу, скорость проседает.",
+  },
   hy2: {
     horosho: "Самый быстрый на больших загрузках. Звонки стабильные.",
     ceny: "После обрыва переподключается около 30 секунд.",
@@ -140,7 +148,7 @@ export function KnopkaSpravki({ onClick }: { onClick: () => void }) {
  *  связать одно с другим человеку было нечем. Второе имя ушло в скобки, где оно
  *  помогает узнать протокол в чужом клиенте и ничего не подменяет. */
 export const NAZVANIYA: Record<string, string> = {
-  "reality-tcp": "reality", hy2: "hysteria2", ws: "websocket", ss: "shadowsocks",
+  "reality-tcp": "reality", "reality-grpc": "reality", hy2: "hysteria2", ws: "websocket", ss: "shadowsocks",
 };
 
 /** Порядок показа: сперва то, что человек встретит в своей подписке, и в том
@@ -149,8 +157,10 @@ export const NAZVANIYA: Record<string, string> = {
  *  Пересчитан 21.09.2026 по замеру под нагрузкой: раньше первым стоял anytls, а
  *  он оказался последним из живых ключей (101.5 мс против 64.4 у tuic), и
  *  человек, бравший верхнюю строку не глядя, брал худшее. Теперь порядок тот
- *  же, что в замере: tuic, hy2, reality, trojan, anytls, httpupgrade. */
-const PORYADOK = ["tuic", "hy2", "reality-tcp", "trojan", "anytls", "httpupgrade",
+ *  же, что в замере: tuic, hy2, reality, trojan, anytls, httpupgrade.
+ *  reality поверх grpc (26.09.2026) встал на место reality: в подписке он его
+ *  и заменил. */
+const PORYADOK = ["tuic", "hy2", "reality-grpc", "reality-tcp", "trojan", "anytls", "httpupgrade",
                   "ws", "grpc", "ss", "vmess", "xhttp"];
 
 /** Заголовки разделов. Константами, потому что по ним ищет границу тест: с
