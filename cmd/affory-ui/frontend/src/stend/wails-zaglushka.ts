@@ -307,6 +307,21 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
     return { servery, versii: Object.fromEntries(servery.map(s => [s.id, `demo-v1-${s.id}`])), vybran: status.vybran_id, podpiska_zadana: true, podpiska_uzel: aktivnayaPodpiska === "osn" ? "panel.example" : "reserve.example" };
   },
   addServer: () => ({ server: servery[servery.length - 1] }),
+  // Пачка (26.09.2026): стенд считает строки, а не разбирает их. Строка без
+  // «://» идёт в отказ, чтобы итог с пропущенными было видно на снимке.
+  addServers: (v) => {
+    const stroki = stroka(v.tekst).split(/\r\n|\r|\n/);
+    const otkazy = stroki
+      .map((s, i) => ({ s: s.trim(), stroka: i + 1 }))
+      .filter(({ s }) => s !== "" && !s.toLowerCase().startsWith("http") && !s.includes("://"))
+      .map(({ stroka: n }) => ({ stroka: n, prichina: "ссылка не разобрана: нет схемы" }));
+    const dobavleno = stroki.filter((s) => s.includes("://") && !s.trim().toLowerCase().startsWith("http")).length;
+    return { dobavleno, obnovleno: 0, uzhe_bylo: 0, otkazy };
+  },
+  exportServers: () => {
+    const tekst = servery.map((s) => `hy2://demo-parol@${s.host}:${s.port}?sni=demo.example#${encodeURIComponent(s.imya)}`).join("\n");
+    return { tekst, base64: btoa(String.fromCharCode(...new TextEncoder().encode(tekst))), vsego: servery.length, propushcheny: [] };
+  },
   removeServer: () => ({ ostalos: servery.length }),
   listRules: () => pravila,
   inspectApplication: (v) => {
@@ -463,6 +478,12 @@ export const Call = {
     // выглядели бы «не запущено» на всех снимках, а у Steam маршрут вовсе
     // нельзя было бы выбрать: путь берётся среди запущенных.
     if (imya === "main.most.SpisokProtsessov") return ZAPUSHCHENNYE;
+    // Настоящий код рисует оболочка на Go (qr_vyvod.go), в браузере её нет.
+    // Стенду нужен только размер и место картинки, поэтому узор, а не QR.
+    if (imya === "main.most.KodyQr") {
+      const uzor = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 29 29'><rect width='29' height='29' fill='white'/><path d='M4 4h7v7H4zM18 4h7v7h-7zM4 18h7v7H4zM13 13h3v3h-3zM18 18h2v2h-2zM22 20h3v3h-3z' fill='black'/></svg>";
+      return ["data:image/svg+xml;utf8," + encodeURIComponent(uzor)];
+    }
     if (imya === "main.most.Zvat") {
       // Канала нет, пока нет службы: окно ловит это исключением и спрашивает
       // диспетчер, установлена ли она вообще.
@@ -510,7 +531,7 @@ export const Events = {
 // роняло бы окно исключением, а не разворачивало его.
 export const Window = { Minimise: async () => {}, ToggleMaximise: async () => {}, Close: async () => {} };
 export const Browser = { OpenURL: async () => {} };
-export const Clipboard = { Text: async () => "" };
+export const Clipboard = { Text: async () => "", SetText: async (_tekst: string) => {} };
 
 // Экран выбирается параметром адреса, вкладку окно берёт из события трея.
 // Цифры под сферой приходят тем же путём, что и в жизни: событием kanal, где

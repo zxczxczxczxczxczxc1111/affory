@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Servery, pohozheNaAdres, pohozheNaSsylku, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
+import { Servery, itogVstavkiIz, pohozheNaAdres, razlozhitVstavku, strokaItoga, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { Server, StatusOtvet } from "../protokol";
 
 afterEach(cleanup);
@@ -133,18 +133,17 @@ describe("серверы: подписка и добавление", () => {
     expect(document.body.textContent).not.toMatch(/https?:\/\//);
   });
 
-  it("«Обновить» шлёт refreshSubscription; подписка задаётся через ту же «Добавить», выбором «подписка»", () => {
+  it("«Обновить» шлёт refreshSubscription; подписка задаётся через ту же «Добавить», тем же полем", () => {
     // Owner's remark 02.09.2026: a server via "Добавить" and a subscription
-    // via "изменить" were two buttons with two meanings for one act. One
-    // button, one question: what exactly is being added.
+    // via "изменить" were two buttons with two meanings for one act. Since
+    // 26.09.2026 there is not even a choice: the field tells them apart.
     const na = risovat(spisok([server(1)]));
     fireEvent.click(screen.getByTestId("obnovit-podpisku"));
     expect(na).toHaveBeenCalledWith("refreshSubscription", {});
     expect(screen.queryByTestId("izmenit-podpisku")).toBeNull();
     fireEvent.click(screen.getByTestId("dobavit"));
-    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-    fireEvent.change(screen.getByTestId("adres-podpiski"), { target: { value: "  https://p.example/sub  " } });
-    fireEvent.click(screen.getByTestId("sohranit-podpisku"));
+    fireEvent.change(screen.getByTestId("ssylka"), { target: { value: "  https://p.example/sub  " } });
+    fireEvent.click(screen.getByTestId("dobavit-ssylku"));
     // addSubscription с 12.09.2026: подписок стало несколько, и «добавить» не
     // имеет права подменить ту, по которой человек сейчас работает.
     expect(na).toHaveBeenCalledWith("addSubscription", { adres: "https://p.example/sub" });
@@ -194,11 +193,13 @@ describe("серверы: подписка и добавление", () => {
     expect(document.body.textContent).not.toMatch(/https?:\/\/|vless:|anytls:/);
   });
 
-  it("форма добавления с уже заданной подпиской говорит, что новая ляжет про запас", () => {
+  // Решение владельца 26.09.2026: форма, которой нужна подпись о том, как она
+  // работает, негодна. Строка «ляжет про запас… на экране не показывается»
+  // снята, и вернуться ей не дают.
+  it("под формой нет пояснений о том, как она работает", () => {
     risovat(spisok([server(1)]));
     fireEvent.click(screen.getByTestId("dobavit"));
-    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-    expect(screen.getByTestId("forma")).toHaveTextContent(/про запас/);
+    expect(screen.getByTestId("forma")).not.toHaveTextContent(/про запас|на экране не показывается|раз в 12 часов/);
   });
 
   it("пустой список это первый запуск §9.2: поле для ссылки и одно действие, без «0 серверов»", () => {
@@ -206,18 +207,19 @@ describe("серверы: подписка и добавление", () => {
     expect(screen.getByTestId("pusto")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/\b0 серверов/);
     expect(screen.queryByRole("option")).toBeNull();
-    // The form is open by default with the choice visible: the first thing
-    // the human does here is paste something, not look for a button.
-    expect(screen.getByTestId("ssylka")).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "подписка" })).toBeTruthy();
+    // The form is open by default: the first thing the human does here is
+    // paste something, not look for a button. One field takes both kinds.
+    const pole = screen.getByTestId("ssylka");
+    expect(pole.tagName).toBe("TEXTAREA");
+    expect(pole.getAttribute("placeholder")).toMatch(/https:\/\//);
   });
 
-  it("«Добавить» раскрывает поле, ссылка уходит в addServer обрезанной", () => {
+  it("«Добавить» раскрывает поле, текст уходит в addServers целиком", () => {
     const na = risovat(spisok([server(1)]));
     fireEvent.click(screen.getByTestId("dobavit"));
     fireEvent.change(screen.getByTestId("ssylka"), { target: { value: " vless://x@h:443?security=reality " } });
     fireEvent.click(screen.getByTestId("dobavit-ssylku"));
-    expect(na).toHaveBeenCalledWith("addServer", { ssylka: "vless://x@h:443?security=reality" });
+    expect(na).toHaveBeenCalledWith("addServers", { tekst: " vless://x@h:443?security=reality " }, expect.any(Function), expect.any(Function));
   });
 
   it("пока списка нет, экран говорит «загрузка», а не рисует пустоту с нулями", () => {
@@ -234,13 +236,27 @@ describe("серверы: подписка и добавление", () => {
 });
 
 // План «шесть удобств» §3: ссылка из буфера обмена и QR с экрана. Текст
-// буфера на экран не попадает: либо ушёл в addServer, либо отвергнут словами.
+// буфера на экран не попадает: либо ушёл в службу, либо отвергнут словами.
 describe("серверы: из буфера и с экрана", () => {
-  it("похоже на ссылку: шесть схем, регистр и пробелы не мешают, прочее нет", () => {
-    for (const s of ["vless://a", " HY2://b ", "hysteria2://c", "ss://d", "trojan://e", "vmess://f"]) expect(pohozheNaSsylku(s)).toBe(true);
-    // tuic служба и правда не поддерживает: список схем окна обязан совпадать
-    // с тем, что принимает разбор, иначе кнопка обещает больше, чем есть.
-    for (const s of ["", "https://example.org", "tuic://x", "просто текст"]) expect(pohozheNaSsylku(s)).toBe(false);
+  // До 26.09.2026 окно держало свой список схем, и он отстал от разбора в
+  // службе: anytls:// и tuic:// кнопка буфера отвергала, хотя служба их
+  // принимала. Теперь окно отсекает только явный мусор.
+  it("вставка: любые схемы и base64 это ключи, https это подписка, прочее мусор", () => {
+    for (const s of ["vless://a", " HY2://b ", "anytls://c", "tuic://d", "mieru://e", "vmess://f"]) {
+      expect(razlozhitVstavku(s)).toEqual({ adresa: [], estKlyuchi: true });
+    }
+    expect(razlozhitVstavku("aHkyOi8vcEAxLjIuMy40OjQ0Mw==\ndm1lc3M6Ly94")).toEqual({ adresa: [], estKlyuchi: true });
+    expect(razlozhitVstavku("anytls://a\r\n\r\n https://p.example/sub \ntuic://b")).toEqual({ adresa: ["https://p.example/sub"], estKlyuchi: true });
+    expect(razlozhitVstavku("HTTPS://P.EXAMPLE/sub")).toEqual({ adresa: ["HTTPS://P.EXAMPLE/sub"], estKlyuchi: false });
+    for (const s of ["", "  \n ", "просто текст", "example.org"]) expect(razlozhitVstavku(s)).toEqual({ adresa: [], estKlyuchi: false });
+  });
+
+  it("строка итога называет каждый исход, пустые пропускает", () => {
+    expect(strokaItoga(itogVstavkiIz({ dobavleno: 6 }))).toBe("добавлено 6");
+    expect(strokaItoga(itogVstavkiIz({ dobavleno: 0, obnovleno: 2, uzhe_bylo: 4, otkazy: [{ stroka: 3, prichina: "x" }] })))
+      .toBe("добавлено 0, переименовано 2, уже были 4, пропущено 1");
+    // Мусор в ответе не роняет экран: чужие поля отброшены, числа нулём.
+    expect(itogVstavkiIz({ dobavleno: "5", otkazy: [{ stroka: "1" }, null] })).toEqual({ dobavleno: 0, obnovleno: 0, uzhe_bylo: 0, otkazy: [] });
   });
 
   it("кнопок нет, пока оболочка не дала способа читать буфер и экран", () => {
@@ -249,22 +265,70 @@ describe("серверы: из буфера и с экрана", () => {
     expect(screen.queryByTestId("qr-s-ekrana")).toBeNull();
   });
 
-  it("ссылка из буфера уходит в addServer, поле остаётся пустым", async () => {
+  it("ключи из буфера уходят в addServers, поле остаётся пустым", async () => {
     const naKomandu = vi.fn();
-    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={naKomandu} chitatBufer={async () => " vless://x@h:443?security=reality "} />);
+    const bufer = "anytls://p@h:995#anytls\ntuic://u:p@h:443#tuic";
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={naKomandu} chitatBufer={async () => bufer} />);
     fireEvent.click(screen.getByTestId("iz-bufera"));
-    await vi.waitFor(() => expect(naKomandu).toHaveBeenCalledWith("addServer", { ssylka: "vless://x@h:443?security=reality" }));
-    expect((screen.getByTestId("ssylka") as HTMLInputElement).value).toBe("");
+    await vi.waitFor(() => expect(naKomandu).toHaveBeenCalledWith("addServers", { tekst: bufer }, expect.any(Function), expect.any(Function)));
+    expect((screen.getByTestId("ssylka") as HTMLTextAreaElement).value).toBe("");
   });
 
-  it("не ссылка в буфере: отказ словами, команды нет, текст буфера не показан", async () => {
+  it("мусор в буфере: отказ словами, команды нет, текст буфера не показан", async () => {
     const naKomandu = vi.fn();
     render(<Servery status={VYKL} spisok={spisok([])} naKomandu={naKomandu} chitatBufer={async () => "секретный текст"} />);
     fireEvent.click(screen.getByTestId("iz-bufera"));
     const ishod = await screen.findByTestId("ishod-vvoda");
-    expect(ishod).toHaveTextContent(/не ссылка/);
+    expect(ishod).toHaveTextContent(/в буфере не ключ и не адрес подписки/);
     expect(ishod).not.toHaveTextContent(/секретный/);
     expect(naKomandu).not.toHaveBeenCalled();
+  });
+
+  it("пустой буфер так и называется", async () => {
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} chitatBufer={async () => "  "} />);
+    fireEvent.click(screen.getByTestId("iz-bufera"));
+    expect(await screen.findByTestId("ishod-vvoda")).toHaveTextContent("буфер обмена пуст");
+  });
+
+  // Ключи и адрес вперемешку: ключи уходят одним текстом ВМЕСТЕ со строкой
+  // адреса (служба её пропускает, номера строк в отказах не съезжают), адрес
+  // отдельной командой подписки.
+  it("ключи и адрес в одной вставке: две команды, текст целиком", () => {
+    const na = risovat(spisok([server(1)]));
+    fireEvent.click(screen.getByTestId("dobavit"));
+    const tekst = "hy2://p@h:443#a\nhttps://p.example/sub\nanytls://p@h:995#b";
+    fireEvent.change(screen.getByTestId("ssylka"), { target: { value: tekst } });
+    fireEvent.click(screen.getByTestId("dobavit-ssylku"));
+    expect(na).toHaveBeenCalledWith("addServers", { tekst }, expect.any(Function), expect.any(Function));
+    expect(na).toHaveBeenCalledWith("addSubscription", { adres: "https://p.example/sub" });
+    expect(na).toHaveBeenCalledTimes(2);
+  });
+
+  it("итог вставки виден в форме вместе с пропущенными строками, и форма не закрывается", () => {
+    const na = vi.fn((komanda: string, _telo: unknown, naOtvet?: (telo: unknown) => void) => {
+      if (komanda === "addServers") naOtvet?.({ dobavleno: 5, obnovleno: 0, uzhe_bylo: 0, otkazy: [{ stroka: 3, prichina: "ссылка не разобрана: hy2 без пароля" }] });
+    });
+    risovat(spisok([], { podpiska_zadana: false }), VYKL, na);
+    fireEvent.change(screen.getByTestId("ssylka"), { target: { value: "hy2://a\nhy2://b\nhy2://c" } });
+    fireEvent.click(screen.getByTestId("dobavit-ssylku"));
+    const itog = screen.getByTestId("itog-vstavki");
+    expect(itog).toHaveTextContent("добавлено 5, пропущено 1");
+    expect(itog).toHaveTextContent("строка 3: ссылка не разобрана: hy2 без пароля");
+    expect((screen.getByTestId("ssylka") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  // Отказ всей вставки показывается в форме словами службы. Баннер для кода
+  // subscription-malformed сказал бы «подписка отдала непонятное» про текст,
+  // который никакая подписка не присылала.
+  it("отказ всей вставки остаётся в форме, а не уходит баннером", () => {
+    const na = vi.fn((_k: string, _t: unknown, _o?: (telo: unknown) => void, naOtkaz?: (o: { kod: string; tekst: string }) => void) => {
+      naOtkaz?.({ kod: "subscription-malformed", tekst: "это файл настроек, а не ссылки" });
+    });
+    risovat(spisok([server(1)]), VYKL, na);
+    fireEvent.click(screen.getByTestId("dobavit"));
+    fireEvent.change(screen.getByTestId("ssylka"), { target: { value: "vless://x" } });
+    fireEvent.click(screen.getByTestId("dobavit-ssylku"));
+    expect(screen.getByTestId("ishod-vvoda")).toHaveTextContent("это файл настроек, а не ссылки");
   });
 
   it("QR с экрана: исход оболочки показан как есть", async () => {
@@ -274,9 +338,9 @@ describe("серверы: из буфера и с экрана", () => {
   });
 
   // Панель выдаёт подписку КАРТИНКОЙ, и до 21.09.2026 прочитать её было нечем:
-  // кнопка стояла только у вкладки ссылки. Здесь проверяется, что она есть на
-  // обеих и что исход подписки печатается своими словами.
-  it("QR читается и на вкладке подписки", async () => {
+  // кнопка стояла только у вкладки ссылки. Исход подписки печатается своими
+  // словами.
+  it("QR с подпиской: исход подписки своими словами", async () => {
     render(
       <Servery
         status={VYKL}
@@ -285,7 +349,6 @@ describe("серверы: из буфера и с экрана", () => {
         naQrSEkrana={async () => "подписка добавлена, серверов: 6"}
       />,
     );
-    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
     fireEvent.click(screen.getByTestId("qr-s-ekrana"));
     expect(await screen.findByTestId("ishod-vvoda")).toHaveTextContent(/подписка добавлена, серверов: 6/);
   });
@@ -508,9 +571,8 @@ describe("серверы: несколько подписок", () => {
   it("форма добавления кладёт подписку про запас", () => {
     const na = risovat(spisok([server(1)]), VYKL, vi.fn(), dve);
     fireEvent.click(screen.getByTestId("dobavit"));
-    fireEvent.click(screen.getByText("подписка"));
-    fireEvent.change(screen.getByTestId("adres-podpiski"), { target: { value: "https://tretya.example.net/sub" } });
-    fireEvent.click(screen.getByTestId("sohranit-podpisku"));
+    fireEvent.change(screen.getByTestId("ssylka"), { target: { value: "https://tretya.example.net/sub" } });
+    fireEvent.click(screen.getByTestId("dobavit-ssylku"));
     expect(na).toHaveBeenCalledWith("addSubscription", { adres: "https://tretya.example.net/sub" });
   });
 });
@@ -534,68 +596,108 @@ it("у корзины подписки есть имя", () => {
 });
 
 // Жалоба 13.09.2026: «нет кнопки из буфера для вставки ссылки подписки», и
-// при переключении сегмента вокруг кнопки «из буфера» оставалась рамка
-// выделения. Адрес подписки человек получает тем же способом, что и ссылку на
-// сервер: копирует. Печатать его руками негде.
+// вокруг кнопки «из буфера» оставалась рамка выделения. Адрес подписки человек
+// получает тем же способом, что и ссылку на сервер: копирует.
 describe("серверы: адрес подписки из буфера", () => {
   it("похоже на адрес подписки: только http и https, регистр и пробелы не мешают", () => {
     for (const a of ["https://a.example/x", " HTTP://b.example ", "https://c.example"]) expect(pohozheNaAdres(a)).toBe(true);
-    // Ссылка на сервер это НЕ адрес подписки: перепутанные кнопки дали бы
-    // команду, которой служба откажет кодом, а человеку нечего было бы понять.
     for (const a of ["", "vless://x", "example.org", "ftp://d.example", "просто текст"]) expect(pohozheNaAdres(a)).toBe(false);
   });
 
   it("кнопки нет, пока оболочка не дала способа читать буфер", () => {
     risovat(spisok([server(1)]));
     fireEvent.click(screen.getByTestId("dobavit"));
-    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-    expect(screen.queryByTestId("adres-iz-bufera")).toBeNull();
+    expect(screen.queryByTestId("iz-bufera")).toBeNull();
   });
 
-  it("адрес из буфера уходит в addSubscription, поле остаётся пустым", async () => {
+  it("адрес из буфера уходит в addSubscription, и ничего больше", async () => {
     const naKomandu = vi.fn();
     render(<Servery status={VYKL} spisok={spisok([server(1)])} naKomandu={naKomandu} chitatBufer={async () => " https://zxc.example/dbae9043 "} />);
     fireEvent.click(screen.getByTestId("dobavit"));
-    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-    fireEvent.click(screen.getByTestId("adres-iz-bufera"));
+    fireEvent.click(screen.getByTestId("iz-bufera"));
     await vi.waitFor(() => expect(naKomandu).toHaveBeenCalledWith("addSubscription", { adres: "https://zxc.example/dbae9043" }));
-    expect(screen.queryByTestId("adres-podpiski")).toBeNull();
+    expect(naKomandu).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).not.toMatch(/zxc\.example/);
   });
 
-  it("не адрес в буфере: отказ словами, команды нет, текст буфера не показан", async () => {
-    const naKomandu = vi.fn();
-    render(<Servery status={VYKL} spisok={spisok([server(1)])} naKomandu={naKomandu} chitatBufer={async () => "секретный текст"} />);
-    fireEvent.click(screen.getByTestId("dobavit"));
-    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-    fireEvent.click(screen.getByTestId("adres-iz-bufera"));
-    const ishod = await screen.findByTestId("ishod-vvoda");
-    expect(ishod).toHaveTextContent(/не адрес подписки/);
-    expect(ishod).not.toHaveTextContent(/секретный/);
-    expect(naKomandu).not.toHaveBeenCalled();
-  });
-
-  // Рамка выделения оставалась на кнопке позади формы, потому что фокус после
-  // переключения висел на кнопке сегмента, а поле ввода стояло пустым. Курсор
-  // в поле снимает и рамку, и лишний щелчок перед вводом.
-  it("переключение сегмента уводит фокус в поле этой ветки", () => {
+  // Курсор в поле снимает и рамку на кнопке позади формы, и лишний щелчок
+  // перед вводом.
+  it("открытая форма ставит курсор в поле", () => {
     risovat(spisok([server(1)]));
     fireEvent.click(screen.getByTestId("dobavit"));
-    fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-    expect(document.activeElement).toBe(screen.getByTestId("adres-podpiski"));
-    fireEvent.click(screen.getByRole("radio", { name: "сервер по ссылке" }));
     expect(document.activeElement).toBe(screen.getByTestId("ssylka"));
   });
 });
 
-// Подсказка врала: addSubscription кладёт адрес ПРО ЗАПАС и активной делает
-// только когда активной ещё нет (cmd/affory-svc/podpiski.go). «Заменит текущую
-// подписку» обещало смену списка серверов там, где её не происходит.
-it("подсказка при заданной подписке обещает запас, а не замену", () => {
-  risovat(spisok([server(1)], { podpiska_zadana: true }));
-  fireEvent.click(screen.getByTestId("dobavit"));
-  fireEvent.click(screen.getByRole("radio", { name: "подписка" }));
-  const p = screen.getByTestId("forma").textContent ?? "";
-  expect(p).toMatch(/про запас/);
-  expect(p).not.toMatch(/заменит текущую/);
-  expect(p).toMatch(/на экране не показывается/);
+// Выгрузка (26.09.2026). Текст и QR закрыты, пока их не попросили: панель
+// открывают и при демонстрации экрана.
+describe("серверы: выгрузка", () => {
+  const OTVET = {
+    tekst: "hy2://p@h:443#a\nanytls://p@h:995#b",
+    base64: "aHkyOi8vcEBoOjQ0MyNhCmFueXRsczovL3BAaDo5OTUjYg==",
+    vsego: 2,
+    propushcheny: [{ imya: "старый", prichina: "этот вид сервера в ссылку не переводится" }],
+  };
+
+  function otkryt(pere: { skopirovat?: (t: string) => Promise<void>; kodyQr?: (t: string) => Promise<string[]> } = {}) {
+    const na = vi.fn((komanda: string, _telo: unknown, naOtvet?: (telo: unknown) => void) => {
+      if (komanda === "exportServers") naOtvet?.(OTVET);
+    });
+    render(<Servery status={VYKL} spisok={spisok([server(1), server(2)])} naKomandu={na} {...pere} />);
+    fireEvent.click(screen.getByTestId("vygruzit"));
+    return na;
+  }
+
+  it("кнопка шлёт exportServers, панель называет число и пропущенных, ключей не видно", () => {
+    const na = otkryt();
+    expect(na).toHaveBeenCalledWith("exportServers", {}, expect.any(Function));
+    expect(screen.getByTestId("vygruzka-itog")).toHaveTextContent("Выгрузка: 2 сервера");
+    expect(screen.getByTestId("vygruzka-propushcheny")).toHaveTextContent("не выгружен старый");
+    expect(screen.getByTestId("vygruzka")).toHaveTextContent(/кто их получит, тот подключится/);
+    expect(screen.queryByTestId("vygruzka-pole")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/hy2:\/\//);
+  });
+
+  it("«Скопировать» кладёт список или base64, не показывая их", async () => {
+    const skopirovat = vi.fn(async () => {});
+    otkryt({ skopirovat });
+    fireEvent.click(screen.getByTestId("vygruzka-kopirovat"));
+    await vi.waitFor(() => expect(skopirovat).toHaveBeenCalledWith(OTVET.tekst));
+    expect(await screen.findByTestId("vygruzka-soobshchenie")).toHaveTextContent("скопировано");
+    fireEvent.click(screen.getByRole("radio", { name: "одной строкой base64" }));
+    fireEvent.click(screen.getByTestId("vygruzka-kopirovat"));
+    await vi.waitFor(() => expect(skopirovat).toHaveBeenLastCalledWith(OTVET.base64));
+    expect(screen.queryByTestId("vygruzka-pole")).toBeNull();
+  });
+
+  it("текст открывается по кнопке и только для чтения", () => {
+    otkryt();
+    fireEvent.click(screen.getByTestId("vygruzka-tekst"));
+    const pole = screen.getByTestId("vygruzka-pole") as HTMLTextAreaElement;
+    expect(pole.value).toBe(OTVET.tekst);
+    expect(pole.readOnly).toBe(true);
+  });
+
+  it("QR рисуется из списка, а не из base64, и несколько кодов подписаны", async () => {
+    const kodyQr = vi.fn(async () => ["data:image/png;base64,AAA", "data:image/png;base64,BBB"]);
+    otkryt({ kodyQr });
+    fireEvent.click(screen.getByRole("radio", { name: "одной строкой base64" }));
+    fireEvent.click(screen.getByTestId("vygruzka-qr"));
+    await vi.waitFor(() => expect(kodyQr).toHaveBeenCalledWith(OTVET.tekst));
+    const kody = await screen.findByTestId("vygruzka-kody");
+    expect(within(kody).getAllByRole("img")).toHaveLength(2);
+    expect(kody).toHaveTextContent("код 1 из 2");
+  });
+
+  it("отказ оболочки нарисовать код назван словами", async () => {
+    otkryt({ kodyQr: async () => { throw new Error("одна ссылка не помещается в QR, скопируй текстом"); } });
+    fireEvent.click(screen.getByTestId("vygruzka-qr"));
+    expect(await screen.findByTestId("vygruzka-soobshchenie")).toHaveTextContent("не помещается в QR");
+  });
+
+  it("на пустом списке выгружать нечего, кнопки нет", () => {
+    risovat(spisok([]));
+    expect(screen.queryByTestId("vygruzit")).toBeNull();
+  });
 });
+

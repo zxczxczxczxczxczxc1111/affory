@@ -13,7 +13,7 @@ import { KOD_OBOLOCHKI, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
-  dobavitSEkrana, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, sohranitProfil, spisokProtsessov, startovayaVkladka,
+  dobavitSEkrana, kodyQr, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitProfil, spisokProtsessov, startovayaVkladka,
   tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, type Zapushchennyy,
 } from "./most";
 import { Servery, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
@@ -154,7 +154,7 @@ function polosaIz(telo: unknown, vremya: string): ZamerPolosy | null {
 }
 
 // Commands after which the server list on screen is stale.
-const MENYAYUT_SPISOK = new Set(["addServer", "removeServer", "setSubscription", "refreshSubscription", "setServer", "setRouteMode", "setAutoMember", "connect",
+const MENYAYUT_SPISOK = new Set(["addServer", "addServers", "removeServer", "setSubscription", "refreshSubscription", "setServer", "setRouteMode", "setAutoMember", "connect",
   "addSubscription", "removeSubscription", "setActiveSubscription"]);
 // Команды, после которых меняется САМ список подписок. Переключение активной
 // сюда входит: строка «активна» переезжает на другую запись.
@@ -407,7 +407,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
 
   // Runs a command and folds its answer into state. Every command goes
   // through here so a refusal frame becomes a refusal screen in one place.
-  const vypolnit = useCallback(async (komanda: string, telo: unknown = {}, naOtvet?: (telo: unknown) => void) => {
+  const vypolnit = useCallback(async (komanda: string, telo: unknown = {}, naOtvet?: (telo: unknown) => void, naOtkaz?: (o: { kod: string; tekst: string }) => void) => {
     const blocksControls = ["connect", "disconnect", "setRules", "setRouteMode", "setServer", "setActiveSubscription"].includes(komanda);
     if (blocksControls) setBusyCommand(komanda);
     const idPodpiski = komanda === "refreshSubscription" && typeof telo === "object" && telo !== null && "id" in telo && typeof telo.id === "string" ? telo.id : "";
@@ -418,7 +418,10 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       // A frame came back, refusal or not: the pipe is alive.
       zadatSvyaz("est");
       if (kadr.oshibka) {
-        zadatOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst, komanda, vkladka: vkladkaSeychas.current });
+        // Экран, который сам показывает отказ на месте, забирает его себе, и
+        // баннер не дублирует его чужими словами.
+        if (naOtkaz) naOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst });
+        else zadatOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst, komanda, vkladka: vkladkaSeychas.current });
       } else {
         zadatOtkaz(null);
         naOtvet?.(kadr.telo);
@@ -1029,7 +1032,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             spisok={spisok}
             spisokOtkaz={spisokOtkaz}
             obnovitSpisok={() => void obnovitSpisok()}
-            naKomandu={(komanda, telo) => void vypolnit(komanda, telo)}
+            naKomandu={(komanda, telo, naOtvet, naOtkaz) => void vypolnit(komanda, telo, naOtvet, naOtkaz)}
+            skopirovat={skopirovatTekst}
+            kodyQr={kodyQr}
             zanyatyeKomandy={zanyatyeKomandy}
             otkazyPodpiski={otkazyPodpiski}
             podpiski={podpiski}

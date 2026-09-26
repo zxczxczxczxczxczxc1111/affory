@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OtkazNaEkrane, OtkazStroki, Server, StatusOtvet } from "../protokol";
 import { slovoPosleChisla } from "../chisla";
-import { IkonkaKorzina, Karta, Knopka, Kolonka, MenyuUKursora, Neudacha, Pole, Razdel, Ryad, Segment, Shapka, Teg } from "./ui";
+import { IkonkaKorzina, Karta, Knopka, Kolonka, MenyuUKursora, Neudacha, Pole, PoleTeksta, Razdel, Ryad, Shapka, Teg } from "./ui";
 import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
+import { Vygruzka, type VygruzkaOtvet } from "./Vygruzka";
 
 // Servers tab (task 4.9). Pure over props like every screen: App fetches
 // listServers and hands the answer down whole; every button sends one named
@@ -12,22 +13,65 @@ import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
 // choice; status.nesushchiy_id is what the core actually carries. In auto
 // mode the choice is empty by construction, and that is not "nothing chosen".
 
-/** Answer body of listServers, see cmd/affory-svc/komandy_serverov.go. */
-/** Schemes the service accepts as one server link. Kept next to the form so
- *  the clipboard button refuses junk without a round trip. */
-const SHEMY = ["vless://", "hy2://", "hysteria2://", "ss://", "trojan://", "vmess://"];
-export function pohozheNaSsylku(t: string): boolean {
-  const s = t.trim().toLowerCase();
-  return SHEMY.some((sh) => s.startsWith(sh));
-}
-
-/** A subscription address is an http(s) URL and nothing else. The check lives
- *  here for the same reason as the one above: the clipboard button refuses
- *  junk on the spot instead of sending the service a command it will refuse
- *  with a code the human cannot read. A server link is junk here too. */
+/** A subscription address is an http(s) URL and nothing else. */
 export function pohozheNaAdres(t: string): boolean {
   const a = t.trim().toLowerCase();
   return a.startsWith("http://") || a.startsWith("https://");
+}
+
+/** Что лежит во вставке (26.09.2026). Одно поле вместо двух вкладок: адреса
+ *  подписок уходят addSubscription, всё остальное одним текстом в addServers.
+ *
+ *  Схемы здесь больше не перечисляются. Список жил отдельно от разбора в
+ *  службе и отстал от него: anytls:// и tuic:// кнопка буфера отвергала
+ *  словами «не ссылка на сервер», хотя служба их принимала. Судит служба, а
+ *  здесь отсекается только явный мусор: текст без единого «://», который не
+ *  похож и на base64, каким подписки и чужие клиенты отдают список. */
+export function razlozhitVstavku(tekst: string): { adresa: string[]; estKlyuchi: boolean } {
+  const stroki = tekst.split(/\r\n|\r|\n/).map((s) => s.trim()).filter(Boolean);
+  const adresa = stroki.filter(pohozheNaAdres);
+  const ostalnye = stroki.filter((s) => !pohozheNaAdres(s));
+  const base64 = /^[A-Za-z0-9+/=_-]{16,}$/.test(ostalnye.join(""));
+  return { adresa, estKlyuchi: ostalnye.some((s) => s.includes("://")) || (ostalnye.length > 0 && base64) };
+}
+
+/** Ответ addServers, см. cmd/affory-svc/komandy_pachki.go. */
+export interface ItogVstavki {
+  dobavleno: number;
+  obnovleno: number;
+  uzhe_bylo: number;
+  otkazy: OtkazStroki[];
+}
+
+function chislo(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+export function itogVstavkiIz(telo: unknown): ItogVstavki {
+  const t = (telo && typeof telo === "object" ? telo : {}) as Record<string, unknown>;
+  const otkazy = Array.isArray(t.otkazy)
+    ? t.otkazy.filter((o): o is OtkazStroki => !!o && typeof o === "object" && typeof (o as OtkazStroki).stroka === "number" && typeof (o as OtkazStroki).prichina === "string")
+    : [];
+  return { dobavleno: chislo(t.dobavleno), obnovleno: chislo(t.obnovleno), uzhe_bylo: chislo(t.uzhe_bylo), otkazy };
+}
+
+/** Строка итога. Слова те же, что у QR с экрана (itogPachki в qr.go). */
+export function strokaItoga(i: ItogVstavki): string {
+  const chasti = [`добавлено ${i.dobavleno}`];
+  if (i.obnovleno > 0) chasti.push(`переименовано ${i.obnovleno}`);
+  if (i.uzhe_bylo > 0) chasti.push(`уже были ${i.uzhe_bylo}`);
+  if (i.otkazy.length > 0) chasti.push(`пропущено ${i.otkazy.length}`);
+  return chasti.join(", ");
+}
+
+export function vygruzkaIz(telo: unknown): VygruzkaOtvet | null {
+  const t = (telo && typeof telo === "object" ? telo : {}) as Record<string, unknown>;
+  if (typeof t.tekst !== "string" || typeof t.base64 !== "string") return null;
+  const propushcheny = Array.isArray(t.propushcheny)
+    ? t.propushcheny.filter((p): p is { imya: string; prichina: string } =>
+        !!p && typeof p === "object" && typeof (p as { imya?: unknown }).imya === "string" && typeof (p as { prichina?: unknown }).prichina === "string")
+    : [];
+  return { tekst: t.tekst, base64: t.base64, vsego: chislo(t.vsego), propushcheny };
 }
 
 export interface SpisokServerov {
@@ -87,7 +131,13 @@ export interface ServeryProps {
   /** Repeats listServers. A refusal without a way back is a dead end, and
    *  this tab had one: no list, no button, no form (03.09.2026). */
   obnovitSpisok?: () => void;
-  naKomandu: (komanda: string, telo: unknown) => void;
+  /** naOtvet получает тело удачного ответа. naOtkaz забирает отказ себе
+   *  вместо общего баннера: отказ вставки пачкой показывается в форме, у
+   *  баннера для его кода слова про подписку, а не про вставленный текст. */
+  naKomandu: (komanda: string, telo: unknown, naOtvet?: (telo: unknown) => void, naOtkaz?: (o: { kod: string; tekst: string }) => void) => void;
+  /** Выгрузка: запись в буфер и QR рисует оболочка окна. */
+  skopirovat?: (tekst: string) => Promise<void>;
+  kodyQr?: (tekst: string) => Promise<string[]>;
   /** Команды, которые сейчас в полёте. Кнопка над долгой командой рисует
    *  вертушку сама: замер задержек и поход за подпиской занимают секунды, и
    *  неподвижный экран всё это время читается как зависшая программа. */
@@ -150,7 +200,7 @@ function sovpadaet(s: Server, zapros: string): boolean {
   return s.imya.toLowerCase().includes(z) || s.host.toLowerCase().includes(z);
 }
 
-export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, zanyatyeKomandy = {}, otkazyPodpiski = [], chitatBufer, naQrSEkrana, zaderzhki = [], podpiski = [] }: ServeryProps) {
+export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, skopirovat, kodyQr, zanyatyeKomandy = {}, otkazyPodpiski = [], chitatBufer, naQrSEkrana, zaderzhki = [], podpiski = [] }: ServeryProps) {
   const aktiven = status.sostoyanie !== "sluzhba-molchit";
   const zhdyot = (k: string) => zanyatyeKomandy[k] === true;
   const [poisk, zadatPoisk] = useState("");
@@ -160,8 +210,12 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   const [dobavlyayu, zadatDobavlyayu] = useState(false);
   // Справка о протоколах: список даёт имена, но не даёт выбора между ними.
   const [spravka, zadatSpravku] = useState(false);
-  const [chto, zadatChto] = useState<"server" | "podpiska">("server");
   const [ssylka, zadatSsylku] = useState("");
+  // Итог последней вставки пачкой. Живёт до закрытия формы: пропущенные
+  // строки человек ищет глазами в своём тексте, и итог не должен исчезать
+  // вместе с обновлением списка.
+  const [itog, zadatItog] = useState<ItogVstavki | null>(null);
+  const [vygruzka, zadatVygruzku] = useState<VygruzkaOtvet | null>(null);
   // Outcome line under the link field: the clipboard held junk, the screen
   // held no QR, or a server was added from it. Never the link text itself.
   const [ishodVvoda, zadatIshodVvoda] = useState<string | null>(null);
@@ -171,12 +225,10 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // этого отказа нет. Прежде здесь стоял выдуманный `qr-s-ekrana`, которого нет
   // ни в словаре протокола, ни в §9.1, ни в otkazy.ts.
   const [otkazQr, zadatOtkazQr] = useState<string | null>(null);
-  const [adres, zadatAdres] = useState("");
   // Caret goes where the human is about to type. Without it the focus stayed
   // on the segment button, and its :focus-visible ring hung around the form
   // like a selection nobody made (живой отзыв 13.09.2026).
-  const poleSsylki = useRef<HTMLInputElement>(null);
-  const poleAdresa = useRef<HTMLInputElement>(null);
+  const poleSsylki = useRef<HTMLTextAreaElement>(null);
   // Two-click delete: the first click turns the icon into a question, the
   // second answers it. One click on a trash icon next to the row you are
   // hovering is how a server disappears by accident.
@@ -248,11 +300,11 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // A refused list is NOT an empty one, so it gets the header button instead.
   const pervyyZapusk = spisok !== null && servery.length === 0;
 
-  // Открытая форма и смена ветки ставят курсор в поле этой ветки.
+  // Открытая форма ставит курсор в поле.
   useEffect(() => {
     if (!dobavlyayu && !pervyyZapusk) return;
-    (chto === "server" ? poleSsylki : poleAdresa).current?.focus();
-  }, [dobavlyayu, pervyyZapusk, chto]);
+    poleSsylki.current?.focus();
+  }, [dobavlyayu, pervyyZapusk]);
 
   const svodka = spisok === null
     ? spisokOtkaz
@@ -264,31 +316,37 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
         avto ? "выбор автоматический" : vybranPropal ? "выбранного нет в списке" : `выбран ${imyaPo(servery, vybran)}`
       }`;
 
+  // Одна дорога для поля и для буфера. Текст ключей в окно не возвращается:
+  // из буфера он уходит в службу, минуя поле, и на экране остаётся только итог.
+  const otpravit = (tekst: string, otkuda: "pole" | "bufer"): boolean => {
+    const { adresa, estKlyuchi } = razlozhitVstavku(tekst);
+    zadatOtkazQr(null);
+    if (!estKlyuchi && adresa.length === 0) {
+      zadatIshodVvoda(
+        tekst.trim() === ""
+          ? otkuda === "bufer" ? "буфер обмена пуст" : null
+          : `${otkuda === "bufer" ? "в буфере" : "в поле"} не ключ и не адрес подписки`,
+      );
+      return false;
+    }
+    zadatIshodVvoda(null);
+    zadatItog(null);
+    // Форма остаётся открытой ради итога. На первом запуске она живёт внутри
+    // пустого списка и пропала бы вместе с ним, как только список наполнится.
+    zadatDobavlyayu(true);
+    if (estKlyuchi) {
+      // Весь текст, вместе со строками подписок: служба пропускает их сама, и
+      // номера пропущенных строк совпадают с тем, что человек вставил.
+      naKomandu("addServers", { tekst }, (telo) => zadatItog(itogVstavkiIz(telo)), (o) => zadatIshodVvoda(o.tekst));
+    }
+    // addSubscription, а не setSubscription: вторая подписка ложится ПРО ЗАПАС.
+    // Адрес это секрет того же разряда, что и ключ: на экран он не попадает.
+    for (const adres of adresa) naKomandu("addSubscription", { adres });
+    return true;
+  };
   const izBufera = async () => {
     if (!chitatBufer) return;
-    const t = (await chitatBufer()).trim();
-    if (!pohozheNaSsylku(t)) {
-      zadatIshodVvoda(t ? "в буфере не ссылка на сервер" : "буфер обмена пуст");
-      return;
-    }
-    naKomandu("addServer", { ssylka: t });
-    zadatIshodVvoda(null);
-    zadatSsylku("");
-    zadatDobavlyayu(false);
-  };
-  const adresIzBufera = async () => {
-    if (!chitatBufer) return;
-    const a = (await chitatBufer()).trim();
-    if (!pohozheNaAdres(a)) {
-      zadatIshodVvoda(a ? "в буфере не адрес подписки" : "буфер обмена пуст");
-      return;
-    }
-    // Адрес подписки это секрет того же разряда, что и ключ: он уходит в
-    // службу и на экран не попадает ни здесь, ни в строке исхода.
-    naKomandu("addSubscription", { adres: a });
-    zadatIshodVvoda(null);
-    zadatAdres("");
-    zadatDobavlyayu(false);
+    otpravit(await chitatBufer(), "bufer");
   };
   const sEkrana = async () => {
     if (!naQrSEkrana) return;
@@ -304,36 +362,21 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
       zadatOtkazQr(e instanceof Error ? e.message : String(e));
     }
   };
-  const otpravitSsylku = () => {
-    const s = ssylka.trim();
-    if (!s) return;
-    naKomandu("addServer", { ssylka: s });
-    zadatSsylku("");
-    zadatDobavlyayu(false);
+  const otpravitPole = () => {
+    if (otpravit(ssylka, "pole")) zadatSsylku("");
   };
-  const otpravitAdres = () => {
-    const a = adres.trim();
-    if (!a) return;
-    // addSubscription, а не setSubscription: вторая подписка ложится ПРО ЗАПАС.
-    // Подменять ту, по которой человек сейчас работает, нажатием «добавить»
-    // значило бы менять список серверов действием, которое об этом не говорит.
-    naKomandu("addSubscription", { adres: a });
-    zadatAdres("");
-    zadatDobavlyayu(false);
-  };
-  const zakrytFormu = () => { zadatDobavlyayu(false); zadatSsylku(""); zadatAdres(""); };
+  const zakrytFormu = () => { zadatDobavlyayu(false); zadatSsylku(""); zadatItog(null); zadatIshodVvoda(null); };
 
-  const otmena = !pervyyZapusk && <Knopka rang="tekst" onClick={zakrytFormu}>Отмена</Knopka>;
-  // Одна кнопка на обе вкладки: в коде лежит либо ключ, либо адрес подписки, и
-  // читается он одинаково. Пока кнопка стояла только у ссылки, QR подписки -
-  // а именно им её и выдают - прочитать было нечем.
+  const otmena = !pervyyZapusk && <Knopka rang="tekst" onClick={zakrytFormu}>{itog ? "Готово" : "Отмена"}</Knopka>;
+  // Служба ходит за подпиской по сети прямо в команде, и ответа ждать секунды.
+  const zhdyomDobavleniya = zhdyot("addServers") || zhdyot("addSubscription");
   const knopkaQr = naQrSEkrana && (
     <Knopka
       rang="vtoraya"
       testId="qr-s-ekrana"
       aktiven={aktiven}
       onClick={() => void sEkrana()}
-      title="Окно спрячется, снимет экраны и найдёт на них QR. Годится и ключ, и адрес подписки: что в коде, то и добавится. В окно ссылка не попадает, она уходит прямо в службу."
+      title="Окно спрячется, снимет экраны и найдёт на них QR. Годится ключ, пачка ключей и адрес подписки: что в коде, то и добавится. В окно ссылка не попадает, она уходит прямо в службу."
     >
       QR с экрана
     </Knopka>
@@ -341,60 +384,39 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   const forma = (
     <Karta testId="forma">
       <div className="flex flex-col gap-3 px-4 py-3">
-        <Segment<"server" | "podpiska">
-          aria-label="что добавить"
-          znacheniya={[{ z: "server", podpis: "сервер по ссылке" }, { z: "podpiska", podpis: "подписка" }]}
-          vybrano={chto}
-          naVybor={(z) => { zadatChto(z); zadatIshodVvoda(null); zadatOtkazQr(null); }}
+        <PoleTeksta
+          testId="ssylka"
+          priv={poleSsylki}
+          aria-label="ключи или адрес подписки"
+          znachenie={ssylka}
+          naVvod={zadatSsylku}
+          placeholder={"vless://, hy2://, anytls://, tuic://, trojan://, ss://\nпо строке на ключ, одним base64 или адрес подписки https://"}
+          aktiven={aktiven}
+          strok={4}
         />
-        {chto === "server" ? (
-          <div className="flex items-center gap-2">
-            <Pole
-              testId="ssylka"
-              priv={poleSsylki}
-              aria-label="ссылка на сервер"
-              znachenie={ssylka}
-              naVvod={zadatSsylku}
-              placeholder="vless://, hy2:// или ss:// из буфера"
-              aktiven={aktiven}
-              className="flex-1"
-            />
-            <Knopka rang="glavnaya" testId="dobavit-ssylku" aktiven={aktiven && ssylka.trim() !== ""} onClick={otpravitSsylku}>
-              Добавить
+        <div className="flex flex-wrap items-center gap-2">
+          <Knopka rang="glavnaya" testId="dobavit-ssylku" zhdyot={zhdyomDobavleniya} aktiven={aktiven && ssylka.trim() !== ""} onClick={otpravitPole}>
+            {zhdyomDobavleniya ? "Добавляю" : "Добавить"}
+          </Knopka>
+          {chitatBufer && (
+            <Knopka rang="vtoraya" testId="iz-bufera" aktiven={aktiven} onClick={() => void izBufera()}>
+              из буфера
             </Knopka>
-            {chitatBufer && (
-              <Knopka rang="vtoraya" testId="iz-bufera" aktiven={aktiven} onClick={() => void izBufera()}>
-                из буфера
-              </Knopka>
+          )}
+          {knopkaQr}
+          <span className="flex-1" />
+          {otmena}
+        </div>
+        {itog && (
+          <div className="flex flex-col gap-0.5 text-xs" data-testid="itog-vstavki">
+            <span className="text-fg-secondary">{strokaItoga(itog)}</span>
+            {itog.otkazy.length > 0 && (
+              <ul className="text-fg-muted">
+                {itog.otkazy.map((o) => (
+                  <li key={o.stroka}>{`строка ${o.stroka}: ${o.prichina}`}</li>
+                ))}
+              </ul>
             )}
-            {knopkaQr}
-            {otmena}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Pole
-              testId="adres-podpiski"
-              priv={poleAdresa}
-              aria-label="адрес подписки"
-              znachenie={adres}
-              naVvod={zadatAdres}
-              placeholder="https://"
-              aktiven={aktiven}
-              className="flex-1"
-            />
-            {/* Служба идёт за подпиской по сети прямо в этой команде, и
-                ответа ждать секунды. */}
-            <Knopka rang="glavnaya" testId="sohranit-podpisku" zhdyot={zhdyot("addSubscription")}
-                    aktiven={aktiven && adres.trim() !== ""} onClick={otpravitAdres}>
-              {zhdyot("addSubscription") ? "Спрашиваю" : "Сохранить"}
-            </Knopka>
-            {chitatBufer && (
-              <Knopka rang="vtoraya" testId="adres-iz-bufera" aktiven={aktiven} onClick={() => void adresIzBufera()}>
-                из буфера
-              </Knopka>
-            )}
-            {knopkaQr}
-            {otmena}
           </div>
         )}
         {ishodVvoda && (
@@ -409,13 +431,6 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
             podpisDeystviya="Повторить"
           />
         )}
-        <p className="text-fg-muted text-xs">
-          {chto === "server"
-            ? "одна ссылка это один сервер; подписка обновляет список сама"
-            : spisok?.podpiska_zadana
-              ? "ляжет про запас, активной останется прежняя; адрес хранится в службе и на экране не показывается"
-              : "список серверов будет обновляться сам раз в 12 часов; адрес хранится в службе и на экране не показывается"}
-        </p>
       </div>
     </Karta>
   );
@@ -433,6 +448,20 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
         svodka={<span data-testid="svodka">{svodka}</span>}
         uZagolovka={<KnopkaSpravki onClick={() => zadatSpravku(true)} />}
       >
+        {!pervyyZapusk && servery.length > 0 && (
+          // Выгрузка просит прав администратора: ответ это все ключи машины.
+          // Отказ уходит общим баннером, у него есть «Повторить от
+          // администратора».
+          <Knopka
+            rang="vtoraya"
+            testId="vygruzit"
+            zhdyot={zhdyot("exportServers")}
+            aktiven={aktiven}
+            onClick={() => naKomandu("exportServers", {}, (telo) => zadatVygruzku(vygruzkaIz(telo)))}
+          >
+            Выгрузить
+          </Knopka>
+        )}
         {!pervyyZapusk && (
           <Knopka rang="glavnaya" testId="dobavit" aktiven={aktiven && !dobavlyayu} onClick={() => zadatDobavlyayu(true)}>
             <Plyus />Добавить
@@ -471,6 +500,10 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
       )}
 
       {!pervyyZapusk && dobavlyayu && forma}
+
+      {vygruzka && (
+        <Vygruzka vygruzka={vygruzka} zakryt={() => zadatVygruzku(null)} skopirovat={skopirovat} kodyQr={kodyQr} />
+      )}
 
       {spisok !== null && (spisok.podpiska_zadana || stroki.length > 0) && (
         <Razdel nazvanie={stroki.length > 1 ? "Подписки" : "Подписка"}>

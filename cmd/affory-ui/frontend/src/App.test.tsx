@@ -177,6 +177,8 @@ vi.mock("./most", () => ({
     return stend.s.bufer ?? "";
   },
   dobavitSEkrana: async () => "",
+  kodyQr: async (tekst: string) => { stend.s.sled.push({ chto: "kodyQr", args: [tekst] }); return ["data:image/png;base64,AAA"]; },
+  skopirovatTekst: async (tekst: string) => { stend.s.sled.push({ chto: "skopirovatTekst", args: [tekst] }); },
   vybratKudaSohranit: async () => {
     stend.s.sled.push({ chto: "vybratKudaSohranit", args: [] });
     return stend.s.putSohraneniya;
@@ -483,6 +485,22 @@ describe("ни один отказ не пропадает молча", () => {
   // Список подписок приходит ОТДЕЛЬНОЙ командой: listServers говорит только про
   // активную, а экрану нужны все. Окно обязано спросить его при открытии
   // вкладки и перезапросить после каждого действия с подписками.
+  // 26.09.2026: отказ вставки пачкой забирает форма. Баннер для кода
+  // subscription-malformed говорил бы про подписку, которой во вставке нет.
+  it("отказ addServers показан в форме, баннера нет, список перечитан", async () => {
+    const most = mostProby();
+    most.otvechatOtkazom("addServers", "subscription-malformed", "это файл настроек, а не ссылки");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Управлять" }));
+    // Список подменной службы пуст: это первый запуск, и форма открыта сама.
+    fireEvent.change(await screen.findByTestId("ssylka"), { target: { value: "vless://x" } });
+    const bylo = most.skolkoRaz("listServers");
+    fireEvent.click(screen.getByTestId("dobavit-ssylku"));
+    expect(await screen.findByTestId("ishod-vvoda")).toHaveTextContent("это файл настроек, а не ссылки");
+    expect(screen.queryByTestId("otkaz")).toBeNull();
+    await waitFor(() => expect(most.skolkoRaz("listServers")).toBeGreaterThan(bylo));
+  });
+
   it("вкладка серверов спрашивает список подписок и перезапрашивает после обновления", async () => {
     const most = mostProby();
     most.otvechatTelom("listSubscriptions", {

@@ -212,11 +212,31 @@ export async function tekstBufera(): Promise<string> {
 }
 
 /** Screen QR: the shell hides the window, shoots every display and decodes.
- *  The link stays in the shell and goes to addServer from there; the screen
- *  only learns the added server's name, or why nothing was added. */
+ *  The link stays in the shell and goes to addServers from there; the screen
+ *  only learns the outcome line, or why nothing was added. */
 export async function dobavitSEkrana(): Promise<string> {
   try {
     return ((await Call.ByName("main.most.DobavitSEkrana")) as string | null) ?? "";
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Выгрузка серверов: оболочка рисует QR в памяти и отдаёт PNG data URI, по
+ *  одному на код. Текст с ключами никуда не пишется. */
+export async function kodyQr(tekst: string): Promise<string[]> {
+  try {
+    const kody = await Call.ByName("main.most.KodyQr", tekst);
+    return Array.isArray(kody) ? kody.filter((k): k is string => typeof k === "string") : [];
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Кладёт текст в буфер обмена. */
+export async function skopirovatTekst(tekst: string): Promise<void> {
+  try {
+    await Clipboard.SetText(tekst);
   } catch (e) {
     throw new Error(e instanceof Error ? e.message : String(e));
   }

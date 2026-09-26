@@ -320,6 +320,38 @@ export function Pole({ testId, znachenie, naVvod, placeholder, aktiven = true, t
   );
 }
 
+/** Многострочное поле (26.09.2026): ключи вставляют пачкой, по строке на
+ *  сервер, и однострочное поле склеивало их в одну строку. Облик тот же, что
+ *  у Pole, чтобы два поля рядом не выглядели разными наборами. */
+export function PoleTeksta({ testId, znachenie, naVvod, placeholder, aktiven = true, tolkoChtenie = false, strok = 4, priv, "aria-label": podpis, className = "" }: {
+  testId?: string;
+  znachenie: string;
+  naVvod?: (v: string) => void;
+  placeholder?: string;
+  aktiven?: boolean;
+  tolkoChtenie?: boolean;
+  strok?: number;
+  priv?: Ref<HTMLTextAreaElement>;
+  "aria-label"?: string;
+  className?: string;
+}) {
+  return (
+    <textarea
+      ref={priv}
+      data-testid={testId}
+      aria-label={podpis}
+      value={znachenie}
+      disabled={!aktiven}
+      readOnly={tolkoChtenie}
+      placeholder={placeholder}
+      rows={strok}
+      spellCheck={false}
+      onChange={(e) => naVvod?.(e.target.value)}
+      className={`bg-elevated border-border text-foreground placeholder:text-fg-faint hover:border-border-hover focus:border-border-active min-w-0 resize-y rounded-md border px-3 py-2 text-[13px] leading-5 break-all disabled:opacity-40 ${className}`}
+    />
+  );
+}
+
 /** Полоса ожидания.
  *
  *  `dolya` в процентах, когда считать есть из чего; `null` оставляет полосу
