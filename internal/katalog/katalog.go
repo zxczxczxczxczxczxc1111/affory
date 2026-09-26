@@ -12,8 +12,8 @@ import (
 var dannye []byte
 
 type Servis struct {
-	Id     string   `json:"id"`
-	Imya   string   `json:"imya"`
+	Id   string `json:"id"`
+	Imya string `json:"imya"`
 	// Без omitempty: каталог уезжает в окно как есть, а пропавшее поле там
 	// читается как сбой формата, не как «доменов нет».
 	Domeny []string `json:"domeny"`
