@@ -56,6 +56,11 @@ var resheniyeOPravah = map[string]bool{
 	// требовать их ровно тогда, когда человек уже в беде и ищет причину.
 	"checkNetwork": false,
 	"addServer":    false, "removeServer": false,
+	// Пачка это те же addServer подряд, решение то же.
+	"addServers": false,
+	// Выгрузка ссылками отдаёт те же ключи, что exportProfile, только без
+	// пароля сверху, поэтому граница у неё не мягче.
+	"exportServers":   true,
 	"setSubscription": false, "refreshSubscription": false, "setRules": false,
 	// Подписки это тот же класс, что и setSubscription: адрес панели, а не
 	// маршрут всей машины. UAC ради переключения между своими панелями

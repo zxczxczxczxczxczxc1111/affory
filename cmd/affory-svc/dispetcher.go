@@ -44,7 +44,8 @@ func otkaz(id uint64, imya, kod, tekst string) protokol.Kadr {
 //
 //   - setKillSwitch правит правила брандмауэра всей машины;
 //   - installUpdate и downloadUpdate подменяют файлы программы;
-//   - exportProfile и importProfile выносят наружу и заносят внутрь ключи.
+//   - exportProfile и importProfile выносят наружу и заносят внутрь ключи;
+//   - exportServers (26.09.2026) отдаёт все ключи ссылками открытым текстом.
 //
 // Всё остальное это работа с собственным набором серверов на собственной
 // машине: добавить сервер, сменить подписку, выбрать сервер, поправить правила
@@ -66,6 +67,7 @@ var komandyDlyaAdmina = map[string]bool{
 	"setKillSwitch":  true,
 	"exportProfile":  true,
 	"importProfile":  true,
+	"exportServers":  true,
 	"installUpdate":  true,
 	"downloadUpdate": true,
 }
@@ -430,6 +432,12 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 	case "addServer":
 		return s.addServer(k)
 
+	case "addServers":
+		return s.addServers(k)
+
+	case "exportServers":
+		return s.exportServers(k)
+
 	case "removeServer":
 		return s.removeServer(k)
 
@@ -480,7 +488,7 @@ func imenaKomand() []string {
 	return []string{
 		"hello", "status", "listServers", "connect", "disconnect", "setServer",
 		"setRouteMode", "setAutoMember",
-		"addServer", "removeServer", "setSubscription", "refreshSubscription",
+		"addServer", "addServers", "exportServers", "removeServer", "setSubscription", "refreshSubscription",
 		"listSubscriptions", "addSubscription", "removeSubscription", "setActiveSubscription",
 		"setKillSwitch", "exportProfile", "importProfile",
 		"setAutostart", "setConnectOnStart", "setBandwidth",

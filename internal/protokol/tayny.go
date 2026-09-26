@@ -17,6 +17,8 @@ var telaNeLogiruem = map[string]bool{
 	"importProfile":      true,
 	"setSubscription":    true, // адрес подписки это секрет класса ключа
 	"addSubscription":    true, // и здесь он же
+	"addServers":         true, // пачка ключей, 26.09.2026
+	"exportServers":      true, // ответ это все ключи машины
 }
 
 // TeloMozhnoLogirovat отвечает, можно ли печатать тело кадра.

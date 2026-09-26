@@ -12,8 +12,8 @@ func TestDolgieKomandyPoluchayutDolgiySrok(t *testing.T) {
 	// сработавшей команде посылает человека чинить исправное.
 	for _, imya := range []string{
 		"connect", "disconnect", "setKillSwitch", "refreshSubscription",
-		"addServer", "removeServer", "setSubscription",
-		"exportProfile", "importProfile",
+		"addServer", "addServers", "removeServer", "setSubscription",
+		"exportProfile", "importProfile", "exportServers",
 	} {
 		if SrokOtveta(imya) != SrokDolgoy {
 			t.Fatalf("команда %s получила быстрый срок, а за ней стоит работа", imya)
@@ -98,7 +98,7 @@ func TestKomandyChitayushchieNaborNeUkladyvayutsyaVBystryySrok(t *testing.T) {
 	const minimum = 30 * time.Second
 	for _, imya := range []string{
 		"listServers", "listRules", "setRules",
-		"addServer", "removeServer", "setSubscription", "setServer", "setRouteMode",
+		"addServer", "addServers", "exportServers", "removeServer", "setSubscription", "setServer", "setRouteMode",
 		"refreshSubscription", "connect", "getServerHealth", "checkLeaks",
 		// measureDelays обходит набор целиком, значит платит за расшифровку
 		// хранилища раньше, чем сделает первый замер.

@@ -60,6 +60,7 @@ var dolgie = map[string]time.Duration{
 	"refreshSubscription": SrokDolgoy,
 	// Меняют список серверов, а значит пересобирают правила брандмауэра.
 	"addServer":       SrokDolgoy,
+	"addServers":      SrokDolgoy,
 	"removeServer":    SrokDolgoy,
 	"setSubscription": SrokDolgoy,
 	// Обе ходят в сеть тем же путём, что и setSubscription: добавление первой
@@ -70,6 +71,8 @@ var dolgie = map[string]time.Duration{
 	// и они честные: дешёвый вывод ключа означал бы дешёвый подбор пароля.
 	"exportProfile": SrokDolgoy,
 	"importProfile": SrokDolgoy,
+	// Читает набор, то есть хранилище секретов, как listServers.
+	"exportServers": SrokDolgoy,
 
 	// Below: seven commands found by reading the code on 03.09.2026. Every one
 	// of them outlives SrokBystroy, and the client tore each of them off
