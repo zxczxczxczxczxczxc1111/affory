@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -178,16 +179,28 @@ func TestVtoroyPerezapuskSetiZhdyotPauzy(t *testing.T) {
 func TestNablyudatelSamSprashivaetProSet(t *testing.T) {
 	// Без этого теста вся проверка смены сети мертва: логика работает, а из
 	// наблюдателя её никто не зовёт, и на живой машине не происходит ничего.
-	s := sluzhbaSRezolverom(t, "192.168.0.1")
-	s.proveritKonfig = func(string) error { return nil }
+	//
+	// Поля наблюдателя выставляются ДО подъёма: он стартует внутри Connect, и
+	// запись после неё шла наперегонки с ним. Адрес резолвера меняется через
+	// общую ячейку, поэтому сеть по-прежнему переезжает под работающим
+	// наблюдателем.
+	var rezolver atomic.Value
+	rezolver.Store(netip.MustParseAddr("192.168.0.1"))
+	s := sluzhbaPodnyatayaS(t, func(s *Sluzhba) {
+		s.proveritKonfig = func(string) error { return nil }
+		// Тик наблюдателя укорачивается, чтобы не ждать штатных секунд.
+		s.periodNesushchego = time.Millisecond
+		s.period = time.Millisecond
+		s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return rezolver.Load().(netip.Addr), nil }
+	})
+	// Подставной подъём конфига не собирает и резолвер не запоминает, поэтому
+	// он ставится здесь, как в sluzhbaSRezolverom.
 	s.mu.Lock()
+	s.rezolverKonfiga = netip.MustParseAddr("192.168.0.1")
 	pokolenieBylo := s.pokolenieP
 	s.mu.Unlock()
-	// Тик наблюдателя укорачивается, чтобы не ждать штатных секунд.
-	s.periodNesushchego = time.Millisecond
-	s.period = time.Millisecond
 	// Сеть «переезжает» уже под работающим наблюдателем.
-	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("10.0.0.1"), nil }
+	rezolver.Store(netip.MustParseAddr("10.0.0.1"))
 
 	srok := time.Now().Add(10 * time.Second)
 	for time.Now().Before(srok) {

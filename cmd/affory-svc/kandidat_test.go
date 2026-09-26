@@ -22,6 +22,23 @@ import (
 // правке правил.
 func sluzhbaPodnyataya(t *testing.T) *Sluzhba {
 	t.Helper()
+	return sluzhbaPodnyatayaS(t, nil)
+}
+
+// sluzhbaPodnyatayaS то же, но даёт выставить поля службы ДО подъёма. Всё, что
+// читает наблюдатель, иначе пишется наперегонки с ним: он стартует внутри
+// Connect.
+func sluzhbaPodnyatayaS(t *testing.T, doPodyoma func(*Sluzhba)) *Sluzhba {
+	t.Helper()
+	// Подмена пути кандидата ставится ДО подставной службы, и это порядок, а не
+	// вкус: очистки идут в обратном порядке, и возврат пути обязан случиться
+	// ПОСЛЕ Zavershit. Иначе переподъём, оставшийся в фоне от теста, читает путь
+	// в тот же момент, когда очистка его переписывает (гонка 26.09.2026).
+	// Каталог берётся сразу по той же причине: t.TempDir из фоновой горутины
+	// звался бы уже на очистке теста.
+	katalog := t.TempDir()
+	putKandidataFayl = func() string { return filepath.Join(katalog, "sing-box.kandidat.json") }
+	t.Cleanup(func() { putKandidataFayl = putKandidata })
 	s := podstavnaya(t, nil)
 	srv := serverProby()
 	s.nabor = func() (Nabor, error) {
@@ -30,8 +47,9 @@ func sluzhbaPodnyataya(t *testing.T) *Sluzhba {
 	s.sobratAdresa = func() ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr(srv.Host)}, nil
 	}
-	putKandidataFayl = func() string { return filepath.Join(t.TempDir(), "sing-box.kandidat.json") }
-	t.Cleanup(func() { putKandidataFayl = putKandidata })
+	if doPodyoma != nil {
+		doPodyoma(s)
+	}
 	if err := s.Connect(context.Background()); err != nil {
 		t.Fatalf("подъём не прошёл: %v", err)
 	}
