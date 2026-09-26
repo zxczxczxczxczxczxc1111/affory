@@ -108,8 +108,8 @@ func TestValidnoeProcentnoeKodirovanieRazbiraetsya(t *testing.T) {
 	if srv.Put != "/ws/path" {
 		t.Fatalf("путь %q, ожидался /ws/path", srv.Put)
 	}
-	// Имя снимается PathUnescape, а не QueryUnescape: второй превратил бы
-	// «NL+2» в «NL 2», и сервер сменил бы имя сам по себе.
+	// Фрагмент раскодируется один раз и не по правилам строки запроса: иначе
+	// «NL+2» стало бы «NL 2», и сервер сменил бы имя сам по себе.
 	if srv.Imya != "NL+2" {
 		t.Fatalf("имя %q, ожидалось NL+2", srv.Imya)
 	}

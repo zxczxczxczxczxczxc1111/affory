@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
@@ -46,14 +48,14 @@ func Sobrat(s protokol.Server) (string, error) {
 			q.Set("downmbps", strconv.Itoa(s.PolosaVniz))
 		}
 		dobavit(q, "pinPubKeySHA256", s.Pin)
-		return sobratURL("hy2", url.User(s.Parol), adres, q, s.Imya), nil
+		return sobratURL("hy2", komponent(s.Parol), adres, q, s.Imya), nil
 	case "anytls":
 		q := url.Values{}
 		dobavit(q, "sni", s.Sni)
 		dobavit(q, "alpn", s.Alpn)
 		dobavit(q, "fp", s.Fp)
 		dobavit(q, "pinPubKeySHA256", s.Pin)
-		return sobratURL("anytls", url.User(s.Parol), adres, q, s.Imya), nil
+		return sobratURL("anytls", komponent(s.Parol), adres, q, s.Imya), nil
 	case "tuic":
 		q := url.Values{}
 		dobavit(q, "sni", s.Sni)
@@ -62,7 +64,7 @@ func Sobrat(s protokol.Server) (string, error) {
 		dobavit(q, "congestion_control", s.Peregruzka)
 		dobavit(q, "udp_relay_mode", s.RezhimUDP)
 		dobavit(q, "pinPubKeySHA256", s.Pin)
-		return sobratURL("tuic", url.UserPassword(s.Uuid, s.Parol), adres, q, s.Imya), nil
+		return sobratURL("tuic", komponent(s.Uuid)+":"+komponent(s.Parol), adres, q, s.Imya), nil
 	case "ss":
 		// SIP002: метод и пароль в base64url, адрес открытым текстом.
 		userinfo := base64.RawURLEncoding.EncodeToString([]byte(s.Metod + ":" + s.Parol))
@@ -101,7 +103,7 @@ func sobratVless(s protokol.Server, adres string) string {
 	dobavit(q, "fp", s.Fp)
 	dobavit(q, "alpn", s.Alpn)
 	dobavit(q, "host", s.HostZagolovka)
-	return sobratURL("vless", url.User(s.Uuid), adres, q, s.Imya)
+	return sobratURL("vless", komponent(s.Uuid), adres, q, s.Imya)
 }
 
 func sobratTrojan(s protokol.Server, adres string) string {
@@ -118,7 +120,7 @@ func sobratTrojan(s protokol.Server, adres string) string {
 	dobavit(q, "alpn", s.Alpn)
 	dobavit(q, "host", s.HostZagolovka)
 	dobavit(q, "pinPubKeySHA256", s.Pin)
-	return sobratURL("trojan", url.User(s.Parol), adres, q, s.Imya)
+	return sobratURL("trojan", komponent(s.Parol), adres, q, s.Imya)
 }
 
 // sobratVmess пишет форму v2rayN: base64 от JSON, других у vmess нет.
@@ -142,17 +144,51 @@ func sobratVmess(s protokol.Server) (string, error) {
 	return "vmess://" + base64.StdEncoding.EncodeToString(b), nil
 }
 
-func sobratURL(shema string, polzovatel *url.Userinfo, adres string, q url.Values, imya string) string {
-	u := url.URL{Scheme: shema, User: polzovatel, Host: adres, RawQuery: q.Encode()}
-	return u.String() + imyaVSsylke(imya)
+// sobratURL собирает строку руками, а не через url.URL (26.09.2026).
+//
+// Стандарт ссылок Xray кодирует каждое поле одним encodeURIComponent. url.URL
+// так не умеет: в userinfo он оставляет «+», «=» и «:» как есть, в запросе
+// пишет пробел плюсом. Голый «+» в пароле чужой клиент вправе прочитать
+// пробелом, а плюс вместо пробела в пути v2rayNG читает плюсом.
+func sobratURL(shema, userinfo, adres string, q url.Values, imya string) string {
+	s := shema + "://" + userinfo + "@" + adres
+	if len(q) > 0 {
+		s += "?" + zapros(q)
+	}
+	return s + imyaVSsylke(imya)
 }
 
-// imyaVSsylke кодирует имя под PathUnescape, которым его снимает разбор.
+// komponent кодирует как encodeURIComponent: всё, кроме A-Za-z0-9-_.~, в
+// процентах, пробел как %20. QueryEscape отличается от него только пробелом.
+func komponent(s string) string {
+	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
+}
+
+// zapros это q.Encode с кодированием komponent. Ключи по алфавиту, как у
+// Encode, чтобы одна запись всегда давала одну строку.
+func zapros(q url.Values) string {
+	klyuchi := make([]string, 0, len(q))
+	for k := range q {
+		klyuchi = append(klyuchi, k)
+	}
+	sort.Strings(klyuchi)
+	var b strings.Builder
+	for _, k := range klyuchi {
+		for _, v := range q[k] {
+			if b.Len() > 0 {
+				b.WriteByte('&')
+			}
+			b.WriteString(komponent(k) + "=" + komponent(v))
+		}
+	}
+	return b.String()
+}
+
 func imyaVSsylke(imya string) string {
 	if imya == "" {
 		return ""
 	}
-	return "#" + url.PathEscape(imya)
+	return "#" + komponent(imya)
 }
 
 // dobavit кладёт параметр, только если он есть: пустой sni= это не «нет

@@ -91,13 +91,10 @@ func razobratURL(s string) (*url.URL, string, int, string, error) {
 	if err != nil {
 		return nil, "", 0, "", err
 	}
-	// Имя снимается PathUnescape, а НЕ QueryUnescape: фрагмент это не строка
-	// запроса, и второй превратил бы «NL+2» в «NL 2». Сервер сменил бы имя сам
-	// по себе, а если бы имя участвовало в идентификаторе, то и сервер.
-	imya, err := url.PathUnescape(u.Fragment)
-	if err != nil {
-		imya = u.Fragment
-	}
+	// Fragment url.Parse уже раскодировал, и «+» в нём остаётся плюсом. До
+	// 26.09.2026 тут стоял ещё PathUnescape, и имя «50%41», закодированное
+	// как 50%2541, становилось «50A».
+	imya := u.Fragment
 	if err := proveritZaglushku(host, imya); err != nil {
 		return nil, "", 0, "", err
 	}
@@ -261,16 +258,11 @@ func vless(s string) (protokol.Server, error) {
 		return protokol.Server{}, fmt.Errorf("%w: нет uuid", ErrSsylkaKrivaya)
 	}
 
-	// Путь нужен ws. Битое процентное кодирование ловится здесь, и это
-	// ЕДИНСТВЕННОЕ, за что путь может быть отвергнут: валидное кодирование
-	// (%2Fws) совершенно нормально и обязано разобраться.
-	if p := q.Get("path"); p != "" {
-		put, err := url.PathUnescape(p)
-		if err != nil {
-			return protokol.Server{}, fmt.Errorf("%w: путь %q: %v", ErrSsylkaKrivaya, p, err)
-		}
-		srv.Put = put
-	}
+	// Путь нужен ws. Кодирование с него уже снял ParseQuery выше, он же
+	// отверг битое (%zz). Второго прохода здесь быть не должно: до 26.09.2026
+	// тут стоял PathUnescape, и путь «/a%41», закодированный как %2Fa%2541,
+	// становился «/aA».
+	srv.Put = q.Get("path")
 	if tip == "grpc" {
 		srv.Put = q.Get("serviceName")
 	}
@@ -561,7 +553,13 @@ func shadowsocks(s string) (protokol.Server, error) {
 		if b, ok := dekodirovat(userinfo); ok {
 			metodParol = string(b)
 		} else {
-			metodParol = userinfo
+			// Открытый «метод:пароль» у шифров 2022 закодирован процентами один
+			// раз. Пароль там base64, и «+» в нём остаётся плюсом.
+			mp, err := url.PathUnescape(userinfo)
+			if err != nil {
+				return protokol.Server{}, fmt.Errorf("%w: ss: %v", ErrSsylkaKrivaya, err)
+			}
+			metodParol = mp
 		}
 	} else {
 		// Целиком закодированная: внутри «метод:пароль@хост:порт».

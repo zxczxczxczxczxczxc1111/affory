@@ -85,7 +85,7 @@ func TestSborkaKraynieSluchai(t *testing.T) {
 		"vless://11111111-2222-3333-4444-555555555555@1.2.3.4:8443?type=ws&security=tls&path=%2Fws&host=h.example&sni=a.example&pinPubKeySHA256=" + pin + "#ws",
 		"trojan://p@1.2.3.4:993?security=tls&type=ws&path=%2Ft&sni=a.example&alpn=h2#trojan-ws",
 		"ss://" + "Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTphOmI" + "@1.2.3.4:8388#ss",
-		// имя с плюсом: фрагмент снимается PathUnescape, плюс обязан остаться плюсом
+		// имя с плюсом: во фрагменте плюс обязан остаться плюсом
 		"hy2://p@1.2.3.4:443?sni=a.example#NL+2",
 	} {
 		t.Run(ss[:strings.Index(ss, ":")], func(t *testing.T) { tudaObratno(t, ss) })

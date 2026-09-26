@@ -62,11 +62,8 @@ func trojan(s string) (protokol.Server, error) {
 		srv.Transport = "trojan"
 	case "ws":
 		srv.Transport = "trojan-ws"
-		put, err := url.PathUnescape(q.Get("path"))
-		if err != nil {
-			return protokol.Server{}, fmt.Errorf("%w: путь %q: %v", ErrSsylkaKrivaya, q.Get("path"), err)
-		}
-		srv.Put = put
+		// Кодирование снято ParseQuery, второй проход портил бы «/a%41».
+		srv.Put = q.Get("path")
 	default:
 		return protokol.Server{}, fmt.Errorf("%w: trojan поверх type=%s", ErrTransportNePodderzhan, tip)
 	}
@@ -182,11 +179,8 @@ func vmess(s string) (protokol.Server, error) {
 		srv.Transport = "vmess"
 	case "ws":
 		srv.Transport = "vmess-ws"
-		put, err := url.PathUnescape(v.Path)
-		if err != nil {
-			return protokol.Server{}, fmt.Errorf("%w: путь %q: %v", ErrSsylkaKrivaya, v.Path, err)
-		}
-		srv.Put = put
+		// JSON процентами не кодируется: v2rayN и v2rayNG берут путь как есть.
+		srv.Put = v.Path
 	default:
 		return protokol.Server{}, fmt.Errorf("%w: vmess поверх net=%s", ErrTransportNePodderzhan, v.Net)
 	}
