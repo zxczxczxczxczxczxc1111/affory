@@ -5,10 +5,15 @@ Upstream: https://github.com/SagerNet/sing-box
 Базовая ревизия: 1ac1a339cb1223e9c70eae14c44411c75033c02d (v1.14.1).
 Affory добавляет Windows-правило process_path_tree для процессов и их потомков.
 Изменения: ustanovka/patches/process-family.patch и ustanovka/processfamily/*.go.
+Зависимость github.com/sagernet/quic-go v0.61.0-sing-box-mod.7 (лицензия MIT)
+собрана с правкой ustanovka/patches/quic-go-applimited.patch: пакеты из одних
+подтверждений больше не обрывают простой отправителя, и BBR не теряет оценку
+отдачи после приёма на том же соединении.
 Теги сборки: with_gvisor,with_quic,with_utls,with_clash_api.
 
 Воспроизведение: применить указанный patch к базовой ревизии, скопировать *.go
-из processfamily в common/afforyprocess и собрать скриптом sobrat-yadro.ps1.
+из processfamily в common/afforyprocess, наложить правку quic-go на копию модуля
+и подключить её через replace, затем собрать скриптом sobrat-yadro.ps1.
 Скрипт выполняет эти действия автоматически. Точный тулчейн, хеш патча,
 исходников расширения и бинаря записаны в YADRO-VYPUSKA.json.
 Исходники и скрипты соответствующей сборки поставляются рядом с установщиком
