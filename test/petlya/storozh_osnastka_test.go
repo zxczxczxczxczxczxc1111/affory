@@ -1,12 +1,16 @@
 package petlya
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // Сторож рабочей машины.
@@ -109,26 +113,75 @@ func ravnyChisla(a, b []int) bool {
 	return true
 }
 
-// tasklist, а не Get-Process: запуск PowerShell стоит полсекунды, а снимок
-// берётся дважды на каждый тест.
+// processMashiny это строка снимка процессов: кто он и чей ребёнок.
+type processMashiny struct {
+	Pid, Roditel int
+	Imya         string // имя образа в нижнем регистре
+}
+
+// pidySingBox отдаёт PID ядер, за которыми сторож обязан следить.
+//
+// До 26.09.2026 здесь стоял список ВСЕХ sing-box.exe через tasklist, и ворота
+// падали без вины продукта. `go test ./...` гоняет пакеты одновременно, а
+// genkonfig, ssylki и yadra зовут `sing-box check`: короткая проверка соседа
+// рождалась и умирала посреди теста петли, и сторож объявлял, что тест тронул
+// чужое ядро. Снимок системы, а не tasklist, потому что только в нём виден
+// родитель процесса.
 func pidySingBox() ([]int, error) {
-	vyvod, err := exec.Command("tasklist", "/FI", "IMAGENAME eq sing-box.exe", "/FO", "CSV", "/NH").Output()
+	vse, err := processyMashiny()
 	if err != nil {
 		return nil, err
 	}
-	var pidy []int
-	for _, s := range strings.Split(string(vyvod), "\n") {
-		polya := strings.Split(s, "\",\"")
-		if len(polya) < 2 {
-			continue
-		}
-		pid, err := strconv.Atoi(strings.Trim(polya[1], "\" \r"))
-		if err != nil {
-			continue
-		}
-		pidy = append(pidy, pid)
+	return otobratYadra(vse, os.Getpid()), nil
+}
+
+func processyMashiny() ([]processMashiny, error) {
+	snimok, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, fmt.Errorf("снимок процессов: %w", err)
 	}
-	return pidy, nil
+	defer windows.CloseHandle(snimok)
+
+	var vse []processMashiny
+	var z windows.ProcessEntry32
+	z.Size = uint32(unsafe.Sizeof(z))
+	for err = windows.Process32First(snimok, &z); err == nil; err = windows.Process32Next(snimok, &z) {
+		vse = append(vse, processMashiny{
+			Pid:     int(z.ProcessID),
+			Roditel: int(z.ParentProcessID),
+			Imya:    strings.ToLower(windows.UTF16ToString(z.ExeFile[:])),
+		})
+	}
+	if !errors.Is(err, windows.ERROR_NO_MORE_FILES) {
+		return nil, fmt.Errorf("обход процессов: %w", err)
+	}
+	return vse, nil
+}
+
+// otobratYadra оставляет ядра, которые тест обязан не тронуть или убрать за
+// собой, и выкидывает проверки соседних тестовых пакетов.
+//
+// Сосед узнаётся по родителю: ядро запустил ДРУГОЙ тестовый бинарник
+// (`*.test.exe`, но не этот процесс). Свои дети остаются в списке, иначе сторож
+// перестанет видеть ядро, забытое самим тестом. Ядро, запущенное службой или
+// оставшееся без живого родителя, тоже остаётся: это ровно то, что сторож ищет.
+func otobratYadra(vse []processMashiny, svoy int) []int {
+	imena := make(map[int]string, len(vse))
+	for _, p := range vse {
+		imena[p.Pid] = p.Imya
+	}
+	var pidy []int
+	for _, p := range vse {
+		if p.Imya != "sing-box.exe" {
+			continue
+		}
+		roditel, zhiv := imena[p.Roditel]
+		if zhiv && p.Roditel != svoy && strings.HasSuffix(roditel, ".test.exe") {
+			continue
+		}
+		pidy = append(pidy, p.Pid)
+	}
+	return pidy
 }
 
 // Шлюз маршрута по умолчанию. Поднятый TUN меняет именно его, и меняет молча.
