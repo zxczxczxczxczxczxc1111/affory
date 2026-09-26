@@ -192,6 +192,7 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 	// Второе решение §9.2: туннель при старте поднимается только по флагу, и
 	// поднимает его служба, а не окно: окна при входе может не быть вовсе.
 	ubratHvostyPodmeny()
+	ubratStaryeObnovleniya()
 	yadro.pokazatItogObnovleniya()
 	if razreshenAvtopodyom(args) {
 		go yadro.PodklyuchitPriStarte(ctx)

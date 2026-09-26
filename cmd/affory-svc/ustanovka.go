@@ -245,7 +245,17 @@ func ustanovit(putBinarya string) error {
 	if err := s.Start(argumentUstanovki); err != nil {
 		return fmt.Errorf("служба создана, но не стартовала: %w", err)
 	}
-	return zhdatSostoyaniya(s, svc.Running)
+	if err := zhdatSostoyaniya(s, svc.Running); err != nil {
+		return err
+	}
+	// Номер пишется ПОСЛЕ старта: не поднявшаяся служба уйдёт в откат, и
+	// реестр не должен успеть назвать версию, которой на машине не будет.
+	// Отказ установку не рушит: неверный номер в списке программ хуже
+	// правильного, но несравнимо лучше отката рабочего обновления.
+	if err := zapisatVersiyuVReestr(versiyaProgrammy); err != nil {
+		log.Printf("%v", err)
+	}
+	return nil
 }
 
 func snyat() error {

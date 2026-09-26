@@ -275,3 +275,80 @@ func ubratHvostyPodmeny() {
 		_ = os.Remove(h)
 	}
 }
+
+// Уборка скачанных обновлений.
+//
+// downloadUpdate кладёт каждый выпуск в obnovleniya и больше к нему не
+// возвращается. На живой машине к 26.09.2026 там лежали одиннадцать архивов по
+// 27 МБ, от 1.0.3 до 1.5.0, всего 284 МБ.
+//
+// Откату архивы не нужны: подменщик хранит прежнюю версию в predydushchaya
+// рядом с программой и возвращает её оттуда копированием. Поэтому служба на
+// старте убирает архивы СТАРШЕ работающей версии. Старт новой версии после
+// подмены и есть «после успешной установки», а заодно так убирается и то, что
+// накопилось до этой правки, и то, что осталось после установщика руками.
+//
+// Архив самой работающей версии остаётся: служба стартует ДО того, как
+// подменщик дождался её ответа, и убрать архив, который ещё ставится, значило
+// бы убирать до успеха. Архив новее работающей тоже остаётся: это след
+// неудавшейся попытки, и следующая загрузка его всё равно перепишет. Итого
+// в каталоге живёт один архив, а не история всех выпусков.
+func ubratStaryeObnovleniya() {
+	kat := filepath.Join(sostoyanie.KatalogDannyh(), katalogObnovleniy)
+	ubrano, bayt, zhaloby := ubratStaryeArhivy(kat, versiyaProgrammy)
+	if len(ubrano) > 0 {
+		log.Printf("убраны скачанные обновления старше %s: %d файлов, %.1f МБ (%s)",
+			versiyaProgrammy, len(ubrano), float64(bayt)/(1<<20), strings.Join(ubrano, ", "))
+	}
+	for _, z := range zhaloby {
+		log.Printf("уборка скачанных обновлений: %s", z)
+	}
+}
+
+// ubratStaryeArhivy удаляет из katalog архивы старше tekushchaya вместе с их
+// .sha256 и говорит, что убрано, сколько байт и что не вышло.
+func ubratStaryeArhivy(katalog, tekushchaya string) (ubrano []string, bayt int64, zhaloby []string) {
+	// Сборка dev не знает, что старше неё, и не трогает ничего.
+	if _, ok := razobratVersiyu(tekushchaya); !ok {
+		return nil, 0, nil
+	}
+	zapisi, err := os.ReadDir(katalog)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, []string{fmt.Sprintf("каталог %s не прочитан: %v", katalog, err)}
+	}
+	for _, z := range zapisi {
+		versiya, nash := versiyaArhiva(z.Name())
+		if !nash || z.IsDir() || !novee(tekushchaya, versiya) {
+			continue
+		}
+		var razmer int64
+		if info, err := z.Info(); err == nil {
+			razmer = info.Size()
+		}
+		if err := os.Remove(filepath.Join(katalog, z.Name())); err != nil {
+			zhaloby = append(zhaloby, fmt.Sprintf("%s не удалён: %v", z.Name(), err))
+			continue
+		}
+		ubrano = append(ubrano, z.Name())
+		bayt += razmer
+	}
+	return ubrano, bayt, zhaloby
+}
+
+// versiyaArhiva узнаёт только свои имена: affory-X.Y.Z.zip и
+// affory-X.Y.Z.zip.sha256, ровно те, что пишет downloadUpdate. Чужой файл в
+// каталоге данных не наш, и решать за него нельзя.
+func versiyaArhiva(imya string) (string, bool) {
+	osnova := strings.TrimSuffix(imya, ".sha256")
+	if !strings.HasPrefix(osnova, "affory-") || !strings.HasSuffix(osnova, ".zip") {
+		return "", false
+	}
+	v := strings.TrimSuffix(strings.TrimPrefix(osnova, "affory-"), ".zip")
+	if _, ok := razobratVersiyu(v); !ok {
+		return "", false
+	}
+	return v, true
+}
