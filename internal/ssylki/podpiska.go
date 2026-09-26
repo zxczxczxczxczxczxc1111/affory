@@ -98,6 +98,25 @@ type Razbor struct {
 // Отказ и частичный успех это РАЗНЫЕ вещи, и обе возвращают заполненный Razbor:
 // причины нужны человеку и при отказе, иначе на экране остаётся слово «пусто».
 func RazobratSpisok(telo []byte) (Razbor, error) {
+	r := razobratStroki(telo, true)
+	if len(r.Servery) > 0 {
+		return r, nil
+	}
+	// Ни одного сервера. Исходов два, и путать их нельзя: истекшая подписка это
+	// ответ панели, который надо показать дословно, а всё остальное это отказ
+	// с причинами.
+	if len(r.Uvedomleniya) > 0 {
+		return r, ErrPodpiskaIstekla
+	}
+	return r, ErrPodpiskaPusta
+}
+
+// razobratStroki общая часть подписки и вставки пачкой (26.09.2026): снять
+// BOM и base64, разрезать по строкам, разобрать каждую, убрать повторы.
+//
+// izPodpiski=false это вставка руками. В ней строки http(s) пропускаются: их
+// окно отправляет отдельно, подпиской, и в отказах они были бы ложью.
+func razobratStroki(telo []byte, izPodpiski bool) Razbor {
 	var r Razbor
 
 	// BOM. Панели, собранные на Windows, ставят его молча, и без снятия первая
@@ -129,10 +148,13 @@ func RazobratSpisok(telo []byte) (Razbor, error) {
 		if stroka == "" {
 			continue
 		}
+		if !izPodpiski && AdresPodpiski(stroka) {
+			continue
+		}
 		srv, err := Razobrat(stroka)
 		switch {
 		case err == nil:
-			srv.IzPodpiski = true
+			srv.IzPodpiski = izPodpiski
 			r.Servery = append(r.Servery, srv)
 		case errors.Is(err, ErrUvedomleniePodpiski):
 			// Отдельным полем, а НЕ в отказы: там текст утонет среди номеров
@@ -147,16 +169,7 @@ func RazobratSpisok(telo []byte) (Razbor, error) {
 	}
 
 	r.Servery = unikalnyeProfili(r.Servery)
-	if len(r.Servery) > 0 {
-		return r, nil
-	}
-	// Ни одного сервера. Исходов два, и путать их нельзя: истекшая подписка это
-	// ответ панели, который надо показать дословно, а всё остальное это отказ
-	// с причинами.
-	if len(r.Uvedomleniya) > 0 {
-		return r, ErrPodpiskaIstekla
-	}
-	return r, ErrPodpiskaPusta
+	return r
 }
 
 // dekodirovatSpisok снимает base64, если тело в нём.
