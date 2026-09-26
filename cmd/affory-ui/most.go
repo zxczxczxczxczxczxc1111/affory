@@ -52,9 +52,13 @@ type Most interface {
 	SpisokProtsessov() ([]Protsess, error)
 	VybratPrilozhenie() (string, error)
 	OtkrytPapkuZhurnalov() error
-	// Screen QR (six comforts §3): shoot every display, decode, addServer.
-	// Returns the added server's name; the link never reaches the screen.
+	// Screen QR (six comforts §3): shoot every display, decode, addServers.
+	// Returns the outcome line; the link never reaches the screen.
 	DobavitSEkrana() (string, error)
+	// Выгрузка серверов (26.09.2026): ссылки из exportServers одним или
+	// несколькими QR, PNG в data URI. Ключи приходят сюда из окна и никуда
+	// не пишутся: картинка собирается в памяти.
+	KodyQr(tekst string) ([]string, error)
 	// Повышение прав окна (03.09.2026): служба часть команд отдаёт только
 	// администратору, а окно стартует ярлыком без повышения, и без этого
 	// метода действие «Повторить от администратора» ничего не делало.

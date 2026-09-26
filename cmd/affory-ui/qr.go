@@ -17,8 +17,8 @@ import (
 
 // QR с экрана (план «шесть удобств» §3). Окно прячется, каждый экран
 // снимается целиком, в снимке ищется QR. Найденная ссылка НЕ возвращается в
-// окно: она уходит в службу тем же addServer, а окно узнаёт только имя
-// добавленного сервера либо причину отказа. Ключ по экрану не гуляет.
+// окно: она уходит в службу командой addServers, а окно узнаёт только итог
+// либо причину отказа. Ключ по экрану не гуляет.
 
 var errQrNeNayden = errors.New("QR на экране не найден")
 
@@ -91,25 +91,82 @@ func (m *most) DobavitSEkrana() (string, error) {
 	if ssylka == "" {
 		return "", errQrNeNayden
 	}
-	if podpiskaVQr(ssylka) {
-		return m.podpiskaSEkrana(ssylka)
+	// С 26.09.2026 в одном коде бывает пачка: выгрузка Affory и чужих клиентов
+	// кладёт ключи по строке, и адрес подписки может стоять среди них.
+	var adresa, klyuchi []string
+	for _, stroka := range strings.Split(ssylka, "\n") {
+		stroka = strings.TrimSpace(stroka)
+		switch {
+		case stroka == "":
+		case podpiskaVQr(stroka):
+			adresa = append(adresa, stroka)
+		default:
+			klyuchi = append(klyuchi, stroka)
+		}
 	}
-	return m.serverSEkrana(ssylka)
+	var itogi []string
+	if len(klyuchi) > 0 {
+		itog, err := m.pachkaSEkrana(strings.Join(klyuchi, "\n"))
+		if err != nil {
+			return "", err
+		}
+		itogi = append(itogi, itog)
+	}
+	for _, adres := range adresa {
+		itog, err := m.podpiskaSEkrana(adres)
+		if err != nil {
+			// Ключи из того же кода уже добавлены: отказ подписки не имеет
+			// права стереть их итог с экрана.
+			if len(itogi) == 0 && len(adresa) == 1 {
+				return "", err
+			}
+			itog = "подписка не добавлена: " + err.Error()
+		}
+		itogi = append(itogi, itog)
+	}
+	return strings.Join(itogi, "; "), nil
 }
 
-func (m *most) serverSEkrana(ssylka string) (string, error) {
-	telo, _ := json.Marshal(map[string]string{"ssylka": ssylka})
-	k, err := m.komandaQr("addServer", telo)
+func (m *most) pachkaSEkrana(tekst string) (string, error) {
+	telo, _ := json.Marshal(map[string]string{"tekst": tekst})
+	k, err := m.komandaQr("addServers", telo)
 	if err != nil {
 		return "", err
 	}
-	var dobavlen struct {
-		Server protokol.Server `json:"server"`
+	var itog itogPachki
+	if err := json.Unmarshal(k.Telo, &itog); err != nil {
+		return "ключи добавлены", nil
 	}
-	if err := json.Unmarshal(k.Telo, &dobavlen); err != nil || dobavlen.Server.Imya == "" {
-		return "добавлен сервер", nil
+	return itog.stroka(), nil
+}
+
+// itogPachki это ответ addServers. Фраза та же, что собирает окно после
+// вставки в поле (itogVstavki в Servery.tsx): один исход, одни слова.
+type itogPachki struct {
+	Dobavleno int `json:"dobavleno"`
+	Obnovleno int `json:"obnovleno"`
+	UzheBylo  int `json:"uzhe_bylo"`
+	Otkazy    []struct {
+		Stroka   int    `json:"stroka"`
+		Prichina string `json:"prichina"`
+	} `json:"otkazy"`
+}
+
+func (i itogPachki) stroka() string {
+	chasti := []string{fmt.Sprintf("добавлено %d", i.Dobavleno)}
+	if i.Obnovleno > 0 {
+		chasti = append(chasti, fmt.Sprintf("переименовано %d", i.Obnovleno))
 	}
-	return "добавлен " + dobavlen.Server.Imya, nil
+	if i.UzheBylo > 0 {
+		chasti = append(chasti, fmt.Sprintf("уже были %d", i.UzheBylo))
+	}
+	if len(i.Otkazy) > 0 {
+		chasti = append(chasti, fmt.Sprintf("пропущено %d", len(i.Otkazy)))
+		for _, o := range i.Otkazy {
+			chasti = append(chasti, fmt.Sprintf("строка %d: %s", o.Stroka, o.Prichina))
+		}
+	}
+	return strings.Join(chasti, ", ")
 }
 
 func (m *most) podpiskaSEkrana(adres string) (string, error) {
