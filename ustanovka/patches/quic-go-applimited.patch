@@ -1,0 +1,18 @@
+diff --git a/internal/ackhandler/sent_packet_handler.go b/internal/ackhandler/sent_packet_handler.go
+index 852ed76..6d429bd 100644
+--- a/internal/ackhandler/sent_packet_handler.go
++++ b/internal/ackhandler/sent_packet_handler.go
+@@ -370,7 +370,12 @@ func (h *sentPacketHandler) SentPacket(
+ 	}
+ 
+ 	if cc.injected {
+-		if !h.packerEmptyTime.IsZero() {
++		// ACK-only packets carry no application data and must not end an idle
++		// period. While the peer sends in bulk, acknowledgments leave more often
++		// than appLimitedThreshold: if they cleared packerEmptyTime, OnAppLimited
++		// never fired, BBR took its bandwidth samples from sparse control frames,
++		// and its estimate collapsed until the direction of traffic changed.
++		if isAckEliciting && !h.packerEmptyTime.IsZero() {
+ 			if cc.extended != nil && t.Sub(h.packerEmptyTime) >= appLimitedThreshold && cc.CanSend(priorInFlight) {
+ 				cc.extended.OnAppLimited(priorInFlight)
+ 			}

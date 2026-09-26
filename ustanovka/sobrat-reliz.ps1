@@ -130,10 +130,12 @@ $zapis = [ordered]@{
     teg         = $otpYadra.teg
     kommit      = $otpYadra.kommit
     process_family = $otpYadra.process_family
+    quic_go     = $otpYadra.quic_go
     versiya     = $otpYadra.versiya
     tegi        = $otpYadra.tegi
     go          = $otpYadra.go
     sha256      = $otpYadra.sha256
+    bayt        = $otpYadra.bayt
     sobrano     = $otpYadra.sobrano
 }
 $zapis | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $PSScriptRoot 'YADRO-VYPUSKA.json') -Encoding UTF8

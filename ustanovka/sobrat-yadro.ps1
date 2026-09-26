@@ -80,11 +80,17 @@ $svoyKatalog = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $Kuda) { $Kuda = Join-Path $svoyKatalog 'yadro\sing-box.exe' }
 
 # Выпуск восстанавливается из своего отпечатка, а не из умолчаний скрипта.
+$bezQuic = $false
+$versiyaVypuska = ''
 if ($KakVypusk) {
     $faylVypuska = Join-Path $svoyKatalog 'YADRO-VYPUSKA.json'
     if (-not (Test-Path $faylVypuska)) { throw "нет отпечатка выпуска: $faylVypuska" }
     $vypusk = Get-Content $faylVypuska -Raw -Encoding UTF8 | ConvertFrom-Json
     if (-not $Kommit -and $vypusk.kommit) { $Kommit = $vypusk.kommit }
+    # Выпуски до правки quic-go (1.5.0 и раньше) собирались без неё, и «как
+    # выпуск» обязано собрать их без неё же, с их же строкой версии.
+    $bezQuic = -not $vypusk.quic_go
+    $versiyaVypuska = [string]$vypusk.versiya
     if (-not $Go     -and $vypusk.go)     {
         # В отпечатке лежит вся строка `go version go1.26.7 windows/amd64`,
         # GOTOOLCHAIN понимает только середину.
@@ -189,7 +195,10 @@ try {
     if ($opisanie -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)$') {
         throw "версия не выводится: describe дал '$opisanie', а ждали vX.Y.Z"
     }
-    $ver = "$($Matches[1])-affory-family.5"
+    # Номер после -affory считает НАШИ правки ядра: до 5 это ревизии патча
+    # process-family, 6 добавила правку quic-go (26.09.2026).
+    $ver = "$($Matches[1])-affory.6"
+    if ($KakVypusk -and $versiyaVypuska) { $ver = $versiyaVypuska }
     $sobrannyy = "$(Nativno { & git rev-parse HEAD } 'коммит форка не прочитался')".Trim()
     if (-not $sobrannyy) { throw 'коммит форка пуст: отпечаток был бы враньём' }
     # Заказанный коммит сверяется с тем, что реально лежит в дереве.
@@ -228,6 +237,52 @@ try {
     foreach ($moduleFile in @('go.mod','go.sum')) { $extensionHashes[$moduleFile] = (Get-FileHash -LiteralPath (Join-Path $familySource $moduleFile) -Algorithm SHA256).Hash.ToLower() }
     Get-ChildItem -LiteralPath $familySource -Filter '*.go' | Sort-Object Name | ForEach-Object {
         $extensionHashes[$_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower()
+    }
+
+    # Правка quic-go, 26.09.2026. hysteria2 и tuic управляют скоростью через BBR,
+    # а quic-go sing-box стирал отметку «отправителю нечего слать» любым
+    # пакетом из одних подтверждений. Пока человек что-то качает, его сторона
+    # шлёт только подтверждения, BBR опускает оценку отдачи почти до нуля, и
+    # отдача после приёма разгонялась с 4 Мбит/с секунд пятнадцать. Отсюда и
+    # вечные единицы Мбит/с отдачи в замере скорости окна на hy2. Опытное ядро
+    # с правкой отдавало 130-200 с первой секунды. Разбор:
+    # affory\pamyat\project_affory_bbr_smena_napravleniya_20260926.md.
+    # Тот же патч стоит в ядре сервера (vpn\skripty\lichnyy-server\sobrat-yadro-servera.ps1).
+    #
+    # Копия модуля лежит РЯДОМ с деревом: внутри git-дерева `git apply`
+    # отсчитывает пути от его корня, а относительный replace `../affory-quic-go`
+    # одинаков на любой машине и не тащит в бинарь пути этой.
+    $quicOtpechatok = $null
+    if (-not $bezQuic) {
+        $quicVersiya = 'v0.61.0-sing-box-mod.7'
+        $quicPatch = Join-Path $svoyKatalog 'patches\quic-go-applimited.patch'
+        $trebuetsya = Select-String -LiteralPath (Join-Path $put 'go.mod') -Pattern '^\s*github\.com/sagernet/quic-go\s+(\S+)' | Select-Object -First 1
+        if (-not $trebuetsya -or $trebuetsya.Matches[0].Groups[1].Value -ne $quicVersiya) {
+            throw "ядро требует не тот quic-go: '$($trebuetsya.Line)', патч проверен на $quicVersiya"
+        }
+        $modul = Nativno { & go mod download -json "github.com/sagernet/quic-go@$quicVersiya" } 'quic-go не скачался' | Out-String | ConvertFrom-Json
+        $quic = Join-Path $Rabochiy 'affory-quic-go'
+        if (Test-Path -LiteralPath $quic) { Remove-Item -LiteralPath $quic -Recurse -Force }
+        Copy-Item -LiteralPath $modul.Dir -Destination $quic -Recurse
+        # Файлы кэша модулей только для чтения, копия наследует этот флаг.
+        Get-ChildItem -LiteralPath $quic -Recurse -File | ForEach-Object { $_.IsReadOnly = $false }
+        Push-Location $quic
+        try {
+            # autocrlf выключен явно: вне репозитория git apply иначе переписывает
+            # весь файл на CRLF, и копия расходится с проверенной побайтно.
+            Nativno { & git -c core.autocrlf=false apply --check $quicPatch } 'патч quic-go не накладывается'
+            Nativno { & git -c core.autocrlf=false apply $quicPatch } 'патч quic-go не наложился'
+        } finally { Pop-Location }
+        Nativno { & go mod edit '-replace=github.com/sagernet/quic-go=../affory-quic-go' } 'replace quic-go не записался'
+        $quicOtpechatok = [ordered]@{
+            versiya = $quicVersiya
+            patch   = (Get-FileHash -LiteralPath $quicPatch -Algorithm SHA256).Hash.ToLower()
+        }
+    } else {
+        # Каталог мог остаться от сборки с правкой: без снятия replace «как
+        # выпуск» молча собрал бы ядро С ней.
+        Nativno { & go mod edit '-dropreplace=github.com/sagernet/quic-go' } 'replace quic-go не снялся'
+        Write-Host 'правка quic-go НЕ накладывается: выпуск собирался без неё' -ForegroundColor Yellow
     }
     Write-Host "сборка $ver, коммит $sobrannyy, теги: $TEGI" -ForegroundColor Cyan
 
@@ -289,6 +344,7 @@ $otpechatok = [ordered]@{
     teg         = $otkuda
     kommit      = $sobrannyy
     process_family = $extensionHashes
+    quic_go     = $quicOtpechatok
     versiya     = $ver
     tegi        = $TEGI
     go          = "$(Nativno { & go version } 'go version не ответила')"
