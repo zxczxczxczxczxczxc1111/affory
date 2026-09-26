@@ -17,7 +17,16 @@ import (
 	"time"
 )
 
-type Provider struct{ ID, Name, Download, Upload string }
+type Provider struct {
+	ID, Name, Download, Upload string
+	// Tochki заполняются у оператора с площадками в разных странах: замер идёт
+	// с ближайшей из них (см. blizhayshaya), а адреса выше тогда не нужны.
+	Tochki []Tochka
+}
+
+// Tochka это одна площадка оператора. Ping отвечает пустым телом, по нему
+// меряется задержка.
+type Tochka struct{ Name, Download, Upload, Ping string }
 type Attempt struct {
 	Provider string `json:"provider"`
 	Name     string `json:"name"`
@@ -51,6 +60,10 @@ const (
 	predelObyoma  = 256 << 20
 	// Окно короче секунды меряет случайность, а не канал.
 	minOkno = time.Second
+	// Выбор площадки: все опрашиваются разом, и медленная или мёртвая держит
+	// выбор не дольше этого срока. Он входит в 90 секунд задачи замера.
+	predelPinga  = 3 * time.Second
+	zamerovPinga = 3
 )
 
 // Independent operators, with endpoints published by their own speed-test clients.
@@ -61,10 +74,16 @@ const (
 // там, где 8 потоков на 12 секунд без разгона давали 65-74, а Ookla через тот
 // же туннель 68. Замер врал вниз впятеро, и человек читал это как беду ключа.
 //
-// Порядок это выбор «Автоматически». Clouvider в Амстердаме первым: с нашего
-// сервера он отдал 407 Мбит/с, а LibreSpeed в Хельсинки, стоявший первым, всего
+// Порядок это выбор «Автоматически». Clouvider первым: с нашего сервера
+// Амстердам отдал 407 Мбит/с, а LibreSpeed в Хельсинки, стоявший первым, всего
 // 40 даже с сервера в дата-центре, то есть мерил себя, а не канал человека.
 // Cloudflare вторым: он отвечает с ближайшего к выходу узла.
+//
+// Площадка Clouvider выбирается по задержке, а не прибита к Амстердаму:
+// серверы подписки стоят не только в Нидерландах, и с американского выхода
+// замер до Амстердама мерил бы океан. Список площадок взят из открытого
+// списка LibreSpeed (librespeed.org/backend-servers/servers.php) 26.09.2026;
+// Атланта из него не ответила дважды по 8 секунд и сюда не вошла.
 //
 // Потолок объёма 256 МБ на фазу: на канале до 500 Мбит/с он не наступает
 // раньше конца окна, а на гигабите фаза кончается раньше срока и число
@@ -72,12 +91,23 @@ const (
 func Default() Runner {
 	return Runner{
 		Providers: []Provider{
-			{"clouvider", "Clouvider · Amsterdam", "https://ams.speedtest.clouvider.net/backend/garbage.php", "https://ams.speedtest.clouvider.net/backend/empty.php"},
-			{"cloudflare", "Cloudflare", "https://speed.cloudflare.com/__down", "https://speed.cloudflare.com/__up"},
-			{"librespeed", "LibreSpeed · Helsinki", "https://www.librespeed.fi/backend/garbage.php", "https://www.librespeed.fi/backend/empty.php"},
-			{"openspeedtest", "OpenSpeedTest", "https://open.cachefly.net/downloading", "https://fal.openspeedtest.com/upload"},
+			{ID: "clouvider", Name: "Clouvider · ближайшая площадка", Tochki: []Tochka{
+				tochkaClouvider("ams", "Amsterdam"),
+				tochkaClouvider("fra", "Frankfurt"),
+				tochkaClouvider("lon", "London"),
+				tochkaClouvider("nyc", "New York"),
+				tochkaClouvider("la", "Los Angeles"),
+			}},
+			{ID: "cloudflare", Name: "Cloudflare", Download: "https://speed.cloudflare.com/__down", Upload: "https://speed.cloudflare.com/__up"},
+			{ID: "librespeed", Name: "LibreSpeed · Helsinki", Download: "https://www.librespeed.fi/backend/garbage.php", Upload: "https://www.librespeed.fi/backend/empty.php"},
+			{ID: "openspeedtest", Name: "OpenSpeedTest", Download: "https://open.cachefly.net/downloading", Upload: "https://fal.openspeedtest.com/upload"},
 		}, Duration: 10 * time.Second, Warmup: 2 * time.Second, Limit: predelObyoma, Chunk: 4 << 20, MinBytes: 64 << 10, Threads: 6,
 	}
+}
+
+func tochkaClouvider(kod, gorod string) Tochka {
+	baza := "https://" + kod + ".speedtest.clouvider.net/backend/"
+	return Tochka{Name: "Clouvider · " + gorod, Download: baza + "garbage.php", Upload: baza + "empty.php", Ping: baza + "empty.php"}
 }
 
 func Client(proxy string) (*http.Client, error) {
@@ -119,14 +149,23 @@ func (r Runner) Run(ctx context.Context, c *http.Client, preferred string, progr
 			result.Error = "Замер отменён"
 			return result
 		}
+		var err error
+		if len(p.Tochki) > 0 {
+			var t Tochka
+			if t, err = blizhayshaya(ctx, c, p.Tochki); err == nil {
+				p.Name, p.Download, p.Upload = t.Name, t.Download, t.Upload
+			}
+		}
 		publish := func(phase string) {
 			if progress != nil {
 				progress(Progress{p.ID, p.Name, phase, i + 1})
 			}
 		}
-		publish("download")
-		down, err := r.phase(ctx, c, p.Download, false)
-		var up float64
+		var down, up float64
+		if err == nil {
+			publish("download")
+			down, err = r.phase(ctx, c, p.Download, false)
+		}
 		if err == nil {
 			publish("upload")
 			up, err = r.phase(ctx, c, p.Upload, true)
@@ -153,6 +192,86 @@ func (r Runner) Run(ctx context.Context, c *http.Client, preferred string, progr
 	}
 	result.Error = "ни один сервис не завершил приём и отдачу, повтори позже"
 	return result
+}
+
+// blizhayshaya выбирает площадку с наименьшей задержкой, как клиенты Speedtest
+// и LibreSpeed. Замер идёт через туннель, поэтому ближайшая здесь значит
+// ближайшая к выходу сервера, а не к человеку, и узнать её можно только так.
+func blizhayshaya(parent context.Context, c *http.Client, tochki []Tochka) (Tochka, error) {
+	ctx, cancel := context.WithTimeout(parent, predelPinga)
+	defer cancel()
+	zaderzhki := make([]time.Duration, len(tochki))
+	otvetili := make([]bool, len(tochki))
+	var wg sync.WaitGroup
+	for i, t := range tochki {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			zaderzhki[i], otvetili[i] = zaderzhka(ctx, c, t.Ping)
+		}()
+	}
+	wg.Wait()
+	if parent.Err() != nil {
+		return Tochka{}, parent.Err()
+	}
+	luchshaya := -1
+	for i := range tochki {
+		if otvetili[i] && (luchshaya < 0 || zaderzhki[i] < zaderzhki[luchshaya]) {
+			luchshaya = i
+		}
+	}
+	if luchshaya < 0 {
+		return Tochka{}, errors.New("ни одна площадка не ответила")
+	}
+	return tochki[luchshaya], nil
+}
+
+// zaderzhka отвечает лучшим временем пустого запроса. Первый запрос открывает
+// соединение через туннель и в счёт не идёт: иначе мерилось бы рукопожатие
+// TLS, а не путь до площадки.
+func zaderzhka(ctx context.Context, c *http.Client, adres string) (time.Duration, bool) {
+	var luchshee time.Duration
+	izmereno := false
+	for i := 0; i <= zamerovPinga; i++ {
+		nachalo := time.Now()
+		if err := pustoyZapros(ctx, c, adres); err != nil {
+			return luchshee, izmereno
+		}
+		if z := time.Since(nachalo); i > 0 && (!izmereno || z < luchshee) {
+			luchshee, izmereno = z, true
+		}
+	}
+	return luchshee, izmereno
+}
+
+func pustoyZapros(ctx context.Context, c *http.Client, adres string) error {
+	u, err := url.Parse(adres)
+	if err != nil {
+		return errors.New("неверный адрес площадки")
+	}
+	q := u.Query()
+	q.Set("affory", strconv.FormatInt(time.Now().UnixNano(), 10))
+	u.RawQuery = q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return errors.New("не удалось создать запрос")
+	}
+	req.Header.Set("Cache-Control", "no-cache, no-store")
+	req.Header.Set("User-Agent", "Affory-SpeedTest/1")
+	response, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	// Тело дочитывается до конца, иначе соединение не вернётся в пул и
+	// следующий запрос снова мерил бы рукопожатие.
+	if _, err := io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10)); err != nil {
+		return err
+	}
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return fmt.Errorf("площадка ответила HTTP %d", response.StatusCode)
+	}
+	return nil
 }
 
 func (r Runner) proverit() error {

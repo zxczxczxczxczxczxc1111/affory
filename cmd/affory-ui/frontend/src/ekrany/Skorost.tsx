@@ -64,7 +64,7 @@ export function Skorost({ snapshot, error, pending, disabled, start, cancel }: {
           <div className="flex flex-col gap-2">
             <div className="max-w-[280px]">
               <Vybor label="Первый сервис замера" value={provider} disabled={running || pending} onChange={setProvider}
-                options={[{value: "", label: "Автоматически"}, {value: "clouvider", label: "Clouvider · Amsterdam"}, {value: "cloudflare", label: "Cloudflare"}, {value: "librespeed", label: "LibreSpeed · Helsinki"}, {value: "openspeedtest", label: "OpenSpeedTest"}]} />
+                options={[{value: "", label: "Автоматически"}, {value: "clouvider", label: "Clouvider · ближайшая площадка"}, {value: "cloudflare", label: "Cloudflare"}, {value: "librespeed", label: "LibreSpeed · Helsinki"}, {value: "openspeedtest", label: "OpenSpeedTest"}]} />
             </div>
             <p>
               Если сервис недоступен, Affory попробует следующий. Замер идёт до полутора минут и на быстром

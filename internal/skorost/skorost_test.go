@@ -93,10 +93,103 @@ func TestParametryPoUmolchaniyuProhodyatSvoyuProverku(t *testing.T) {
 	if tr := c.Transport.(*http.Transport); tr.MaxConnsPerHost < r.Threads {
 		t.Fatalf("соединений на хост %d меньше потоков %d", tr.MaxConnsPerHost, r.Threads)
 	}
-	// «Автоматически» начинает с Амстердама: LibreSpeed в Хельсинки даже с
+	// «Автоматически» начинает с Clouvider: LibreSpeed в Хельсинки даже с
 	// сервера в дата-центре отдавал 40 Мбит/с и мерил себя, а не канал.
 	if r.Providers[0].ID != "clouvider" {
 		t.Fatalf("первым стоит %s", r.Providers[0].ID)
+	}
+	// И площадку выбирает по задержке, а не берёт одну на весь мир.
+	if n := len(r.Providers[0].Tochki); n < 2 {
+		t.Fatalf("у Clouvider %d площадок, выбирать не из чего", n)
+	}
+	for _, p := range r.Providers[0].Tochki {
+		if p.Name == "" || p.Download == "" || p.Upload == "" || p.Ping == "" {
+			t.Fatalf("площадка без адреса: %+v", p)
+		}
+	}
+}
+
+// ploshchadka отвечает как площадка LibreSpeed: пустой ответ на пинг, данные
+// на приём, подтверждение на отдачу. Задержка добавляется к каждому пингу.
+func ploshchadka(t *testing.T, zaderzhka time.Duration, priyomov *atomic.Int32) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ping":
+			time.Sleep(zaderzhka)
+			w.WriteHeader(200)
+		case "/garbage":
+			priyomov.Add(1)
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Write(make([]byte, 4096))
+		default:
+			io.Copy(io.Discard, r.Body)
+			w.WriteHeader(200)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func tochkaIz(imya string, s *httptest.Server) Tochka {
+	return Tochka{Name: imya, Download: s.URL + "/garbage", Upload: s.URL + "/up", Ping: s.URL + "/ping"}
+}
+
+// Замер идёт с площадки, которая ближе по задержке, даже если в списке она не
+// первая: иначе с американского выхода мерился бы путь через океан.
+func TestPloshchadkaVybiraetsyaPoZaderzhke(t *testing.T) {
+	var sDalney, sBlizhney atomic.Int32
+	dalnyaya := ploshchadka(t, 60*time.Millisecond, &sDalney)
+	blizhnyaya := ploshchadka(t, 0, &sBlizhney)
+	runner := Runner{Providers: []Provider{{ID: "op", Name: "Оператор", Tochki: []Tochka{
+		tochkaIz("Дальняя", dalnyaya), tochkaIz("Ближняя", blizhnyaya),
+	}}}, Duration: time.Second, Limit: 4096, Chunk: 4096, MinBytes: 1024, Threads: 1}
+	var imena []string
+	result := runner.Run(context.Background(), &http.Client{}, "", func(p Progress) { imena = append(imena, p.Name) })
+	if result.Error != "" || result.Name != "Ближняя" || result.Download <= 0 || result.Upload <= 0 {
+		t.Fatalf("замер не с ближней площадки: %+v", result)
+	}
+	if sDalney.Load() != 0 || sBlizhney.Load() == 0 {
+		t.Fatalf("приём шёл с дальней %d раз, с ближней %d", sDalney.Load(), sBlizhney.Load())
+	}
+	// Окно показывает, откуда мерили, а не имя оператора целиком.
+	for _, imya := range imena {
+		if imya != "Ближняя" {
+			t.Fatalf("в ходе замера показано %q", imya)
+		}
+	}
+}
+
+// Мёртвая площадка не отменяет выбор среди живых и не держит его дольше срока.
+func TestMyortvayaPloshchadkaNeMeshaetVyboru(t *testing.T) {
+	var priyomov atomic.Int32
+	zhivaya := ploshchadka(t, 0, &priyomov)
+	myortvaya := httptest.NewServer(http.NotFoundHandler())
+	myortvaya.Close()
+	nachalo := time.Now()
+	t2, err := blizhayshaya(context.Background(), &http.Client{}, []Tochka{tochkaIz("Мёртвая", myortvaya), tochkaIz("Живая", zhivaya)})
+	if err != nil || t2.Name != "Живая" {
+		t.Fatalf("выбрана %q, ошибка %v", t2.Name, err)
+	}
+	if proshlo := time.Since(nachalo); proshlo > predelPinga {
+		t.Fatalf("выбор занял %v при сроке %v", proshlo, predelPinga)
+	}
+}
+
+// Ни одна площадка не ответила: это отказ оператора, и замер идёт к
+// следующему сервису, а не кончается ошибкой.
+func TestBezPloshchadokZamerIdyotKSleduyushchemu(t *testing.T) {
+	var priyomov atomic.Int32
+	zapasnoy := ploshchadka(t, 0, &priyomov)
+	myortvaya := httptest.NewServer(http.NotFoundHandler())
+	myortvaya.Close()
+	runner := Runner{Providers: []Provider{
+		{ID: "op", Name: "Оператор", Tochki: []Tochka{tochkaIz("Мёртвая", myortvaya)}},
+		{ID: "zapas", Name: "Запасной", Download: zapasnoy.URL + "/garbage", Upload: zapasnoy.URL + "/up"},
+	}, Duration: time.Second, Limit: 4096, Chunk: 4096, MinBytes: 1024, Threads: 1}
+	result := runner.Run(context.Background(), &http.Client{}, "", nil)
+	if result.Provider != "zapas" || len(result.Attempts) != 2 || result.Attempts[0].Error != "ни одна площадка не ответила" {
+		t.Fatalf("без площадок замер не ушёл к запасному: %+v", result)
 	}
 }
 
