@@ -75,13 +75,16 @@ export function Reklama({ reklama, sohranyonnoe, status, disabled, naSmenu, soob
         />
       </div>
 
-      <div className="flex flex-col gap-1 text-[13px] leading-relaxed" data-testid="reklama-sostoyanie">
-        {stroki.map((s) => (
-          <p key={s.tekst} className={s.vazhnoe ? "text-warn" : "text-fg-muted"} data-testid={s.vazhnoe ? "reklama-vazhnoe" : undefined}>
-            {s.tekst}
-          </p>
-        ))}
-      </div>
+      {/* Пустой блок в колонке с gap дал бы лишний отступ. */}
+      {stroki.length > 0 && (
+        <div className="flex flex-col gap-1 text-[13px] leading-relaxed" data-testid="reklama-sostoyanie">
+          {stroki.map((s) => (
+            <p key={s.tekst} className={s.vazhnoe ? "text-warn" : "text-fg-muted"} data-testid={s.vazhnoe ? "reklama-vazhnoe" : undefined}>
+              {s.tekst}
+            </p>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <h3 className="text-foreground text-[17px] font-semibold leading-tight">Список</h3>
@@ -97,7 +100,7 @@ export function Reklama({ reklama, sohranyonnoe, status, disabled, naSmenu, soob
             znacheniya={UROVNI.map(({ z, podpis }) => ({ z, podpis }))}
           />
         </div>
-        {uroven && <p className="text-fg-muted text-[13px] leading-relaxed">{uroven.opisanie}</p>}
+        {uroven?.opisanie && <p className="text-fg-muted text-[13px] leading-relaxed">{uroven.opisanie}</p>}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -160,9 +163,7 @@ export function Reklama({ reklama, sohranyonnoe, status, disabled, naSmenu, soob
           )}
         </form>
 
-        {reklama.razresheno.length === 0 ? (
-          <p className="text-fg-muted text-[13px]">Исключений нет</p>
-        ) : (
+        {reklama.razresheno.length > 0 && (
           <ul aria-label="Исключения">
             {reklama.razresheno.map((d) => (
               <li key={d} className="border-border hover:bg-surface-hover flex items-center gap-3 border-b px-3 py-2.5 transition-colors">

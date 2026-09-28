@@ -19,9 +19,9 @@ const teksty = (s: StrokaSostoyaniya[]) => s.map((x) => x.tekst);
 const vazhnye = (s: StrokaSostoyaniya[]) => s.filter((x) => x.vazhnoe).map((x) => x.tekst);
 
 describe("строки состояния блокировки рекламы", () => {
-  it("выключенная говорит одну строку и молчит о прошлом отказе", () => {
+  it("выключенная молчит, и о прошлом отказе тоже", () => {
     const s = strokiSostoyaniya({ ...VKL, vkl: false }, { ...ST, deystvuet: false, otkaz: "ядро не приняло файл списка" }, "podnyat");
-    expect(s).toEqual([{ tekst: "Реклама и трекеры не блокируются. Список не скачивается", vazhnoe: false }]);
+    expect(s).toEqual([]);
   });
 
   it("действующий список называет уровень, дату и число правил", () => {

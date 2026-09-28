@@ -166,7 +166,7 @@ const pravila = {
   spisok_izmenyon: false,
   bez_ru_spiska: false,
   // Как шлёт служба: объект всегда целиком. Случаи рекламы включают её сразу,
-  // иначе вкладка показала бы только «не блокируются».
+  // иначе вкладка не показала бы ни одной строки состояния.
   reklama: {
     vkl: REKLAMA_SLUCHAY,
     uroven: (SLUCHAY === "reklama-gotovitsya" ? "multi" : "light") as "light" | "multi",

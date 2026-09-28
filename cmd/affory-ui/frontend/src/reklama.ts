@@ -16,8 +16,10 @@ export interface ReklamaPravila {
   razresheno: string[];
 }
 
-export const UROVNI: { z: UrovenReklamy; podpis: string; opisanie: string }[] = [
-  { z: "light", podpis: "Базовый", opisanie: "Самые частые рекламные и следящие адреса. Сайты почти не ломаются" },
+// Пояснение только там, где оно предупреждает: у базового его сняли по
+// просьбе владельца 29.09.2026 как очевидное.
+export const UROVNI: { z: UrovenReklamy; podpis: string; opisanie?: string }[] = [
+  { z: "light", podpis: "Базовый" },
   {
     z: "multi",
     podpis: "Расширенный",
@@ -58,7 +60,8 @@ export function strokiSostoyaniya(
 ): StrokaSostoyaniya[] {
   // Файл и мета остаются на диске и после выключения. Без этой отсечки окно
   // показало бы у выключенной блокировки предупреждение о прошлом отказе.
-  if (!sohranyonnoe.vkl) return [{ tekst: "Реклама и трекеры не блокируются. Список не скачивается", vazhnoe: false }];
+  // Строки «не блокируются» тоже нет: выключатель говорит это сам.
+  if (!sohranyonnoe.vkl) return [];
   const podnyat = sostoyanie === "podnyat";
   const itog: StrokaSostoyaniya[] = [];
   if (!podnyat) itog.push({ tekst: "Блокировка работает, пока VPN подключён", vazhnoe: false });

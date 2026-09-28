@@ -105,9 +105,10 @@ describe("вкладка «Реклама»", () => {
     expect(screen.getByText(/Расширение можно оставить/)).toBeInTheDocument();
   });
 
-  it("пустой список исключений так и назван", () => {
+  it("выключенная блокировка без исключений не рисует ни строк состояния, ни пустого списка", () => {
     risovat();
-    expect(screen.getByText("Исключений нет")).toBeInTheDocument();
+    expect(screen.queryByTestId("reklama-sostoyanie")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Исключения" })).toBeNull();
   });
 
   it("пока служба занята подъёмом, вкладка неактивна целиком", () => {

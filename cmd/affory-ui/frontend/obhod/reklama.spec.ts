@@ -15,7 +15,7 @@ test("реклама включается, меняет уровень, берё
 
   const vkladka = page.getByRole("tab", { name: /^Реклама/ });
   await vkladka.click();
-  await expect(page.getByTestId("reklama-sostoyanie")).toContainText("Реклама и трекеры не блокируются");
+  await expect(page.getByTestId("reklama-sostoyanie")).toHaveCount(0);
   await expect(page.getByRole("radio", { name: "Расширенный" })).toBeDisabled();
 
   await page.getByTestId("reklama-vkl").click();
