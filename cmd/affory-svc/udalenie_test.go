@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -192,6 +194,137 @@ func TestKatalogProgrammyUdalyaetsyaPriZhivomOkne(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	t.Fatal("каталог программы остался: живое окно держит его, а снятие отчиталось успехом")
+}
+
+// Удаление снимает ТОЛЬКО наше, даже если программа стоит в общем каталоге.
+//
+// До 1.6.2 здесь стоял `rmdir /s /q` по каталогу программы, а каталогом
+// программы считается каталог бинаря. Установщик слушается того пути, который
+// человек вписал руками, то есть Affory, поставленная в `D:\Games`, при удалении
+// стирала `D:\Games` целиком. Пункт К1 аудита 1.6.1.
+func TestUdalenieNeTrogaetChuzhoeVKataloge(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Games")
+	nashi := []string{"affory-svc.exe", "affory-ui.exe", "Uninstall.exe", "GPL-3.0.txt", "affory-ui.exe.ubrat"}
+	for _, p := range []string{"predydushchaya", "sohraneniya"} {
+		if err := os.MkdirAll(filepath.Join(dir, p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range append(nashi, `predydushchaya\affory-svc.exe`, "igra.exe", `sohraneniya\slot1.dat`) {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	star := katalogDlyaUdaleniya
+	katalogDlyaUdaleniya = func() string { return dir }
+	t.Cleanup(func() { katalogDlyaUdaleniya = star })
+
+	if err := udalitKatalogProgrammy(); err != nil {
+		t.Fatalf("запуск не запланирован: %v", err)
+	}
+	ushli := func() bool {
+		for _, f := range append(nashi, "predydushchaya") {
+			if _, err := os.Stat(filepath.Join(dir, f)); !os.IsNotExist(err) {
+				return false
+			}
+		}
+		return true
+	}
+	for i := 0; i < 30 && !ushli(); i++ {
+		time.Sleep(500 * time.Millisecond)
+	}
+	for _, f := range []string{"igra.exe", `sohraneniya\slot1.dat`} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Fatalf("удаление Affory стёрло чужой файл %s: %v", f, err)
+		}
+	}
+	if !ushli() {
+		t.Fatal("наши файлы остались: удаление по списку не отработало")
+	}
+}
+
+// Два удаления, один список. Каталог программы снимают и служба (uninstall,
+// в том числе из окна), и деинсталлятор NSIS. Разойдись их списки, одно из
+// двух оставляло бы файл, который другое считает своим, и каталог переживал бы
+// удаление по одному пути из двух.
+func TestSpisokUdaleniyaSovpadaetSUstanovshchikom(t *testing.T) {
+	telo, err := os.ReadFile(filepath.Join("..", "..", "ustanovka", "affory.nsi"))
+	if err != nil {
+		t.Fatalf("установщик не читается: %v", err)
+	}
+	tekst := string(telo)
+	i := strings.Index(tekst, `Section "Uninstall"`)
+	if i < 0 {
+		t.Fatal("в установщике нет раздела Uninstall")
+	}
+	razdel := tekst[i:]
+	razdel = razdel[:strings.Index(razdel, "SectionEnd")]
+	// Имя файла причины приходит в NSIS определением, а не строкой.
+	razdel = strings.ReplaceAll(razdel, "${FAYL_PRICHINY}", imyaFaylaPrichiny)
+
+	nsis := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(?m)^\s*(Delete|RMDir /r) "\$INSTDIR\\([^"]+)"`).FindAllStringSubmatch(razdel, -1) {
+		nsis[m[2]] = true
+	}
+	nashi := map[string]bool{}
+	for _, f := range append(append(append([]string{}, faylyProgrammy...), maskiProgrammy...), katalogiProgrammy...) {
+		nashi[f] = true
+	}
+	for f := range nashi {
+		if !nsis[f] {
+			t.Errorf("служба удаляет %s, а деинсталлятор нет", f)
+		}
+	}
+	for f := range nsis {
+		if !nashi[f] {
+			t.Errorf("деинсталлятор удаляет %s, а служба нет", f)
+		}
+	}
+}
+
+// Освобождение каталога гасит только НАШИ программы.
+//
+// Установка и удаление завершают процессы, чей образ лежит в каталоге
+// программы. Для `D:\Games` это значило убить запущенную оттуда игру ещё до
+// копирования файлов. Решает не место, а место вместе с именем.
+func TestOsvobozhdenieNeTrogaetChuzhieProgrammyIzKataloga(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Games")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	telo, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "PING.EXE"))
+	if err != nil {
+		t.Skipf("нет чем изобразить игру: %v", err)
+	}
+	igra := filepath.Join(dir, "igra.exe")
+	if err := os.WriteFile(igra, telo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	zhivyot := exec.Command(igra, "-n", "30", "127.0.0.1")
+	zhivyot.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := zhivyot.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = zhivyot.Process.Kill()
+		_, _ = zhivyot.Process.Wait()
+	})
+	time.Sleep(500 * time.Millisecond)
+
+	osvoboditKatalog(dir)
+
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(zhivyot.Process.Pid))
+	if err != nil {
+		t.Fatalf("чужая программа из каталога убита: %v", err)
+	}
+	defer windows.CloseHandle(h)
+	var kod uint32
+	if err := windows.GetExitCodeProcess(h, &kod); err != nil {
+		t.Fatalf("состояние чужой программы не читается: %v", err)
+	}
+	if kod != 259 { // STILL_ACTIVE
+		t.Fatalf("чужая программа из каталога завершена с кодом %d", kod)
+	}
 }
 
 // КОНТРОЛЬ: чужое не трогаем.

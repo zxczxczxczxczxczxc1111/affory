@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/obnovlenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 )
 
@@ -58,11 +59,39 @@ func snyatDannye(dir string, steret bool) error {
 // katalogDlyaUdaleniya is a seam: the test aims the launch at a scratch dir.
 var katalogDlyaUdaleniya = sostoyanie.KatalogProgrammy
 
+// Что считается нашим в каталоге программы. Удаление идёт ТОЛЬКО по этим
+// спискам, а сам каталог снимается последним и без рекурсии: не пуст, значит
+// там лежит чужое, и он остаётся.
+//
+// До 1.6.2 здесь был `rmdir /s /q` по всему каталогу. Каталог программы это
+// каталог бинаря, а установщик слушается пути, вписанного руками, поэтому
+// Affory, поставленная в `D:\Games`, при удалении стирала `D:\Games` целиком
+// (пункт К1 аудита 1.6.1).
+//
+// Тот же список повторяет раздел Uninstall в ustanovka\affory.nsi, и их
+// расхождение ловит TestSpisokUdaleniyaSovpadaetSUstanovshchikom.
+var (
+	faylyProgrammy = append(append([]string{}, faylyUstanovki...),
+		"GPL-3.0.txt", "YADRO-ISHODNIKI.txt", "LICENSE.opencck.txt",
+		"LICENSE.simple-icons.txt", "OFL-Inter.txt",
+		// Manrope ушёл 16.09.2026, но его лицензия лежит у всех, кто ставил 1.1.x.
+		"OFL-Manrope.txt",
+		imyaAvariynogo, imyaFaylaPrichiny, "Uninstall.exe")
+	// Хвосты подмены файлов (internal/obnovlenie): расширения наши, чужих
+	// файлов с ними не бывает.
+	maskiProgrammy    = []string{"*.ubrat", "*.chast", "*.proba"}
+	katalogiProgrammy = []string{obnovlenie.KatalogNovoy, obnovlenie.KatalogPredydushchey}
+)
+
 func udalitKatalogProgrammy() error {
 	dir := katalogDlyaUdaleniya()
 	// Каталог освобождается ДО планирования уборки: иначе уборщик отрабатывает
 	// свои восемь кругов о живое окно и уходит ни с чем.
 	osvoboditKatalog(dir)
+	sistemnyy, err := windows.GetSystemDirectory()
+	if err != nil {
+		return fmt.Errorf("системный каталог не найден: %w", err)
+	}
 	// exec.Command would wrap the whole /c argument in quotes; cmd.exe strips
 	// the outer pair and trips over the inner ones ("The filename, directory
 	// name, or volume label syntax is incorrect"), so the raw command line is
@@ -76,15 +105,28 @@ func udalitKatalogProgrammy() error {
 	// остаётся ради всех остальных: антивирус, индексатор и просто открытая в
 	// каталоге оболочка держат файл секунду-другую и никого не слушают. Цикл
 	// прекращается сразу, как каталога не станет, поэтому обычный случай не
-	// стал дольше ни на шаг.
-	cmd := exec.Command("cmd.exe")
-	cmd.Dir = filepath.Dir(dir) // not inside the directory being removed
+	// стал дольше ни на шаг. С чужими файлами в каталоге он отрабатывает все
+	// круги и уходит, оставив каталог.
+	var fayly []string
+	for _, f := range append(append([]string{}, faylyProgrammy...), maskiProgrammy...) {
+		fayly = append(fayly, `"`+filepath.Join(dir, f)+`"`)
+	}
+	var katalogi []string
+	for _, k := range katalogiProgrammy {
+		katalogi = append(katalogi, fmt.Sprintf(`rmdir /s /q "%s" 2>nul`, filepath.Join(dir, k)))
+	}
+	cmdExe := filepath.Join(sistemnyy, "cmd.exe")
+	cmd := exec.Command(cmdExe)
+	// Рабочий каталог системный, а не родитель каталога программы: отвязанный
+	// процесс живёт до тридцати секунд и держал бы родителя всё это время.
+	cmd.Dir = sistemnyy
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
 		CmdLine: fmt.Sprintf(
-			`cmd.exe /c for /l %%i in (1,1,%d) do (ping -n 4 127.0.0.1 >nul & rmdir /s /q "%s" 2>nul & if not exist "%s" exit)`,
-			popytokUdaleniya, dir, dir),
+			`"%s" /c for /l %%i in (1,1,%d) do ("%s" -n 4 127.0.0.1 >nul & del /f /q %s 2>nul & %s & rmdir "%s" 2>nul & if not exist "%s" exit)`,
+			cmdExe, popytokUdaleniya, filepath.Join(sistemnyy, "PING.EXE"),
+			strings.Join(fayly, " "), strings.Join(katalogi, " & "), dir, dir),
 	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("удаление каталога программы не запланировано: %w", err)
@@ -92,7 +134,8 @@ func udalitKatalogProgrammy() error {
 	return nil
 }
 
-// osvoboditKatalog просит закрыться всё, что запущено ИЗ каталога программы.
+// osvoboditKatalog просит закрыться наши программы, запущенные ИЗ каталога
+// программы.
 //
 // Без этого снятие из командной строки не доводит дело до конца. Окно
 // закрывается само, только когда снятие пошло ЧЕРЕЗ НЕГО (most.go зовёт
@@ -103,6 +146,9 @@ func udalitKatalogProgrammy() error {
 //
 // Ищем по ПУТИ ОБРАЗА, а не по имени процесса. Имя `affory-ui.exe` может носить
 // что угодно на чужой машине, а убивать по имени значит однажды убить не своё.
+// И по пути мало: каталог программы бывает общим (`D:\Games`), и всё, что
+// запущено оттуда, не наше. Поэтому путь и имя вместе: образ лежит ПРЯМО в
+// каталоге и называется одним из наших exe.
 //
 // Сначала просьба (`taskkill` без /F шлёт окну WM_CLOSE), через три секунды
 // принуждение: программу снимают, и окно, пережившее снятие, показывало бы
@@ -112,10 +158,11 @@ func osvoboditKatalog(dir string) {
 	if len(nashi) == 0 {
 		return
 	}
+	taskkill := putSistemnoy("taskkill.exe")
 	for _, pid := range nashi {
 		// Ошибка здесь не повод останавливаться: процесс мог закончиться сам
 		// между снимком и просьбой, и это ровно то, чего мы добивались.
-		_ = exec.Command("taskkill.exe", "/PID", strconv.FormatUint(uint64(pid), 10)).Run()
+		_ = exec.Command(taskkill, "/PID", strconv.FormatUint(uint64(pid), 10)).Run()
 	}
 	srok := time.Now().Add(3 * time.Second)
 	for time.Now().Before(srok) {
@@ -134,8 +181,9 @@ func osvoboditKatalog(dir string) {
 	}
 }
 
-// procesyIz отдаёт pid процессов, чей образ лежит внутри dir. Свой процесс не
-// в счёт: служба сама лежит там же и умрёт сразу после uninstall.
+// procesyIz отдаёт pid наших процессов из dir: образ лежит прямо в dir и
+// называется одним из наших exe. Свой процесс не в счёт: служба сама лежит там
+// же и умрёт сразу после uninstall.
 func procesyIz(dir string) []uint32 {
 	snimok, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -144,7 +192,7 @@ func procesyIz(dir string) []uint32 {
 	defer windows.CloseHandle(snimok)
 
 	svoy := uint32(os.Getpid())
-	prefiks := strings.ToLower(filepath.Clean(dir)) + string(filepath.Separator)
+	katalog := filepath.Clean(dir)
 	var out []uint32
 	// dwSize это договор, а не подсказка: Process32First отвергает нулевой.
 	var zapis windows.ProcessEntry32
@@ -157,11 +205,33 @@ func procesyIz(dir string) []uint32 {
 		if put == "" {
 			continue
 		}
-		if strings.HasPrefix(strings.ToLower(put), prefiks) {
+		if strings.EqualFold(filepath.Dir(put), katalog) && nashExe(filepath.Base(put)) {
 			out = append(out, zapis.ProcessID)
 		}
 	}
 	return out
+}
+
+// nashExe узнаёт имена наших программ, без учёта регистра.
+func nashExe(imya string) bool {
+	for _, f := range faylyUstanovki {
+		if strings.EqualFold(imya, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// putSistemnoy отдаёт полный путь к программе из System32. Поиск по PATH от
+// имени SYSTEM или администратора находит первое попавшееся с этим именем, и
+// каталог, стоящий в PATH раньше System32, подменил бы `taskkill.exe` своим.
+// Голое имя остаётся только на случай, когда системный каталог не назван.
+func putSistemnoy(imya string) string {
+	sistemnyy, err := windows.GetSystemDirectory()
+	if err != nil {
+		return imya
+	}
+	return filepath.Join(sistemnyy, imya)
 }
 
 // putObraza отдаёт полный путь образа процесса или пустую строку.
