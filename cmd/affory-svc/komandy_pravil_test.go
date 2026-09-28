@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"golang.org/x/sys/windows"
 )
 
 // Задача 5.4: команды правил. Хранение в наборе рядом с серверами, запись
@@ -36,7 +37,7 @@ func razobratPravila(t *testing.T, k protokol.Kadr) pravilaOtvet {
 
 func faylProby(t *testing.T) string {
 	t.Helper()
-	put := filepath.Join(t.TempDir(), "Steam", "steam.exe")
+	put := filepath.Join(dlinnoeImya(t, t.TempDir()), "Steam", "steam.exe")
 	if err := os.MkdirAll(filepath.Dir(put), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +45,23 @@ func faylProby(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return put
+}
+
+// dlinnoeImya раскрывает короткие имена 8.3: на раннере GitHub TEMP записан
+// как RUNNER~1, служба сохраняет путь раскрытым, и сравнение с сырым путём из
+// t.TempDir() падало только там (28.09.2026).
+func dlinnoeImya(t *testing.T, put string) string {
+	t.Helper()
+	p, err := windows.UTF16PtrFromString(put)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetLongPathName(p, &buf[0], uint32(len(buf)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return windows.UTF16ToString(buf[:n])
 }
 
 func TestListRulesOtdayotPustyeSpiskiANeNull(t *testing.T) {

@@ -13,7 +13,7 @@ func TestPutNormalizuetsya(t *testing.T) {
 	// Four spellings of the same file, one rule. Anything else is a rule that
 	// works on the machine where it was written and nowhere else: process_path
 	// is compared as a string by the core.
-	dir := t.TempDir()
+	dir := dlinnoeImya(t, t.TempDir())
 	put := filepath.Join(dir, "Program Files Test", "Steam.exe")
 	if err := os.MkdirAll(filepath.Dir(put), 0o755); err != nil {
 		t.Fatal(err)
@@ -62,6 +62,26 @@ func TestKatalogEtoNeProtsess(t *testing.T) {
 	if _, err := NormalizovatPut(t.TempDir()); err == nil {
 		t.Fatal("каталог принят за путь процесса")
 	}
+}
+
+// dlinnoeImya раскрывает короткие имена 8.3 в существующем пути.
+//
+// t.TempDir() строится из TEMP, а там, где имя пользователя длиннее восьми
+// знаков, TEMP сам записан коротким именем: на раннере GitHub это RUNNER~1
+// вместо runneradmin. Нормализация честно раскрывает его, и сравнение с сырым
+// путём падало только там (первый прогон проверки на GitHub, 28.09.2026).
+func dlinnoeImya(t *testing.T, put string) string {
+	t.Helper()
+	p, err := windows.UTF16PtrFromString(put)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetLongPathName(p, &buf[0], uint32(len(buf)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return windows.UTF16ToString(buf[:n])
 }
 
 func korotkoeImya(t *testing.T, put string) string {
