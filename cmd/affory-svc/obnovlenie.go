@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -93,6 +94,11 @@ func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) p
 	if _, err := os.Stat(filepath.Join(novaya, "affory-svc.exe")); err != nil {
 		return s.otkazObnovleniya(k, protokol.KodArhivNegoden, "в архиве нет affory-svc.exe")
 	}
+	// Был ли туннель поднят, запоминается ДО опускания (Н10 аудита 1.6.1):
+	// новая служба поднимет его сама, человек в VPN не должен после
+	// обновления оказаться без него. Защита отдельно не передаётся: её
+	// настройка живёт в файле состояния и встаёт вместе с туннелем.
+	bylPodnyat := s.Status().Sostoyanie == protokol.SostPodnyat
 	// Туннель опускается ДО подмены: правила и политика снимаются штатно, а
 	// не остаются сиротами от службы, которую сейчас убьют.
 	s.Otklyuchit()
@@ -104,7 +110,7 @@ func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) p
 	s.hodObnovleniya(protokol.HodObnovleniya{
 		Shag: protokol.ShagPodmena, Versiya: versiya, SrokS: int(obnovlenie.SrokPodyoma.Seconds()),
 	})
-	if err := s.zapustitPodmenshchika(s.dirProgrammy, novaya); err != nil {
+	if err := s.zapustitPodmenshchika(s.dirProgrammy, novaya, bylPodnyat); err != nil {
 		return s.otkazObnovleniya(k, protokol.KodUpdateRollback, "подменщик не запущен: "+err.Error())
 	}
 	return otvet(k.Id, k.Imya, map[string]any{"zapushchena": true, "srok_s": int(obnovlenie.SrokPodyoma.Seconds())})
@@ -114,12 +120,16 @@ func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) p
 // данных и запускает её в режиме swap отвязанным процессом: служба, которая
 // сейчас отвечает, через секунды будет остановлена вместе со всеми своими
 // детьми.
-func zapustitPodmenshchika(prog, novaya string) error {
+func zapustitPodmenshchika(prog, novaya string, podnyat bool) error {
 	exe, err := prigotovitPodmenshchika(sostoyanie.KatalogDannyh())
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, rezhimPodmeny, prog, novaya)
+	argumenty := []string{rezhimPodmeny, prog, novaya}
+	if podnyat {
+		argumenty = append(argumenty, flagPodnyat)
+	}
+	cmd := exec.Command(exe, argumenty...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008, // DETACHED_PROCESS
@@ -182,9 +192,27 @@ func ubratKatalogiPodmeny(dannye string) []string {
 	return zhaloby
 }
 
+// flagPodnyat просит поднять туннель после обновления: у подменщика и у
+// подкоманды install.
+const flagPodnyat = "--podnyat"
+
+func estFlagPodnyat(args []string) bool {
+	return slices.Contains(args, flagPodnyat)
+}
+
+// argumentyUstanovki это подкоманда, которой подменщик ставит службу: и
+// новую, и прежнюю при откате. Флаг едет в обоих случаях: туннель был поднят
+// до обновления, и откат не повод оставить человека без него.
+func argumentyUstanovki(podnyat bool) []string {
+	if podnyat {
+		return []string{"install", flagPodnyat}
+	}
+	return []string{"install"}
+}
+
 // podmenit это режим swap: тело подменщика. Пишет в log\obnovlenie.log: у
 // отвязанного процесса нет ни консоли, ни родителя, которому жаловаться.
-func podmenit(prog, novaya string) {
+func podmenit(prog, novaya string, podnyat bool) {
 	// Подменщик работает из временного каталога, а каталог программы знает
 	// только из аргумента. Называем его сразу: иначе KatalogProgrammy, который
 	// у всех остальных читается от своего бинаря, указал бы здесь в %TEMP%.
@@ -193,13 +221,13 @@ func podmenit(prog, novaya string) {
 		log.SetOutput(zh)
 		defer zh.Close()
 	}
-	log.Printf("подмена начата: %s <- %s", prog, novaya)
+	log.Printf("подмена начата: %s <- %s, туннель поднять после: %v", prog, novaya, podnyat)
 	p := obnovlenie.Podmena{
 		KatalogProgrammy: prog,
 		Novaya:           novaya,
 		Ostanovit:        ostanovitSluzhbu,
 		Ustanovit: func() error {
-			out, err := exec.Command(filepath.Join(prog, "affory-svc.exe"), "install").CombinedOutput()
+			out, err := exec.Command(filepath.Join(prog, "affory-svc.exe"), argumentyUstanovki(podnyat)...).CombinedOutput()
 			if err != nil {
 				// Свой же бинарь, и всё равно перевод. Подкоманды пишут наружу в
 				// кодовой странице машины: их вывод забирает установщик, который

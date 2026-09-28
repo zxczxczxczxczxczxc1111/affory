@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -22,13 +23,24 @@ const imyaSluzhby = "AfforySvc"
 
 const argumentUstanovki = "install-idle"
 
+// argumentPosleObnovleniya стартует службу после самообновления, при котором
+// туннель был поднят (Н10 аудита 1.6.1): новая служба поднимает его сама.
+const argumentPosleObnovleniya = "posle-obnovleniya-podnyat"
+
 func razreshenAvtopodyom(args []string) bool {
-	for _, arg := range args {
-		if arg == argumentUstanovki {
-			return false
-		}
+	return !slices.Contains(args, argumentUstanovki)
+}
+
+func podnyatPosleObnovleniya(args []string) bool {
+	return slices.Contains(args, argumentPosleObnovleniya)
+}
+
+// argumentStarta это аргумент, с которым install стартует службу.
+func argumentStarta(podnyat bool) string {
+	if podnyat {
+		return argumentPosleObnovleniya
 	}
-	return true
+	return argumentUstanovki
 }
 
 // podgotovitUstanovku останавливает службу, возвращает сеть и освобождает
@@ -208,8 +220,9 @@ func vosstanovlenieSluzhby() ([]mgr.RecoveryAction, uint32) {
 }
 
 // Install is deliberately boring: update whatever is there or create it,
-// configure recovery, start, wait.
-func ustanovit(putBinarya string) error {
+// configure recovery, start, wait. podnyat приходит от подменщика, когда до
+// обновления туннель был поднят.
+func ustanovit(putBinarya string, podnyat bool) error {
 	if err := sostoyanie.ZavestiKatalogDannyh(); err != nil {
 		return err
 	}
@@ -290,7 +303,7 @@ func ustanovit(putBinarya string) error {
 		}
 	}
 
-	if err := s.Start(argumentUstanovki); err != nil {
+	if err := s.Start(argumentStarta(podnyat)); err != nil {
 		return fmt.Errorf("служба создана, но не стартовала: %w", err)
 	}
 	if err := zhdatSostoyaniya(s, svc.Running); err != nil {

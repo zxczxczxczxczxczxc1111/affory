@@ -402,7 +402,7 @@ func TestDownloadUpdateKachaetSveryaetIStavit(t *testing.T) {
 	arhiv, hesh := arhivVPamyati(t)
 	s.skachatFayl = vypuskVSeti("0.6.3", hesh, arhiv, nil)
 	zapuskov := 0
-	s.zapustitPodmenshchika = func(prog, novaya string) error { zapuskov++; return nil }
+	s.zapustitPodmenshchika = func(prog, novaya string, podnyat bool) error { zapuskov++; return nil }
 	o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "downloadUpdate"})
 	if o.Oshib != nil {
 		t.Fatalf("отказ: %+v", o.Oshib)
@@ -428,7 +428,7 @@ func TestDownloadUpdateOtvergaetChuzhoyHesh(t *testing.T) {
 	arhiv, _ := arhivVPamyati(t)
 	s.skachatFayl = vypuskVSeti("0.6.3", hex.EncodeToString(bytes.Repeat([]byte{2}, 32)), arhiv, nil)
 	zapuskov := 0
-	s.zapustitPodmenshchika = func(prog, novaya string) error { zapuskov++; return nil }
+	s.zapustitPodmenshchika = func(prog, novaya string, podnyat bool) error { zapuskov++; return nil }
 	o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "downloadUpdate"})
 	if o.Oshib == nil || o.Oshib.Kod != protokol.KodObnovlenieNeSkachano || zapuskov != 0 {
 		t.Fatalf("архив с чужим хешем: %+v, запусков %d", o, zapuskov)

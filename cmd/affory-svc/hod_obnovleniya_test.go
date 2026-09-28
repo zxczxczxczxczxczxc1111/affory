@@ -19,7 +19,7 @@ func TestObnovlenieShlyotHodShagami(t *testing.T) {
 	s := sVersiey(t, "0.6.2")
 	arhiv, hesh := arhivVPamyati(t)
 	s.skachatFayl = vypuskVSeti("0.6.3", hesh, arhiv, nil)
-	s.zapustitPodmenshchika = func(prog, novaya string) error { return nil }
+	s.zapustitPodmenshchika = func(prog, novaya string, podnyat bool) error { return nil }
 	_, sob := s.Podpisatsya()
 
 	sobrano := make(chan []protokol.Kadr, 1)
@@ -77,7 +77,7 @@ func TestOtkazObnovleniyaGasitHod(t *testing.T) {
 	s := sVersiey(t, "0.6.2")
 	arhiv, _ := arhivVPamyati(t)
 	s.skachatFayl = vypuskVSeti("0.6.3", "0000000000000000000000000000000000000000000000000000000000000000", arhiv, nil)
-	s.zapustitPodmenshchika = func(prog, novaya string) error { return nil }
+	s.zapustitPodmenshchika = func(prog, novaya string, podnyat bool) error { return nil }
 	_, sob := s.Podpisatsya()
 
 	posledniy := make(chan string, 1)

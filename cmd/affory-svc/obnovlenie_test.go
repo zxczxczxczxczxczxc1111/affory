@@ -2,15 +2,20 @@ package main
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/obnovlenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 )
 
 // Задача 6.5. Служба принимает архив, который уже лежит на диске, сверяет
@@ -44,7 +49,7 @@ func arhivSborki(t *testing.T, fayly map[string]string, pravilnyyHesh bool) stri
 func TestInstallUpdateOtvergaetChuzhoyHesh(t *testing.T) {
 	s := podstavnaya(t, nil)
 	zapuskov := 0
-	s.zapustitPodmenshchika = func(prog, novaya string) error { zapuskov++; return nil }
+	s.zapustitPodmenshchika = func(prog, novaya string, podnyat bool) error { zapuskov++; return nil }
 	put := arhivSborki(t, map[string]string{"affory-svc.exe": "n"}, false)
 	telo, _ := json.Marshal(map[string]string{"path": put})
 	o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "installUpdate", Telo: telo})
@@ -53,6 +58,75 @@ func TestInstallUpdateOtvergaetChuzhoyHesh(t *testing.T) {
 	}
 	if zapuskov != 0 {
 		t.Fatal("подменщик запущен для негодного архива")
+	}
+}
+
+// Н10 аудита 1.6.1: после самообновления туннель оставался опущенным, даже
+// если человек до обновления сидел в VPN. Служба опускает его перед подменой,
+// поэтому помнить, был ли он поднят, обязана она же и передать подменщику.
+func TestObnovlenieZapominaetPodnyatyyTunnel(t *testing.T) {
+	for _, podnimat := range []bool{false, true} {
+		s := podstavnaya(t, nil)
+		if podnimat {
+			if err := s.Connect(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var peredano *bool
+		s.zapustitPodmenshchika = func(prog, novaya string, podnyat bool) error { peredano = &podnyat; return nil }
+		put := arhivSborki(t, map[string]string{"affory-svc.exe": "n"}, true)
+		telo, _ := json.Marshal(map[string]string{"path": put})
+		o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "installUpdate", Telo: telo})
+		if o.Oshib != nil {
+			t.Fatalf("обновление отвергнуто: %+v", o.Oshib)
+		}
+		if peredano == nil || *peredano != podnimat {
+			t.Fatalf("туннель был поднят: %v, подменщику передано %v", podnimat, peredano)
+		}
+	}
+}
+
+// Флаг доезжает от подменщика до старта новой службы: install с ним стартует
+// службу аргументом «поднять после обновления», а не install-idle.
+func TestFlagPodnyatiyaDoezzhaetDoStartaSluzhby(t *testing.T) {
+	if got := argumentyUstanovki(true); strings.Join(got, " ") != "install "+flagPodnyat {
+		t.Fatalf("подменщик зовёт %v", got)
+	}
+	if got := argumentyUstanovki(false); strings.Join(got, " ") != "install" {
+		t.Fatalf("подменщик без туннеля зовёт %v", got)
+	}
+	if !estFlagPodnyat([]string{"affory-svc.exe", "install", flagPodnyat}) {
+		t.Fatal("install не видит флага")
+	}
+	if argumentStarta(true) != argumentPosleObnovleniya || argumentStarta(false) != argumentUstanovki {
+		t.Fatal("служба стартует не тем аргументом")
+	}
+	args := []string{imyaSluzhby, argumentPosleObnovleniya}
+	if !razreshenAvtopodyom(args) || !podnyatPosleObnovleniya(args) {
+		t.Fatal("новая служба не поднимет туннель после обновления")
+	}
+	if podnyatPosleObnovleniya([]string{imyaSluzhby}) {
+		t.Fatal("обычный старт принят за старт после обновления")
+	}
+}
+
+// Новая служба поднимает туннель после обновления и без флага «подключать
+// при старте»: человек его не выключал, его опустило обновление.
+func TestPosleObnovleniyaTunnelPodnimaetsya(t *testing.T) {
+	s := podstavnaya(t, nil)
+	podnimali := 0
+	s.podnyatTunnel = func(ctx context.Context) (set.Adapter, error) {
+		podnimali++
+		return set.Adapter{Indeks: 10, Imya: "tun0", Adresa: []netip.Addr{netip.MustParseAddr("172.19.0.1")}}, nil
+	}
+	s.prochitat = func() (sostoyanie.SostoyanieFayla, error) {
+		return sostoyanie.SostoyanieFayla{Sostoyanie: protokol.SostVyklyuchen}, nil
+	}
+	s.zagruzitNastroyki()
+	s.PomnitPodnyatPosleObnovleniya()
+	s.PodklyuchitPriStarte(context.Background())
+	if podnimali != 1 {
+		t.Fatalf("подъёмов после обновления %d, ожидали 1", podnimali)
 	}
 }
 

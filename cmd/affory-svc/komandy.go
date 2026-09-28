@@ -122,7 +122,7 @@ type Sluzhba struct {
 	sprositVyhod  func(ctx context.Context, endpoint string, portProksi int) (string, error)
 	ipv6Zaglushen func() (bool, error)
 	// Обновление (6.5): запуск подменщика подставляется тестами.
-	zapustitPodmenshchika func(prog, novaya string) error
+	zapustitPodmenshchika func(prog, novaya string, podnyat bool) error
 	// Каталог данных: исход обновления читается оттуда; тесты подставляют свой.
 	dirDannyh    string
 	dirProgrammy string
@@ -326,6 +326,9 @@ type Sluzhba struct {
 	// пишет vyklyuchen, так что podnyat в файле при старте бывает только после
 	// аварии: убитый процесс, паника, пропавшее питание.
 	upalaSTunnelem bool
+	// podnyatPosleObnovleniya: служба стартовала после самообновления, при
+	// котором туннель был поднят (Н10 аудита 1.6.1).
+	podnyatPosleObnovleniya bool
 
 	// muFayl держит порядок записей файла состояния: снимок и его запись идут
 	// под одним замком (Н8 аудита 1.6.1). Под одним s.mu снимок снимался, а
@@ -669,14 +672,18 @@ func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 	// Самовольный подъём на НЕЗАПЕРТОЙ машине по-прежнему запрещён: там он
 	// сюрприз, а здесь возврат отнятого.
 	zaperta := s.zaslonAktiven
-	// Туннель, который опустила авария, а не человек, возвращается так же, как
-	// при замке: человек его не выключал.
-	avariya := s.upalaSTunnelem
+	// Туннель, который опустила авария или обновление, а не человек,
+	// возвращается так же, как при замке: человек его не выключал.
+	avariya, obnovlenie := s.upalaSTunnelem, s.podnyatPosleObnovleniya
 	s.mu.Unlock()
-	if !vkl && !zaperta && !avariya {
+	if !vkl && !zaperta && !avariya && !obnovlenie {
 		return
 	}
-	if avariya && !vkl && !zaperta {
+	switch {
+	case vkl || zaperta:
+	case obnovlenie:
+		log.Printf("до обновления туннель был поднят: поднимаю его обратно")
+	case avariya:
 		log.Printf("прошлая служба завершилась, не опустив туннель: поднимаю его обратно")
 	}
 	for i := 0; i < popytokPriStarte; i++ {
@@ -697,6 +704,14 @@ func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 		log.Printf("машина заперта, а туннель за %d попыток не поднялся: ухожу в восстановление", popytokPriStarte)
 		s.zapustitVosstanovlenie()
 	}
+}
+
+// PomnitPodnyatPosleObnovleniya отмечает старт после самообновления, при
+// котором туннель был поднят.
+func (s *Sluzhba) PomnitPodnyatPosleObnovleniya() {
+	s.mu.Lock()
+	s.podnyatPosleObnovleniya = true
+	s.mu.Unlock()
 }
 
 // StatusS отдаёт статус с РАЗОВОЙ ошибкой вместо запомненной.

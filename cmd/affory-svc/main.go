@@ -33,7 +33,7 @@ func main() {
 			if err != nil {
 				upast("не удалось узнать свой путь: %v", err)
 			}
-			if err := ustanovit(put); err != nil {
+			if err := ustanovit(put, estFlagPodnyat(os.Args[2:])); err != nil {
 				upast("установка не удалась: %v", err)
 			}
 			fmt.Fprintln(vyvod, "служба установлена")
@@ -56,7 +56,7 @@ func main() {
 			if len(os.Args) < 4 {
 				upast("swap: нужны каталог программы и каталог новой сборки")
 			}
-			podmenit(os.Args[2], os.Args[3])
+			podmenit(os.Args[2], os.Args[3], estFlagPodnyat(os.Args[4:]))
 			return
 		case "uninstall":
 			if err := snyat(); err != nil {
@@ -206,6 +206,9 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 	ubratHvostyPodmeny()
 	ubratStaryeObnovleniya()
 	yadro.pokazatItogObnovleniya()
+	if podnyatPosleObnovleniya(args) {
+		yadro.PomnitPodnyatPosleObnovleniya()
+	}
 	if razreshenAvtopodyom(args) {
 		fon.Zapustit("подъёме при старте", func() { yadro.PodklyuchitPriStarte(ctx) })
 	}
