@@ -30,16 +30,16 @@ type pasport struct {
 	Yadro     string     `json:"yadro"`
 }
 
-var metaVstroennogo = sync.OnceValue(func() meta {
+var metaVstroennogo = sync.OnceValue(func() Meta {
 	var p pasport
 	if err := json.Unmarshal(vstroennyyPasport, &p); err != nil {
 		// Паспорт вшит при сборке: битый это ошибка сборки, её ловит тест.
 		panic(fmt.Sprintf("паспорт встроенного списка рекламы не разобран: %v", err))
 	}
-	return meta{Uroven: p.Uroven, Pravil: p.Pravil, Versiya: p.Versiya, Sobran: p.Sobran, Sha256: p.Sha256, Vstroennyy: true}
+	return Meta{Uroven: p.Uroven, Pravil: p.Pravil, Versiya: p.Versiya, Sobran: p.Sobran, Sha256: p.Sha256, Vstroennyy: true}
 })
 
-// vstroennyy отдаёт начальный список, едущий внутри программы, и его мету.
-func vstroennyy() ([]byte, meta) {
+// Vstroennyy отдаёт начальный список, едущий внутри программы, и его мету.
+func Vstroennyy() ([]byte, Meta) {
 	return vstroennyySrs, metaVstroennogo()
 }

@@ -102,6 +102,26 @@ type StatusOtvet struct {
 	// нет», пока расписание каждый час молча упирается в отказ сети (найдено
 	// 23.09.2026 разбором D3).
 	ObnovlenieOtkaz string `json:"obnovlenie_otkaz,omitempty"`
+	// Reklama это состояние списка блокировки рекламы (28.09.2026). В status, а
+	// не в listRules: окно опрашивает status каждые 5 с, а правила перечитывает
+	// только при смене вкладки. nil значит «списка нет и отказов не было».
+	Reklama *ReklamaSostoyanie `json:"reklama,omitempty"`
+}
+
+// ReklamaSostoyanie описывает список, который ЛЕЖИТ В ФАЙЛЕ, а не выбранный
+// человеком: пока новый уровень готовится, они расходятся.
+type ReklamaSostoyanie struct {
+	Uroven     string     `json:"uroven"`
+	Pravil     int        `json:"pravil"`
+	Versiya    string     `json:"versiya,omitempty"`
+	Sobran     *time.Time `json:"sobran,omitempty"`
+	Proveren   *time.Time `json:"proveren,omitempty"`
+	Vstroennyy bool       `json:"vstroennyy,omitempty"`
+	// БЕЗ omitempty: false значит «конфиг живого ядра блока не несёт».
+	Deystvuet bool `json:"deystvuet"`
+	// Голая причина последнего отказа, БЕЗ префикса: фразу вокруг неё строит
+	// окно. Держится до первой удачи, как ObnovlenieOtkaz.
+	Otkaz string `json:"otkaz,omitempty"`
 }
 
 // ObnovlenieOtvet это то, что служба знает о новой версии на сервере

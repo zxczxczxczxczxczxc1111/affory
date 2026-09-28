@@ -47,6 +47,14 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	s.skachatNabor = func(context.Context, string) ([]byte, error) {
 		return nil, errors.New("network disabled in service fixture")
 	}
+	s.skachatSpisok = func(context.Context, string) ([]byte, error) {
+		return nil, errors.New("network disabled in service fixture")
+	}
+	s.sobratSpisok = func(context.Context, string, string) error {
+		return errors.New("core disabled in service fixture")
+	}
+	// Настоящий сброс чистит кэш DNS всей машины: тестам это ни к чему.
+	s.sbrositKeshDNS = func() error { return nil }
 	s.zapisat = func(sostoyanie.SostoyanieFayla) error { return nil }
 	// Конструктор уже прочитал НАСТОЯЩИЙ файл настроек машины: 03.09.2026
 	// тест «журнал выключен по умолчанию» покраснел на хосте, где журнал

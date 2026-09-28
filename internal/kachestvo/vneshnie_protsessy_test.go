@@ -44,7 +44,9 @@ var vneshnieProtsessy = map[string]string{
 	filepath.Join("internal", "set", "ipv6.go"): "netsh: единственное место, где он зовётся, " +
 		"и вывод переводится из кодовой страницы консоли (kodirovki.Konsoli)",
 	filepath.Join("internal", "yadra", "proverka.go"): "sing-box check: вывод ядра уже UTF-8",
-	filepath.Join("internal", "yadra", "zapusk.go"):   "sing-box run: жалобы ядра уже UTF-8",
+	filepath.Join("internal", "yadra", "spisok.go"): "sing-box rule-set convert/match: вывод ядра " +
+		"уже UTF-8, читается только признак совпадения",
+	filepath.Join("internal", "yadra", "zapusk.go"): "sing-box run: жалобы ядра уже UTF-8",
 }
 
 func TestVneshnieProtsessyPodUchyotom(t *testing.T) {

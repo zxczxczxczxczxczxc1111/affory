@@ -81,8 +81,8 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 	}
 
 	fon.Zapustit("стороже ядра", func() {
-		// Состояние туннеля ведёт основной путь Connect, поэтому обработчика у
-		// сторожа нет вовсе.
+		// Состояние туннеля ведёт основной путь Connect, обработчик сторожа его
+		// не трогает: он только готовит файлы к перезапуску ядра.
 		//
 		// Прежде здесь стояла ветка на SostOtkaz. Сторож её не шлёт НИКОГДА: он
 		// перезапускает ядро вечно, с растущими отступами, и сдачи у него нет.
@@ -91,7 +91,7 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 		// опускает туннель кодом tunnel-not-carrying. Ветка описывала событие,
 		// которого не бывает, и создавала вид обработки.
 		fon.SPovtorom(ctx, "сторож ядра", pauzaPoslePaniki, func() {
-			if err := s.storozhit(ctx, imyaYadraTun, putKonfigaTun(), nil); err != nil && !errors.Is(err, context.Canceled) {
+			if err := s.storozhit(ctx, imyaYadraTun, putKonfigaTun(), s.peredPerezapuskomYadra); err != nil && !errors.Is(err, context.Canceled) {
 				log.Printf("сторож ядра туннеля завершился: %v", err)
 			}
 		})
@@ -109,6 +109,24 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 	// вместе с ним не выполнялась, и проверить её было нечем. Ровно так порт
 	// clash_api и адаптер пропадали из файла годами при зелёных тестах.
 	return a, nil
+}
+
+// peredPerezapuskomYadra держит И5 для перезапуска сторожем: ядро поднимется
+// с тем же конфигом, а local-набор без годного файла уронил бы его целиком.
+func (s *Sluzhba) peredPerezapuskomYadra(st protokol.Sostoyanie) {
+	if st != protokol.SostVosstanavl {
+		return
+	}
+	s.mu.Lock()
+	vKonfige := s.reklamaVKonfige
+	s.mu.Unlock()
+	if !vKonfige {
+		return
+	}
+	if err := s.obespechitFaylReklamy(); err != nil {
+		log.Printf("список рекламы перед перезапуском ядра не выложен: %v", err)
+		s.zapomnitOtkazReklamy(err.Error())
+	}
 }
 
 // sobratTun готовит конфиг sing-box из того, что известно ПРЯМО СЕЙЧАС.
@@ -130,13 +148,20 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 // переписать отпечаток правил (и pravilaOzhidayut ответил бы «уже применено»
 // про непринятое) и назвать ядру серверы, которых оно не несёт.
 func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, int, string, error) {
+	telo, portClash, sekret, _, err := s.sobratTunPolno(isklyucheny, suhaya, false)
+	return telo, portClash, sekret, err
+}
+
+// sobratTunPolno это sobratTun с блокировкой рекламы. bezReklamy собирает
+// конфиг без неё, sReklamoy отвечает, попал ли блок в конфиг.
+func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy bool) ([]byte, int, string, bool, error) {
 	n, err := s.nabor()
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, "", false, err
 	}
 	vybrannyy, err := n.VybrannyyServer()
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, "", false, err
 	}
 	if len(isklyucheny) > 0 {
 		ostavshiesya := make([]protokol.Server, 0, len(n.Servery))
@@ -150,12 +175,12 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 
 	kandidaty, err := s.kandidatySIsklyucheniem()
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, "", false, err
 	}
 
 	resolver, err := s.mestnyyBezTunnelya()
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("локальный резолвер не определён: %w", err)
+		return nil, 0, "", false, fmt.Errorf("локальный резолвер не определён: %w", err)
 	}
 	// Подсеть туннеля выбирается по живой системе, а не берётся константой:
 	// 172.19.0.1 это адрес посреди пула Docker Desktop, и на машине с парой
@@ -166,15 +191,15 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 	}
 	puti, err := s.putiProtsessov()
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, "", false, err
 	}
 	portClash, err := yadra.VydatPort()
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("порт для clash_api не выдан: %w", err)
+		return nil, 0, "", false, fmt.Errorf("порт для clash_api не выдан: %w", err)
 	}
 	sekret, err := sluchaynyySekret()
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, "", false, err
 	}
 
 	// Режим «весь трафик» это часть конфига ядра, а не только брандмауэра.
@@ -195,8 +220,10 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 	}
 	tracker, err := s.trackerDlyaKonfiga(trafik)
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, "", false, err
 	}
+	// Вне s.mu: выкладка файла берёт muReklama, а под ним s.mu.
+	rk := s.reklamaDlyaKonfiga(n, bezReklamy)
 	telo, err := genkonfig.SingBox(genkonfig.Vhod{
 		ProcessTracker: tracker,
 		Trafik:         trafik,
@@ -230,9 +257,10 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 		// понимает, поле сломало бы весь конфиг.
 		PolosaVverh: polosaVverh,
 		PolosaVniz:  polosaVniz,
+		Reklama:     rk,
 	})
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("конфиг туннеля не собран: %w", err)
+		return nil, 0, "", false, fmt.Errorf("конфиг туннеля не собран: %w", err)
 	}
 	if !suhaya {
 		s.mu.Lock()
@@ -240,10 +268,12 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 		// Резолвер запоминается ровно тот, что уехал в конфиг (A4): сверять с
 		// системой потом будет нечего, если помнить намерение, а не факт.
 		s.rezolverKonfiga = resolver
+		// Статус говорит «действует» только про блок, который ушёл в конфиг.
+		s.reklamaVKonfige = rk != nil
 		s.mu.Unlock()
 		s.zapomnitServeryYadra(n.Servery)
 	}
-	return telo, portClash, sekret, nil
+	return telo, portClash, sekret, rk != nil, nil
 }
 
 // portDlyaKonfiga отдаёт порт локального входа для собираемого конфига.
@@ -335,8 +365,9 @@ func portProksi(port int) int {
 // проверять один текст, запуская другой, значило бы проверять не то.
 func (s *Sluzhba) sobratTunProverennyy(put string, suhaya bool) (int, string, error) {
 	isklyucheny := map[string]bool{}
+	bezReklamy, prichinaBloka := false, ""
 	for {
-		telo, portClash, sekret, err := s.sobratTun(isklyucheny, suhaya)
+		telo, portClash, sekret, sReklamoy, err := s.sobratTunPolno(isklyucheny, suhaya, bezReklamy)
 		if err != nil {
 			return 0, "", err
 		}
@@ -351,6 +382,9 @@ func (s *Sluzhba) sobratTunProverennyy(put string, suhaya bool) (int, string, er
 		}
 		err = s.proveritKonfig(put)
 		if err == nil {
+			if bezReklamy && !suhaya {
+				s.otlozhitFaylReklamy(prichinaBloka)
+			}
 			return portClash, sekret, nil
 		}
 
@@ -358,6 +392,13 @@ func (s *Sluzhba) sobratTunProverennyy(put string, suhaya bool) (int, string, er
 		// Отказ без номера исходящего исключать нечего: конфиг не разобрался
 		// целиком. Круг здесь означал бы вечное перестроение одного и того же.
 		if !errors.As(err, &o) || !o.EstNomer {
+			// Кроме блока рекламы: битый файл набора роняет конфиг целиком, а
+			// туннель без блока лучше, чем никакого. Повтор ровно один.
+			if sReklamoy && !bezReklamy {
+				log.Printf("ядро не приняло конфиг с блокировкой рекламы, пробую без неё: %v", err)
+				bezReklamy, prichinaBloka = true, err.Error()
+				continue
+			}
 			return 0, "", fmt.Errorf("конфиг туннеля не принят ядром: %w", err)
 		}
 		id, est := idServeraPoNomeru(telo, o.Nomer)

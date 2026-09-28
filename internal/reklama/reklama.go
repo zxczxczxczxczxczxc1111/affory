@@ -48,8 +48,8 @@ func Privesti(s string) (Uroven, bool) {
 
 func (u Uroven) Adres() string { return urovni[u].adres }
 
-// vseAdresa: адреса всех уровней, для своих хостов службы.
-func vseAdresa() []string {
+// VseAdresa: адреса всех уровней, для своих хостов службы.
+func VseAdresa() []string {
 	a := make([]string, 0, len(urovni))
 	for _, u := range []Uroven{Bazovyy, rasshirennyy} {
 		a = append(a, urovni[u].adres)
@@ -231,8 +231,8 @@ func obrezat(s string) string {
 	return s
 }
 
-// meta лежит рядом с набором в reklama.json и описывает ЛЕЖАЩИЙ файл.
-type meta struct {
+// Meta лежит рядом с набором в reklama.json и описывает ЛЕЖАЩИЙ файл.
+type Meta struct {
 	Uroven     Uroven     `json:"uroven"`
 	Pravil     int        `json:"pravil"`
 	Versiya    string     `json:"versiya,omitempty"`
@@ -241,39 +241,39 @@ type meta struct {
 	Affory     string     `json:"affory,omitempty"`   // версия программы, чьё ядро собрало файл
 	Proveren   *time.Time `json:"proveren,omitempty"` // последний УДАЧНЫЙ заход в сеть
 	Vstroennyy bool       `json:"vstroennyy,omitempty"`
-	Padenie    *padenie   `json:"padenie,omitempty"`
+	Padenie    *Padenie   `json:"padenie,omitempty"`
 }
 
-// padenie: скачанный список того же уровня короче действующего больше чем
+// Padenie: скачанный список того же уровня короче действующего больше чем
 // на треть.
-type padenie struct {
+type Padenie struct {
 	Pravil  int       `json:"pravil"`
 	Vpervye time.Time `json:"vpervye"`
 }
 
-const period = 24 * time.Hour
+const Period = 24 * time.Hour
 
 // Сколько ждать, прежде чем поверить, что список и правда стал короче.
 const podtverzhdeniePadeniya = 20 * time.Hour
 
-// sleduyushchiyZahod: нет меты, другой уровень, встроенный список, ни одного
+// SleduyushchiyZahod: нет меты, другой уровень, встроенный список, ни одного
 // удачного захода или отметка из будущего - идти сейчас; иначе через сутки
 // от удачи.
-func sleduyushchiyZahod(m *meta, u Uroven, seychas time.Time) time.Time {
+func SleduyushchiyZahod(m *Meta, u Uroven, seychas time.Time) time.Time {
 	if m == nil || m.Uroven != u || m.Vstroennyy || m.Proveren == nil || m.Proveren.After(seychas) {
 		return seychas
 	}
-	return m.Proveren.Add(period)
+	return m.Proveren.Add(Period)
 }
 
-// sverkaSPrezhnim решает, принять ли список, который короче действующего того
+// SverkaSPrezhnim решает, принять ли список, который короче действующего того
 // же уровня больше чем на 30%. Выход из отказа без ручной кнопки: такое же
 // падение (±5%), подтверждённое через 20 ч и больше, принимается. Возвращает,
 // принять ли, что записать в мету и не раньше какого срока повторять.
 //
 // povtorPosle нужен расписанию: без него оно ходило бы за списком каждый час
 // и скачало бы multi (4,6 МБ) около 20 раз до решения.
-func sverkaSPrezhnim(novoe int, m *meta, u Uroven, seychas time.Time) (prinyat bool, zapomnit *padenie, povtorPosle time.Time) {
+func SverkaSPrezhnim(novoe int, m *Meta, u Uroven, seychas time.Time) (prinyat bool, zapomnit *Padenie, povtorPosle time.Time) {
 	if m == nil || m.Uroven != u || m.Vstroennyy || m.Pravil == 0 {
 		return true, nil, time.Time{}
 	}
@@ -292,5 +292,5 @@ func sverkaSPrezhnim(novoe int, m *meta, u Uroven, seychas time.Time) (prinyat b
 			return false, p, p.Vpervye.Add(podtverzhdeniePadeniya)
 		}
 	}
-	return false, &padenie{Pravil: novoe, Vpervye: seychas}, seychas.Add(podtverzhdeniePadeniya)
+	return false, &Padenie{Pravil: novoe, Vpervye: seychas}, seychas.Add(podtverzhdeniePadeniya)
 }

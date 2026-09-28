@@ -171,8 +171,12 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 			}
 			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.Status().Oshib), "Правила сохранены. Переподключение не завершено: "+err.Error())
 		}
+		// После подъёма, а не до: кэш сбрасывается, когда новое ядро уже
+		// отвечает, иначе Windows успела бы запомнить ответ старого.
+		s.posleSmenyReklamy(bylo.Reklama, pravila.Reklama)
 		return otvet(k.Id, k.Imya, teloPravil(pravila, s.pravilaOzhidayut(pravila), true))
 	}
+	s.posleSmenyReklamy(bylo.Reklama, pravila.Reklama)
 	return otvet(k.Id, k.Imya, teloPravil(pravila, s.pravilaOzhidayut(pravila), otlichaetsya(telo, pravila)))
 }
 

@@ -400,6 +400,21 @@ type Sluzhba struct {
 	naboryZhelaemye func() []genkonfig.NaborPravil
 	skachatNabor    func(ctx context.Context, adres string) ([]byte, error)
 
+	// Список рекламы. Швы: настоящие ходят в сеть, в ядро и в dnsapi.dll.
+	skachatSpisok  func(ctx context.Context, adres string) ([]byte, error)
+	sobratSpisok   func(ctx context.Context, tekst, vyhod string) error
+	sbrositKeshDNS func() error
+	zhdatReklamu   func(ctx context.Context, d time.Duration) (tolchok, zhiv bool)
+	reklamaTolchok chan struct{} // буфер 1
+	// muReklama стережёт ПАРУ «reklama.srs + reklama.json»: подмену, запись
+	// меты, сверку sha256 и выкладку встроенного. Сеть и convert идут БЕЗ
+	// замка: их минуты не должны держать подъём туннеля.
+	muReklama sync.Mutex
+	// Под s.mu: что лежит в файле и несёт ли его конфиг живого ядра. Имена не
+	// reklama, чтобы не затенять пакет.
+	sostReklamy     *protokol.ReklamaSostoyanie
+	reklamaVKonfige bool
+
 	// podRezhim поднят только на время перезапуска, затеянного включением
 	// режима «весь трафик». Живёт под тем же замком, что и killSwitch.
 	podRezhim bool
@@ -482,6 +497,13 @@ func NovayaSluzhba() *Sluzhba {
 	s.sobratAdresaSet = set.SobratAdresa
 	s.naboryZhelaemye = naboryIzUmolchaniy
 	s.skachatNabor = skachatNaborPoSeti
+	s.skachatSpisok = s.skachatSpisokReklamy
+	s.sobratSpisok = s.sobratSpisokYadrom
+	s.sbrositKeshDNS = sbrositKeshDNSWindows
+	s.reklamaTolchok = make(chan struct{}, 1)
+	s.zhdatReklamu = func(ctx context.Context, d time.Duration) (bool, bool) {
+		return zhdatIliTolchok(ctx, d, s.reklamaTolchok)
+	}
 	s.nabor = s.naborIzHranilishcha
 	// Читаем набор ПРИ СТАРТЕ, а не ждём первой записи. Поведение считает
 	// rezhimNabora по набору из хранилища, и одного умолчания в конструкторе
@@ -595,7 +617,15 @@ func (s *Sluzhba) postavit(n protokol.Sostoyanie, oshib *protokol.Oshibka) {
 func (s *Sluzhba) Status() protokol.StatusOtvet {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Копия, а не указатель на поле: ответ уходит в канал и живёт дольше замка.
+	var rk *protokol.ReklamaSostoyanie
+	if s.sostReklamy != nil {
+		k := *s.sostReklamy
+		k.Deystvuet = s.reklamaVKonfige && s.sost == protokol.SostPodnyat
+		rk = &k
+	}
 	return protokol.StatusOtvet{
+		Reklama:             rk,
 		Sostoyanie:          s.sost,
 		TrafikPoUmolchaniyu: s.trafikKonfiga,
 		VybranId:            s.vybranId,
@@ -1495,6 +1525,7 @@ func (s *Sluzhba) opustitYadro() {
 	s.serveryYadra = nil
 	s.otpechatkiYadra = nil
 	s.pravilaKonfiga, s.trafikKonfiga = "", ""
+	s.reklamaVKonfige = false
 	// Резолвер конфига забывается вместе с ним: без ядра сверять нечего, а
 	// оставленный адрес заставил бы наблюдателя следующего подъёма считать
 	// сменой сети то, что сменилось, пока туннель лежал.

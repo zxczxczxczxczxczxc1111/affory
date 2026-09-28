@@ -180,6 +180,15 @@ func (s *Sluzhba) ZapustitRaspisanie() {
 			s.raspisanieObnovleniy(s.fonCtx)
 		})
 	})
+	// Список рекламы крутится всегда и спит, пока блокировка выключена: будит
+	// его толчок из setRules.
+	s.fon.Add(1)
+	fon.Zapustit("расписании списка рекламы", func() {
+		defer s.fon.Done()
+		fon.SPovtorom(s.fonCtx, "расписание списка рекламы", pauzaPoslePaniki, func() {
+			s.raspisanieReklamy(s.fonCtx)
+		})
+	})
 	// Подробный журнал крутится ВСЕГДА и молчит, пока настройка выключена.
 	// Заводить и гасить горутину по щелчку настройки значит завести гонку там,
 	// где такт стоит одного сравнения.

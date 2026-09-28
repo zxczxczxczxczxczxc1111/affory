@@ -166,7 +166,7 @@ func TestPrivesti(t *testing.T) {
 }
 
 func TestVseAdresa(t *testing.T) {
-	a := vseAdresa()
+	a := VseAdresa()
 	if len(a) != len(urovni) {
 		t.Fatalf("адресов %d, уровней %d", len(a), len(urovni))
 	}
@@ -183,18 +183,18 @@ func TestSleduyushchiyZahod(t *testing.T) {
 	budushchee := seychas.Add(time.Hour)
 	sluchai := []struct {
 		imya string
-		m    *meta
+		m    *Meta
 		zhdu time.Time
 	}{
 		{"нет меты", nil, seychas},
-		{"другой уровень", &meta{Uroven: rasshirennyy, Proveren: &chasNazad}, seychas},
-		{"встроенный", &meta{Uroven: Bazovyy, Vstroennyy: true, Proveren: &chasNazad}, seychas},
-		{"ни одного удачного", &meta{Uroven: Bazovyy}, seychas},
-		{"отметка из будущего", &meta{Uroven: Bazovyy, Proveren: &budushchee}, seychas},
-		{"удача час назад", &meta{Uroven: Bazovyy, Proveren: &chasNazad}, chasNazad.Add(period)},
+		{"другой уровень", &Meta{Uroven: rasshirennyy, Proveren: &chasNazad}, seychas},
+		{"встроенный", &Meta{Uroven: Bazovyy, Vstroennyy: true, Proveren: &chasNazad}, seychas},
+		{"ни одного удачного", &Meta{Uroven: Bazovyy}, seychas},
+		{"отметка из будущего", &Meta{Uroven: Bazovyy, Proveren: &budushchee}, seychas},
+		{"удача час назад", &Meta{Uroven: Bazovyy, Proveren: &chasNazad}, chasNazad.Add(Period)},
 	}
 	for _, s := range sluchai {
-		if got := sleduyushchiyZahod(s.m, Bazovyy, seychas); !got.Equal(s.zhdu) {
+		if got := SleduyushchiyZahod(s.m, Bazovyy, seychas); !got.Equal(s.zhdu) {
 			t.Errorf("%s: %v, ждали %v", s.imya, got, s.zhdu)
 		}
 	}
@@ -202,41 +202,41 @@ func TestSleduyushchiyZahod(t *testing.T) {
 
 func TestSverkaSPrezhnim(t *testing.T) {
 	t0 := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
-	m := &meta{Uroven: Bazovyy, Pravil: 1000}
+	m := &Meta{Uroven: Bazovyy, Pravil: 1000}
 
-	if ok, _, _ := sverkaSPrezhnim(750, m, Bazovyy, t0); !ok {
+	if ok, _, _ := SverkaSPrezhnim(750, m, Bazovyy, t0); !ok {
 		t.Fatal("падение на 25% отвергнуто")
 	}
-	ok, padenie, povtor := sverkaSPrezhnim(600, m, Bazovyy, t0)
-	if ok || padenie == nil || padenie.Pravil != 600 || !padenie.Vpervye.Equal(t0) || !povtor.Equal(t0.Add(20*time.Hour)) {
-		t.Fatalf("падение на 40%%: %v %+v %v", ok, padenie, povtor)
+	ok, pad, povtor := SverkaSPrezhnim(600, m, Bazovyy, t0)
+	if ok || pad == nil || pad.Pravil != 600 || !pad.Vpervye.Equal(t0) || !povtor.Equal(t0.Add(20*time.Hour)) {
+		t.Fatalf("падение на 40%%: %v %+v %v", ok, pad, povtor)
 	}
-	m.Padenie = padenie
+	m.Padenie = pad
 
-	ok, p2, povtor2 := sverkaSPrezhnim(600, m, Bazovyy, t0.Add(10*time.Hour))
+	ok, p2, povtor2 := SverkaSPrezhnim(600, m, Bazovyy, t0.Add(10*time.Hour))
 	if ok || p2 != m.Padenie || !povtor2.Equal(povtor) {
 		t.Fatalf("повтор через 10 ч: %v %+v %v", ok, p2, povtor2)
 	}
-	if ok, _, _ := sverkaSPrezhnim(610, m, Bazovyy, t0.Add(21*time.Hour)); !ok {
+	if ok, _, _ := SverkaSPrezhnim(610, m, Bazovyy, t0.Add(21*time.Hour)); !ok {
 		t.Fatal("то же падение через 21 ч не принято")
 	}
-	ok, p3, povtor3 := sverkaSPrezhnim(660, m, Bazovyy, t0.Add(21*time.Hour))
+	ok, p3, povtor3 := SverkaSPrezhnim(660, m, Bazovyy, t0.Add(21*time.Hour))
 	if ok || p3 == nil || p3.Pravil != 660 || !povtor3.Equal(t0.Add(41*time.Hour)) {
 		t.Fatalf("другое падение через 21 ч: %v %+v %v", ok, p3, povtor3)
 	}
-	if ok, _, _ := sverkaSPrezhnim(100, &meta{Uroven: rasshirennyy, Pravil: 1000}, Bazovyy, t0); !ok {
+	if ok, _, _ := SverkaSPrezhnim(100, &Meta{Uroven: rasshirennyy, Pravil: 1000}, Bazovyy, t0); !ok {
 		t.Fatal("другой уровень не принят")
 	}
-	if ok, _, _ := sverkaSPrezhnim(100, &meta{Uroven: Bazovyy, Pravil: 1000, Vstroennyy: true}, Bazovyy, t0); !ok {
+	if ok, _, _ := SverkaSPrezhnim(100, &Meta{Uroven: Bazovyy, Pravil: 1000, Vstroennyy: true}, Bazovyy, t0); !ok {
 		t.Fatal("после встроенного не принят")
 	}
-	if ok, _, _ := sverkaSPrezhnim(100, nil, Bazovyy, t0); !ok {
+	if ok, _, _ := SverkaSPrezhnim(100, nil, Bazovyy, t0); !ok {
 		t.Fatal("без меты не принят")
 	}
 }
 
 func TestVstroennyyEtoSRS(t *testing.T) {
-	b, _ := vstroennyy()
+	b, _ := Vstroennyy()
 	if !bytes.HasPrefix(b, []byte("SRS")) || len(b) < 4 || b[3] != 2 {
 		t.Fatalf("встроенный файл не набор .srs версии 2: % x", b[:min(len(b), 4)])
 	}
@@ -246,7 +246,7 @@ func TestVstroennyyEtoSRS(t *testing.T) {
 }
 
 func TestVstroennyySovpadaetSPasportom(t *testing.T) {
-	b, m := vstroennyy()
+	b, m := Vstroennyy()
 	h := sha256.Sum256(b)
 	if hex.EncodeToString(h[:]) != m.Sha256 {
 		t.Fatalf("sha256 встроенного %x, в паспорте %s", h, m.Sha256)
@@ -294,7 +294,7 @@ func TestVstroennyySobiraetsyaIzIshodnika(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vstr, _ := vstroennyy()
+	vstr, _ := Vstroennyy()
 	if !bytes.Equal(sobrannyy, vstr) {
 		t.Fatalf("собранный из исходника набор (%d Б) не совпал со встроенным (%d Б)", len(sobrannyy), len(vstr))
 	}
