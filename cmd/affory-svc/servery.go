@@ -103,6 +103,13 @@ func (s *Sluzhba) naborIzHranilishcha() (Nabor, error) {
 	if n.Rezhim != protokol.RezhimAvto && n.Rezhim != protokol.RezhimRuchnoy {
 		n.Rezhim = ""
 	}
+	// Настройка рекламы приводится здесь по той же причине: importProfilya
+	// пишет блоб как есть, а негодный уровень или имя роняли бы сборку правил.
+	var pochinki []string
+	n.Pravila.Reklama, pochinki = privestiReklamu(n.Pravila.Reklama)
+	for _, p := range pochinki {
+		skazatRedko("набор починен на чтении: " + p)
+	}
 	// Подписки приводятся ЗДЕСЬ, на единственном чтении, а не в каждой команде:
 	// иначе всякая новая дверь к набору это шанс забыть приведение, а забытое
 	// выглядит как «подписка не задана» при заданной подписке.

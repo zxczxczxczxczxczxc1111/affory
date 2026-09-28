@@ -34,9 +34,9 @@ var urovni = map[Uroven]opisanie{
 
 var errNeizvestnyyUroven = errors.New("уровень списка неизвестен")
 
-// privesti: "" это Bazovyy и true; незнакомое это Bazovyy и false, решает
+// Privesti: "" это Bazovyy и true; незнакомое это Bazovyy и false, решает
 // вызывающий. Регистр не прощается: уровень пишет только сама программа.
-func privesti(s string) (Uroven, bool) {
+func Privesti(s string) (Uroven, bool) {
 	if s == "" {
 		return Bazovyy, true
 	}

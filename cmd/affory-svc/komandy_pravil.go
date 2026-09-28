@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/katalog"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/reklama"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
@@ -41,6 +43,18 @@ type PravilaNabora struct {
 	// Без флага чистка повторялась бы на каждом чтении и снимала правило,
 	// которое человек завёл руками уже после обновления.
 	StaryeProgrammySnyaty bool `json:"starye_programmy_snyaty,omitempty"`
+	// Reklama это блокировка рекламы (28.09.2026). Указатель с omitempty, а
+	// нулевая настройка сворачивается в nil (proveritReklamu): наборы с диска
+	// поля не знают, JSON у них прежний, и после обновления не меняются ни
+	// отпечаток правил, ни ревизия.
+	Reklama *ReklamaPravila `json:"reklama,omitempty"`
+}
+
+// ReklamaPravila это настройка блокировки рекламы, как её задал человек.
+type ReklamaPravila struct {
+	Vkl        bool     `json:"vkl,omitempty"`
+	Uroven     string   `json:"uroven,omitempty"` // light | multi
+	Razresheno []string `json:"razresheno,omitempty"`
 }
 
 // zaprosPravil это ТЕЛО команды setRules, а не то, что ложится в набор.
@@ -56,6 +70,8 @@ type zaprosPravil struct {
 	Protsessy   []string                 `json:"protsessy"`
 	Domeny      []string                 `json:"domeny"`
 	BezRuSpiska *bool                    `json:"bez_ru_spiska"`
+	// nil значит «не трогали»: CLI и окно прошлой версии поля не шлют.
+	Reklama *ReklamaPravila `json:"reklama"`
 }
 
 // Шов для нормализации пути: настоящая открывает файл на диске, а тесту
@@ -101,7 +117,10 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 		vhod := PravilaNabora{Protsessy: telo.Protsessy, Domeny: telo.Domeny, BezRuSpiska: n.Pravila.BezRuSpiska,
 			// Флаг чистки берётся из НАБОРА: окно про него не знает и слать его
 			// не будет, а потеря флага вернула бы чистку на каждую правку.
-			StaryeProgrammySnyaty: n.Pravila.StaryeProgrammySnyaty}
+			StaryeProgrammySnyaty: n.Pravila.StaryeProgrammySnyaty,
+			// Блокировка рекламы тоже из набора: клиент, который о ней не знает,
+			// не имеет права стереть её своей правкой.
+			Reklama: n.Pravila.Reklama}
 		vhod.Trafik = n.Pravila.Trafik
 		if telo.Trafik != nil {
 			vhod.Trafik = telo.Trafik
@@ -109,6 +128,9 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 		}
 		if telo.BezRuSpiska != nil {
 			vhod.BezRuSpiska = *telo.BezRuSpiska
+		}
+		if telo.Reklama != nil {
+			vhod.Reklama = telo.Reklama
 		}
 		p, err := proveritPravila(vhod, n.Pravila)
 		if err != nil {
@@ -131,7 +153,9 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	// нужен ровно тогда, когда старые правила держит живое ядро, а не тогда,
 	// когда на экране написано что-то кроме «выключен».
 	adres, _ := s.dostupKKlash()
-	if telo.Trafik != nil && adres != "" && s.pravilaOzhidayut(pravila) {
+	// Тело с одной рекламой тоже меняет конфиг: без второго условия включение
+	// блокировки сохранилось бы и ждало следующего подъёма.
+	if (telo.Trafik != nil || telo.Reklama != nil) && adres != "" && s.pravilaOzhidayut(pravila) {
 		if err := s.perepodklyuchit(ctx); err != nil {
 			// Кандидат забракован ДО остановки: рабочее подключение цело, а
 			// сохранённые правила надо снять - иначе следующий подъём соберётся
@@ -175,11 +199,37 @@ func teloPravil(p PravilaNabora, trebuetPodyoma, izmenyon bool) map[string]any {
 		"trebuet_podyoma": trebuetPodyoma,
 		"spisok_izmenyon": izmenyon,
 		"bez_ru_spiska":   p.BezRuSpiska,
+		"reklama":         teloReklamy(p.Reklama),
 	}
 }
 
+// teloReklamy всегда объект со всеми тремя полями и списком: по нему окно
+// показывает вкладку, а null значил бы «служба о рекламе не знает». Не
+// ReklamaPravila: её omitempty выбросил бы выключатель и пустой список.
+func teloReklamy(r *ReklamaPravila) map[string]any {
+	t := map[string]any{"vkl": false, "uroven": string(reklama.Bazovyy), "razresheno": []string{}}
+	if r == nil {
+		return t
+	}
+	t["vkl"] = r.Vkl
+	if r.Uroven != "" {
+		t["uroven"] = r.Uroven
+	}
+	if r.Razresheno != nil {
+		t["razresheno"] = r.Razresheno
+	}
+	return t
+}
+
+// reviziyaPravil берёт отпечаток ПОЛНОГО набора, а не конфига: уровень списка
+// в конфиг не входит, но смена уровня из двух окон обязана дать конфликт
+// черновиков. Без рекламы это те же байты, что у otpechatokPravil.
 func reviziyaPravil(p PravilaNabora) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(otpechatokPravil(p))))
+	b, err := json.Marshal(p)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
 
 // otlichaetsya сравнивает ПРИСЛАННОЕ с ПРИНЯТЫМ.
@@ -189,7 +239,15 @@ func reviziyaPravil(p PravilaNabora) string {
 // пути и приведение домена к строчным считаются изменением наравне с дедупом.
 func otlichaetsya(prislano zaprosPravil, prinyato PravilaNabora) bool {
 	return !slices.Equal(prislano.Protsessy, prinyato.Protsessy) ||
-		!slices.Equal(prislano.Domeny, prinyato.Domeny)
+		!slices.Equal(prislano.Domeny, prinyato.Domeny) ||
+		(prislano.Reklama != nil && !slices.Equal(prislano.Reklama.Razresheno, razreshenoIz(prinyato.Reklama)))
+}
+
+func razreshenoIz(r *ReklamaPravila) []string {
+	if r == nil {
+		return nil
+	}
+	return r.Razresheno
 }
 
 // proveritPravila нормализует каждую строку и отвергает весь список, если
@@ -209,6 +267,13 @@ func otlichaetsya(prislano zaprosPravil, prinyato PravilaNabora) bool {
 func proveritPravila(t PravilaNabora, bylo PravilaNabora) (PravilaNabora, error) {
 	itog := PravilaNabora{Protsessy: []string{}, Domeny: []string{}, BezRuSpiska: t.BezRuSpiska,
 		StaryeProgrammySnyaty: t.StaryeProgrammySnyaty}
+	// itog строится с нуля: без переноса любая правка правил стирала бы
+	// настройку рекламы.
+	r, err := proveritReklamu(t.Reklama)
+	if err != nil {
+		return PravilaNabora{}, err
+	}
+	itog.Reklama = r
 	if t.Trafik != nil {
 		trafik, err := proveritTrafik(*t.Trafik, trafikPravil(bylo))
 		if err != nil {
@@ -247,6 +312,79 @@ func proveritPravila(t PravilaNabora, bylo PravilaNabora) (PravilaNabora, error)
 		}
 	}
 	return itog, nil
+}
+
+// Предел ручного списка: это исключения, а не второй список блокировки.
+const predelIsklyucheniyReklamy = 256
+
+// proveritReklamu нормализует так же, как домены правил (reDomen, строчные,
+// без точек по краям, без повторов). Нулевая настройка сворачивается в nil.
+func proveritReklamu(r *ReklamaPravila) (*ReklamaPravila, error) {
+	if r == nil {
+		return nil, nil
+	}
+	u, izvesten := reklama.Privesti(r.Uroven)
+	if !izvesten {
+		return nil, fmt.Errorf("%w: уровень списка %q неизвестен", errPraviloNegodno, r.Uroven)
+	}
+	itog := &ReklamaPravila{Vkl: r.Vkl, Uroven: string(u)}
+	vidno := map[string]bool{}
+	for _, d := range r.Razresheno {
+		norm := strings.Trim(strings.ToLower(strings.TrimSpace(d)), ".")
+		// IP совпадает с reDomen, но domain_suffix сравнивается только с именем:
+		// такое исключение выглядело бы рабочим и не делало бы ничего.
+		if !reDomen.MatchString(norm) || net.ParseIP(norm) != nil {
+			return nil, fmt.Errorf("%w: %q не похоже на имя сайта", errPraviloNegodno, d)
+		}
+		if !vidno[norm] {
+			vidno[norm] = true
+			itog.Razresheno = append(itog.Razresheno, norm)
+		}
+	}
+	if len(itog.Razresheno) > predelIsklyucheniyReklamy {
+		return nil, fmt.Errorf("%w: исключений %d, больше %d", errPraviloNegodno, len(itog.Razresheno), predelIsklyucheniyReklamy)
+	}
+	if !itog.Vkl && len(itog.Razresheno) == 0 && u == reklama.Bazovyy {
+		return nil, nil
+	}
+	return itog, nil
+}
+
+// privestiReklamu мягко чинит настройку, прочитанную с диска. Блоб приходит и
+// импортом чужого профиля, и отказ читать набор из-за одной строки оставил бы
+// человека без единого сервера: незнакомый уровень становится базовым,
+// негодные имена и адреса выбрасываются, лишнее сверх предела обрезается.
+// Каждая починка называется вызывающему.
+func privestiReklamu(r *ReklamaPravila) (*ReklamaPravila, []string) {
+	if r == nil {
+		return nil, nil
+	}
+	var pochinki []string
+	u, izvesten := reklama.Privesti(r.Uroven)
+	if !izvesten {
+		pochinki = append(pochinki, fmt.Sprintf("уровень списка рекламы %q заменён на %s", r.Uroven, u))
+	}
+	itog := &ReklamaPravila{Vkl: r.Vkl, Uroven: string(u)}
+	vidno := map[string]bool{}
+	for _, d := range r.Razresheno {
+		norm := strings.Trim(strings.ToLower(strings.TrimSpace(d)), ".")
+		if !reDomen.MatchString(norm) || net.ParseIP(norm) != nil {
+			pochinki = append(pochinki, fmt.Sprintf("исключение рекламы %q выброшено: не имя сайта", d))
+			continue
+		}
+		if !vidno[norm] {
+			vidno[norm] = true
+			itog.Razresheno = append(itog.Razresheno, norm)
+		}
+	}
+	if len(itog.Razresheno) > predelIsklyucheniyReklamy {
+		pochinki = append(pochinki, fmt.Sprintf("исключений рекламы %d, оставлены первые %d", len(itog.Razresheno), predelIsklyucheniyReklamy))
+		itog.Razresheno = itog.Razresheno[:predelIsklyucheniyReklamy]
+	}
+	if !itog.Vkl && len(itog.Razresheno) == 0 && u == reklama.Bazovyy {
+		return nil, pochinki
+	}
+	return itog, pochinki
 }
 
 // sredi ищет путь в уже принятом списке без учёта регистра и отдаёт ту

@@ -158,9 +158,9 @@ func TestPrivesti(t *testing.T) {
 		{"LIGHT", Bazovyy, false},
 	}
 	for _, s := range sluchai {
-		u, ok := privesti(s.vhod)
+		u, ok := Privesti(s.vhod)
 		if u != s.uroven || ok != s.izvesten {
-			t.Errorf("privesti(%q) = %q, %v; ждали %q, %v", s.vhod, u, ok, s.uroven, s.izvesten)
+			t.Errorf("Privesti(%q) = %q, %v; ждали %q, %v", s.vhod, u, ok, s.uroven, s.izvesten)
 		}
 	}
 }

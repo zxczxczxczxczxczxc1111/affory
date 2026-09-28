@@ -35,12 +35,23 @@ func (s *Sluzhba) perepodklyuchit(ctx context.Context) error {
 	return s.connect(ctx, &expected)
 }
 
+// otpechatokPravil это отпечаток ТОГО, ЧТО УХОДИТ В КОНФИГ. Уровень списка
+// рекламы туда не входит: путь к файлу один на все уровни, и смену уровня ядро
+// подхватывает само заменой файла. Выключенная блокировка не входит вовсе.
 func otpechatokPravil(p PravilaNabora) string {
+	p.Reklama = reklamaDlyaOtpechatka(p.Reklama)
 	b, err := json.Marshal(p)
 	if err != nil {
 		return ""
 	}
 	return string(b)
+}
+
+func reklamaDlyaOtpechatka(r *ReklamaPravila) *ReklamaPravila {
+	if r == nil || !r.Vkl {
+		return nil
+	}
+	return &ReklamaPravila{Vkl: true, Razresheno: r.Razresheno}
 }
 
 func (s *Sluzhba) pravilaOzhidayut(p PravilaNabora) bool {
