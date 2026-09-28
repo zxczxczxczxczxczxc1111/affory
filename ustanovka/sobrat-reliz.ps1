@@ -120,8 +120,16 @@ try {
     # -tags production: без метки Wails считает сборку отладочной и включает
     # ПОВЕРХ наших опций родное меню WebView2 (`debugMode || !DefaultContextMenuDisabled`)
     # и панель разработчика. Выпуски 1.0.0-1.1.3 ушли людям такими.
-    & go build -trimpath -tags production -ldflags "$ld -H windowsgui" -o (Join-Path $sborka 'affory-ui.exe') ./cmd/affory-ui
-    if ($LASTEXITCODE -ne 0) { throw 'affory-ui не собрался' }
+    #
+    # Файл ресурсов убирается сразу после сборки. Оставленный, он вшивал номер
+    # прошлого выпуска в каждую сборку окна через go build, и служба отвергала
+    # такие архивы как понижение (28.09.2026, стенд после выпуска 1.6.2).
+    try {
+        & go build -trimpath -tags production -ldflags "$ld -H windowsgui" -o (Join-Path $sborka 'affory-ui.exe') ./cmd/affory-ui
+        if ($LASTEXITCODE -ne 0) { throw 'affory-ui не собрался' }
+    } finally {
+        Remove-Item (Join-Path $koren 'cmd\affory-ui\rsrc_windows_amd64.syso') -ErrorAction SilentlyContinue
+    }
     # Загрузчик WebView2 для установщика. Он уже лежит в модуле Wails той версии,
     # что записана в go.mod, и качать его отдельно незачем. Подпись Microsoft
     # сверяется: установщик запускает его с правами администратора.
