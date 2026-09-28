@@ -3,8 +3,11 @@ package set
 import (
 	"errors"
 	"net/netip"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 )
 
 // Правдоподобный вывод netsh для одного профиля. Ключи слева намеренно
@@ -403,6 +406,37 @@ func vremennyyKatalog(t *testing.T) {
 	kat := t.TempDir()
 	katalogDannyh = func() string { return kat }
 	t.Cleanup(func() { katalogDannyh = prezhniy })
+}
+
+// Н3 аудита 1.6.1: файл отката, испорченный пропавшим питанием, берётся из
+// прежней версии, а удаление отката снимает и её, иначе снятый замок
+// воскрес бы из копии.
+func TestBityyOtkatChitaetsyaIzZapasa(t *testing.T) {
+	vremennyyKatalog(t)
+	for _, politika := range []string{"BlockInbound,AllowOutbound", "BlockInbound,BlockOutbound"} {
+		if err := ZapisatOtkat(Otkat{Profili: []ProfilDo{{Imya: "domain", Vklyuchen: true, Politika: politika}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(putOtkata(), make([]byte, 64), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o, err := ProchitatOtkat()
+	if err != nil {
+		t.Fatalf("битый откат не заменён запасом: %v", err)
+	}
+	if len(o.Profili) != 1 || o.Profili[0].Politika != "BlockInbound,AllowOutbound" {
+		t.Fatalf("из запаса прочитано не то: %+v", o)
+	}
+	if err := UdalitOtkat(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProchitatOtkat(); !errors.Is(err, ErrOtkataNet) {
+		t.Fatalf("после удаления откат читается: %v", err)
+	}
+	if _, err := os.Stat(putOtkata() + sostoyanie.RasshirenieZapasa); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("запас отката пережил удаление: снятый замок воскрес бы из копии")
+	}
 }
 
 func TestUstarevshiyOtkatNeDelaetMashinuZapertoy(t *testing.T) {

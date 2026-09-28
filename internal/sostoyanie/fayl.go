@@ -3,7 +3,6 @@ package sostoyanie
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -97,31 +96,24 @@ func zapisatV(dir string, s SostoyanieFayla) error {
 	if err != nil {
 		return fmt.Errorf("состояние не сериализуется: %w", err)
 	}
-	vremen := filepath.Join(dir, imyaFayla+".tmp")
-	if err := os.WriteFile(vremen, telo, 0o600); err != nil {
-		return fmt.Errorf("временный файл не записан: %w", err)
-	}
-	// Rename over an existing file is atomic on NTFS. Write-in-place is not, and
-	// the difference shows up exactly once, at the worst possible moment.
-	if err := os.Rename(vremen, filepath.Join(dir, imyaFayla)); err != nil {
-		// The temp file is ours and it is garbage now. Leaving it behind means
-		// the next reader eventually finds two files and picks the wrong one.
-		_ = os.Remove(vremen)
-		return fmt.Errorf("переименование не удалось: %w", err)
+	if err := ZapisatNadyozhno(filepath.Join(dir, imyaFayla), telo, json.Valid); err != nil {
+		return fmt.Errorf("файл состояния не записан: %w", err)
 	}
 	return nil
 }
 
 func prochitatIz(dir string) (SostoyanieFayla, error) {
 	var s SostoyanieFayla
-	telo, err := os.ReadFile(filepath.Join(dir, imyaFayla))
+	// Битый файл берётся из прежней версии: без неё следующий старт решил бы,
+	// что прошлого запуска не было, и забыл бы поднятый туннель и настройки.
+	_, _, err := ProchitatSZapasom(filepath.Join(dir, imyaFayla), func(telo []byte) error {
+		s = SostoyanieFayla{}
+		return json.Unmarshal(telo, &s)
+	})
 	if err != nil {
-		return s, fmt.Errorf("файл состояния не читается: %w", err)
-	}
-	if err := json.Unmarshal(telo, &s); err != nil {
 		// A corrupt file is not a reason to lose the service. The caller starts
 		// from a blank state; the error says why the history is gone.
-		return s, fmt.Errorf("файл состояния не разбирается: %w", err)
+		return SostoyanieFayla{}, fmt.Errorf("файл состояния не читается: %w", err)
 	}
 	return s, nil
 }

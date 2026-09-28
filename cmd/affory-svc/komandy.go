@@ -327,6 +327,12 @@ type Sluzhba struct {
 	// аварии: убитый процесс, паника, пропавшее питание.
 	upalaSTunnelem bool
 
+	// muFayl держит порядок записей файла состояния: снимок и его запись идут
+	// под одним замком (Н8 аудита 1.6.1). Под одним s.mu снимок снимался, а
+	// писался уже без замка, и более старый снимок ложился на диск поверх
+	// нового. Порядок замков: muFayl, потом mu, никогда наоборот.
+	muFayl sync.Mutex
+
 	// Адаптер туннеля, известен только после подъёма. На его индексе держится
 	// поиск канала ПОД туннелем, на алиасе порядок правил задачи 2.5.
 	tun set.Adapter
@@ -1253,6 +1259,8 @@ func (s *Sluzhba) peresobratEsliNado(podRezhim bool) error {
 // не было. Остальные вызывающие сидят на пути подъёма, им ронять подключение
 // из-за файла не за что, и они пишут причину в журнал.
 func (s *Sluzhba) pravitSost(pravka func(*sostoyanie.SostoyanieFayla)) error {
+	s.muFayl.Lock()
+	defer s.muFayl.Unlock()
 	s.mu.Lock()
 	pravka(&s.snimok)
 	f := s.snimok
@@ -1264,6 +1272,8 @@ func (s *Sluzhba) pravitSost(pravka func(*sostoyanie.SostoyanieFayla)) error {
 // больше нет, и оставленные порт с адаптером это данные о ядре, которого не
 // существует. Устаревший индекс адаптера опаснее пустого.
 func (s *Sluzhba) sbrositSost() error {
+	s.muFayl.Lock()
+	defer s.muFayl.Unlock()
 	s.mu.Lock()
 	// Отметка обновления подписки к туннелю отношения не имеет и переживает
 	// сброс. У неё появился второй читатель, расписание, и без этой строки

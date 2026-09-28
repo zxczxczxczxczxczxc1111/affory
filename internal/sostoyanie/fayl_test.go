@@ -2,6 +2,7 @@ package sostoyanie
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
@@ -20,10 +21,35 @@ func TestZapisAtomarna(t *testing.T) {
 		}
 	}
 	// No leftovers: a temp file that survives is a temp file that will be read
-	// by somebody eventually.
+	// by somebody eventually. Рядом с файлом живёт только его прежняя версия.
 	fayly, _ := os.ReadDir(dir)
-	if len(fayly) != 1 {
-		t.Fatalf("в каталоге %d файлов, ожидался один", len(fayly))
+	for _, f := range fayly {
+		if f.Name() != imyaFayla && f.Name() != imyaFayla+RasshirenieZapasa {
+			t.Errorf("в каталоге лишний файл %s", f.Name())
+		}
+	}
+}
+
+// Н3 аудита 1.6.1: после пропавшего питания на месте файла бывает мусор, и
+// следующий старт решал бы, что прошлого запуска не было, в том числе забывал
+// бы, что туннель стоял поднятым.
+func TestBityyFaylSostoyaniyaChitaetsyaIzZapasa(t *testing.T) {
+	dir := t.TempDir()
+	if err := zapisatV(dir, SostoyanieFayla{Sostoyanie: protokol.SostPodnyat, PodklyuchatPriStarte: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := zapisatV(dir, SostoyanieFayla{Sostoyanie: protokol.SostPodnyat, PodklyuchatPriStarte: true, Zhurnal: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, imyaFayla), make([]byte, 32), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := prochitatIz(dir)
+	if err != nil {
+		t.Fatalf("битый файл не заменён запасом: %v", err)
+	}
+	if !s.PodklyuchatPriStarte || s.Sostoyanie != protokol.SostPodnyat {
+		t.Fatalf("из запаса прочитано не то: %+v", s)
 	}
 }
 

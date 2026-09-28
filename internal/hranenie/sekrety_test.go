@@ -137,6 +137,36 @@ func TestNastoyashchayaSmertHoronitBlob(t *testing.T) {
 	}
 }
 
+// Н3 аудита 1.6.1: блоб, испорченный пропавшим питанием, стоил человеку всех
+// серверов. Прежняя версия лежит рядом и возвращает хотя бы то, что было до
+// последней записи.
+func TestBityyBlobVozvrashchaetsyaIzZapasa(t *testing.T) {
+	dir := t.TempDir()
+	sh := hranenie.NovyyV(dir)
+	sh.Spat = func(time.Duration) {}
+	for _, telo := range []string{"odin", "dva"} {
+		if err := sh.Sohranit([]byte(telo)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put := filepath.Join(dir, hranenie.ImyaSekretov)
+	if err := os.WriteFile(put, make([]byte, 64), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nazad, err := sh.Zagruzit()
+	if err != nil || string(nazad) != "odin" {
+		t.Fatalf("из запаса вернулось %q, %v", nazad, err)
+	}
+	if p := pohoronen(t, dir); len(p) != 1 {
+		t.Fatalf("битый блоб не отложен для разбора: %v", p)
+	}
+	// Запас встал на место: следующий старт не ждёт повторов на мёртвом блобе.
+	nazad, err = hranenie.NovyyV(dir).Zagruzit()
+	if err != nil || string(nazad) != "odin" {
+		t.Fatalf("после возврата из запаса прочитано %q, %v", nazad, err)
+	}
+}
+
 func TestSuffiksSoderzhitVremyaANeTolkoDatu(t *testing.T) {
 	// Two deaths in one day with a date-only suffix collide, and the second
 	// rename overwrites the first. The survivor is then the WRONG blob, and

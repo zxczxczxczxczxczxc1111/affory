@@ -3,6 +3,7 @@ package hranenie
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -72,49 +73,14 @@ func (s *Shifrovshchik) Sohranit(telo []byte) error {
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return fmt.Errorf("каталог данных недоступен: %w", err)
 	}
-	vremen := s.put() + ".tmp"
-	if err := os.WriteFile(vremen, blob, 0o600); err != nil {
+	// Прежняя версия остаётся рядом (Н3 аудита 1.6.1): если эту запись
+	// испортит пропавшее питание, Zagruzit вернёт хотя бы её. Годность
+	// прежнего блоба не проверяется: мёртвый блоб хоронится при чтении, до
+	// всякой новой записи.
+	if err := sostoyanie.ZapisatNadyozhno(s.put(), blob, nil); err != nil {
 		return fmt.Errorf("секреты не записаны: %w", err)
 	}
-	if err := s.pereimenovat(vremen, s.put()); err != nil {
-		_ = os.Remove(vremen)
-		return fmt.Errorf("секреты не переименованы: %w", err)
-	}
 	return nil
-}
-
-// PopytokPereimenovaniya bounds the wait for a busy target: with the pause
-// doubling from 50 ms this is about three seconds, longer than any scanner
-// holds a 1 KB file and shorter than a human starts wondering.
-const PopytokPereimenovaniya = 7
-
-// pereimenovat is os.Rename that outlives a busy target. On Windows a file
-// held open by anybody (Defender scanning the fresh write, our own reader a
-// moment earlier) refuses to be replaced with ERROR_SHARING_VIOLATION or
-// ERROR_ACCESS_DENIED, and the guest run of 02.09.2026 lost a subscription
-// refresh to exactly that. Anything else is a real error and returns at once.
-func (s *Shifrovshchik) pereimenovat(ot, k string) error {
-	pauza := 50 * time.Millisecond
-	var posledn error
-	for i := 0; i < PopytokPereimenovaniya; i++ {
-		posledn = os.Rename(ot, k)
-		if posledn == nil || !zanyat(posledn) {
-			return posledn
-		}
-		if i < PopytokPereimenovaniya-1 {
-			s.Spat(pauza)
-			pauza *= 2
-		}
-	}
-	return posledn
-}
-
-func zanyat(err error) bool {
-	var errno windows.Errno
-	if !errors.As(err, &errno) {
-		return false
-	}
-	return errno == windows.ERROR_SHARING_VIOLATION || errno == windows.ERROR_ACCESS_DENIED
 }
 
 // Zagruzit читает блоб, повторяя при отказе.
@@ -156,7 +122,32 @@ func (s *Shifrovshchik) Zagruzit() ([]byte, error) {
 		return nil, fmt.Errorf("%w: %v (и убрать блоб не удалось: %v)",
 			ErrSekretyNechitaemy, posledn, err)
 	}
+	if telo, ok := s.vernutZapas(); ok {
+		log.Printf("секреты не расшифровались (%v), блоб отложен как %s; взята прежняя версия", posledn, imya)
+		return telo, nil
+	}
 	return nil, fmt.Errorf("%w: %v (блоб отложен как %s)", ErrSekretyNechitaemy, posledn, imya)
+}
+
+// vernutZapas пробует прежнюю версию блоба и ставит её на место основного.
+//
+// Одна попытка, а не повторы: повторы уже показали, что LSASS отвечает или
+// не отвечает, и второй круг ожидания только отодвинул бы отказ.
+func (s *Shifrovshchik) vernutZapas() ([]byte, bool) {
+	zapas, err := os.ReadFile(s.put() + sostoyanie.RasshirenieZapasa)
+	if err != nil {
+		return nil, false
+	}
+	telo, err := s.rasshifrovat(zapas)
+	if err != nil {
+		return nil, false
+	}
+	if err := sostoyanie.ZapisatNadyozhno(s.put(), zapas, nil); err != nil {
+		// Секреты уже в руках, и это главное. Незаписанное место просто
+		// заставит следующий старт пройти этот путь ещё раз.
+		log.Printf("прежняя версия секретов не встала на место: %v", err)
+	}
+	return telo, true
 }
 
 // pohoronit переименовывает мёртвый блоб.

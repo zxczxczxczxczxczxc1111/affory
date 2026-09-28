@@ -57,33 +57,37 @@ func ZapisatOtkat(o Otkat) error {
 	if err != nil {
 		return fmt.Errorf("откат не сериализуется: %w", err)
 	}
-	vremen := putOtkata() + ".tmp"
-	if err := os.WriteFile(vremen, telo, 0o600); err != nil {
-		return fmt.Errorf("временный файл отката не записан: %w", err)
+	// Пропавшее питание не должно оставить вместо файла мусор: тогда машина
+	// не знала бы, что заперта (Н3 аудита 1.6.1). Прежняя версия остаётся
+	// рядом, если она годна.
+	godno := func(b []byte) bool { return razobratOtkat(b, new(Otkat)) == nil }
+	if err := sostoyanie.ZapisatNadyozhno(putOtkata(), telo, godno); err != nil {
+		return fmt.Errorf("откат не записан: %w", err)
 	}
-	// Переименование поверх атомарно на NTFS, запись на месте нет. Разница
-	// проявляется ровно один раз, в самый неудачный момент.
-	if err := os.Rename(vremen, putOtkata()); err != nil {
-		_ = os.Remove(vremen)
-		return fmt.Errorf("откат не переименован: %w", err)
+	return nil
+}
+
+func razobratOtkat(telo []byte, o *Otkat) error {
+	*o = Otkat{}
+	if err := json.Unmarshal(telo, o); err != nil {
+		return fmt.Errorf("откат неразборчив: %w", err)
+	}
+	if len(o.Profili) == 0 {
+		return fmt.Errorf("откат пуст: возвращать нечего")
 	}
 	return nil
 }
 
 func ProchitatOtkat() (Otkat, error) {
-	telo, err := os.ReadFile(putOtkata())
+	var o Otkat
+	_, _, err := sostoyanie.ProchitatSZapasom(putOtkata(), func(telo []byte) error {
+		return razobratOtkat(telo, &o)
+	})
 	if errors.Is(err, os.ErrNotExist) {
 		return Otkat{}, ErrOtkataNet
 	}
 	if err != nil {
-		return Otkat{}, fmt.Errorf("откат не прочитан: %w", err)
-	}
-	var o Otkat
-	if err := json.Unmarshal(telo, &o); err != nil {
-		return Otkat{}, fmt.Errorf("откат неразборчив: %w", err)
-	}
-	if len(o.Profili) == 0 {
-		return Otkat{}, fmt.Errorf("откат пуст: возвращать нечего")
+		return Otkat{}, err
 	}
 	return o, nil
 }
@@ -92,9 +96,10 @@ func ProchitatOtkat() (Otkat, error) {
 //
 // Файл, переживший неудачный возврат, это единственное, по чему следующий старт
 // поймёт, что машина осталась запертой. Удалять его заранее значит выбросить
-// карту ровно перед тем, как заблудиться.
+// карту ровно перед тем, как заблудиться. Прежняя версия уходит вместе с ним:
+// иначе снятый замок воскрес бы из копии.
 func UdalitOtkat() error {
-	if err := os.Remove(putOtkata()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := sostoyanie.UdalitSZapasom(putOtkata()); err != nil {
 		return fmt.Errorf("файл отката не удалён: %w", err)
 	}
 	return nil
