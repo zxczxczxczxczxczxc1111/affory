@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -109,13 +110,19 @@ func pervyyZanyatyy(katalog string) (string, error) {
 // and the next command fails for reasons that look like our bug.
 const zhdatSCM = 30 * time.Second
 
-var errNetSluzhby = errors.New("служба не установлена")
+// sluzhbyNet узнаёт ровно один отказ: службы с таким именем нет. Отказ в
+// доступе и прочее сюда не попадают, это настоящие ошибки.
+func sluzhbyNet(err error) bool {
+	return errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST)
+}
 
 // Швы: снятие спрашивает брандмауэр и правит его, а тест обязан гоняться без
 // прав администратора и без живого netsh.
 var (
 	zapertaLiMashina = set.VesTrafikVklyuchyon
 	raspechatatVes   = set.VyklyuchitVesTrafik
+	vernutIPv6       = set.VernutIPv6
+	snyatAvtozapusk  = vyklyuchitAvtozapusk
 )
 
 // raspechatatPeredSnyatiem возвращает машину в сеть ДО удаления службы.
@@ -171,8 +178,8 @@ func vosstanovlenieSluzhby() ([]mgr.RecoveryAction, uint32) {
 	}, 600
 }
 
-// Install is deliberately boring: remove whatever is there, create, configure
-// recovery, start, wait.
+// Install is deliberately boring: update whatever is there or create it,
+// configure recovery, start, wait.
 func ustanovit(putBinarya string) error {
 	if err := sostoyanie.ZavestiKatalogDannyh(); err != nil {
 		return err
@@ -196,21 +203,22 @@ func ustanovit(putBinarya string) error {
 	// Reinstall over an existing service, not "already installed, go away". The
 	// refusal version turns every update into a manual two-step where the human
 	// has to know the uninstall command exists.
-	// raspechatat=false: это ОБНОВЛЕНИЕ, а не снятие. Снять здесь режим значило
-	// бы распечатать машину человеку, который просил её запереть и всего лишь
-	// поставил новую версию.
-	if err := snyatCherez(m, false); err != nil && !errors.Is(err, errNetSluzhby) {
+	s, pervaya, err := obnovitIliSozdat(m, putBinarya)
+	if err != nil {
 		return err
 	}
-	if err := errors.Join(set.VyklyuchitVesTrafik(), set.VernutIPv6()); err != nil {
-		return fmt.Errorf("сеть после прежней установки не восстановлена: %w", err)
-	}
-
-	s, err := sozdatSluzhbu(m, putBinarya)
-	if err != nil {
-		return fmt.Errorf("не удалось создать службу: %w", err)
-	}
 	defer s.Close()
+
+	// Сеть после прежней установки. К этой строке служба остановлена, а
+	// остановка сама снимает защиту вместе с туннелем (Zavershit, osvoboditSet),
+	// и prepare-install снимает её ещё раньше. Здесь подчищается только сирота
+	// после краша, поэтому отказ установку не рушит: новая служба на старте
+	// снимает осиротевшее сама (SnyatOsirotevshee). До 1.6.2 отказ здесь
+	// возвращался уже ПОСЛЕ удаления прежней службы, и машина оставалась без
+	// службы вовсе.
+	if err := errors.Join(set.VyklyuchitVesTrafik(), set.VernutIPv6()); err != nil {
+		log.Printf("сеть после прежней установки не восстановлена, служба снимет осиротевшее на старте: %v", err)
+	}
 
 	// Восстановление ставится СРАЗУ после создания и до старта: между этими
 	// строками служба ещё не могла умереть, а после старта могла бы.
@@ -238,8 +246,14 @@ func ustanovit(putBinarya string) error {
 	// install sequence the spec spells out, and not fatal: a machine whose Run
 	// key refuses a write still gets a working tunnel, and the setting stays
 	// reachable from the Settings tab.
-	if err := vklyuchitAvtozapusk(putInterfeysa()); err != nil {
-		log.Printf("автозапуск интерфейса не зарегистрирован: %v", err)
+	//
+	// Только при ПЕРВОЙ установке. Правда об автозапуске живёт в реестре
+	// (avtozapusk.go), и до 1.6.2 каждая установка поверх и каждое
+	// самообновление включали обратно автозапуск, который человек выключил.
+	if pervaya {
+		if err := vklyuchitAvtozapusk(putInterfeysa()); err != nil {
+			log.Printf("автозапуск интерфейса не зарегистрирован: %v", err)
+		}
 	}
 
 	if err := s.Start(argumentUstanovki); err != nil {
@@ -264,7 +278,7 @@ func snyat() error {
 		return fmt.Errorf("нет доступа к диспетчеру служб: %w", err)
 	}
 	defer m.Disconnect()
-	if err := snyatCherez(m, true); err != nil {
+	if err := snyatCherez(m); err != nil {
 		return err
 	}
 	// Окно закрывается ЗДЕСЬ, по пути образа, а не установщиком по имени
@@ -281,50 +295,168 @@ func snyat() error {
 	return nil
 }
 
-func snyatCherez(m *mgr.Mgr, raspechatat bool) error {
+func snyatCherez(m *mgr.Mgr) error {
 	s, err := m.OpenService(imyaSluzhby)
 	if err != nil {
-		return fmt.Errorf("%w: %v", errNetSluzhby, err)
+		if !sluzhbyNet(err) {
+			return fmt.Errorf("служба не открывается: %w", err)
+		}
+		// Службы уже нет. Так бывает, когда прошлое снятие упало ПОСЛЕ её
+		// удаления (антивирус не дал стереть данные), когда оборвалась первая
+		// установка, когда пропало питание посреди обновления. До 1.6.2 это был
+		// отказ насмерть: каждый запуск Uninstall.exe отвечал «служба не
+		// установлена», и программа не снималась штатно никогда (В3 аудита
+		// 1.6.1). Снимаем всё, что служба могла оставить, и идём дальше.
+		log.Printf("служба уже снята (%v), снимаем то, что она могла оставить", err)
+		return snyatOstavsheesya()
 	}
 	defer s.Close()
 
-	st, err := s.Query()
-	if err != nil {
-		return fmt.Errorf("состояние службы не читается: %w", err)
-	}
-	if st.State != svc.Stopped {
-		if _, err := s.Control(svc.Stop); err != nil {
-			// Already stopping is not a failure. Refusing to uninstall because
-			// somebody else pressed stop a second earlier would be ceremony.
-			var errno windows.Errno
-			if !errors.As(err, &errno) || errno != windows.ERROR_SERVICE_NOT_ACTIVE {
-				return fmt.Errorf("остановка не принята: %w", err)
-			}
-		}
-		// This wait is the whole point of the rewrite. Control() returns at once,
-		// and Delete() on a live process only MARKS the service for deletion: it
-		// disappears when the last handle closes, which is whenever. The check
-		// right after would then flap between "gone" and "still here" depending
-		// on how fast the machine is that morning.
-		if err := zhdatSostoyaniya(s, svc.Stopped); err != nil {
-			return err
-		}
+	if err := ostanovitIZhdat(s); err != nil {
+		return err
 	}
 
 	// Порядок: сначала остановить, потом распечатать, потом удалить. Наоборот
 	// живая служба переучредила бы режим прямо у нас за спиной, а удалять до
 	// распечатывания значит остаться без инструмента на середине дела.
-	if raspechatat {
-		if err := raspechatatPeredSnyatiem(); err != nil {
-			return err
+	if err := snyatOstavsheesya(); err != nil {
+		return err
+	}
+	if err := s.Delete(); err != nil {
+		// Помечена к удалению прошлым снятием: уйдёт сама, когда закроется
+		// последний открытый на неё дескриптор. Вторая пометка ничего не
+		// добавит, а отказ здесь оставил бы программу неснимаемой.
+		if pometkaNaUdalenie(err) {
+			return nil
 		}
-		// Real uninstall, not an update: the interface must not come back at
-		// next logon pointing at a binary that is about to be deleted.
-		if err := vyklyuchitAvtozapusk(); err != nil {
-			log.Printf("автозапуск интерфейса не снят: %v", err)
+		return fmt.Errorf("служба не удалена: %w", err)
+	}
+	return nil
+}
+
+// snyatOstavsheesya возвращает машине сеть и снимает автозапуск окна: всё,
+// что остаётся после службы в системе, кроме файлов.
+//
+// IPv6 возвращается ВСЕГДА, а не только на запертой машине: его правило живёт
+// отдельно от файла отката (brandmauer.go) и после службы, умершей с поднятым
+// туннелем, пережило бы удаление программы. Отказ здесь останавливает снятие
+// по той же причине, что и отказ распечатывания: файлы ещё на месте, и
+// попробовать можно снова.
+func snyatOstavsheesya() error {
+	if err := raspechatatPeredSnyatiem(); err != nil {
+		return err
+	}
+	if err := vernutIPv6(); err != nil {
+		return fmt.Errorf("IPv6 не возвращён: %w", err)
+	}
+	// Real uninstall, not an update: the interface must not come back at
+	// next logon pointing at a binary that is about to be deleted.
+	if err := snyatAvtozapusk(); err != nil {
+		log.Printf("автозапуск интерфейса не снят: %v", err)
+	}
+	return nil
+}
+
+// ostanovitIZhdat останавливает службу и ждёт настоящей остановки.
+func ostanovitIZhdat(s *mgr.Service) error {
+	st, err := s.Query()
+	if err != nil {
+		return fmt.Errorf("состояние службы не читается: %w", err)
+	}
+	if st.State == svc.Stopped {
+		return nil
+	}
+	if _, err := s.Control(svc.Stop); err != nil {
+		// Already stopping is not a failure. Refusing to uninstall because
+		// somebody else pressed stop a second earlier would be ceremony.
+		var errno windows.Errno
+		if !errors.As(err, &errno) || errno != windows.ERROR_SERVICE_NOT_ACTIVE {
+			return fmt.Errorf("остановка не принята: %w", err)
 		}
 	}
-	return s.Delete()
+	// This wait is the whole point of the rewrite. Control() returns at once,
+	// and Delete() on a live process only MARKS the service for deletion: it
+	// disappears when the last handle closes, which is whenever. The check
+	// right after would then flap between "gone" and "still here" depending
+	// on how fast the machine is that morning.
+	return zhdatSostoyaniya(s, svc.Stopped)
+}
+
+// obnovitIliSozdat отдаёт службу AfforySvc с нашими настройками и говорит,
+// заводилась ли она заново.
+//
+// Существующая служба ОБНОВЛЯЕТСЯ на месте, а не удаляется и создаётся
+// заново. До 1.6.2 установка сначала удаляла прежнюю службу, потом могла
+// упасть на восстановлении сети, и машина оставалась без службы совсем: ни
+// туннеля, ни команды, которой это чинить. Обновлённая на месте служба при
+// любом отказе дальше остаётся стоять, прежней или новой.
+func obnovitIliSozdat(m *mgr.Mgr, putBinarya string) (*mgr.Service, bool, error) {
+	s, err := m.OpenService(imyaSluzhby)
+	if err != nil {
+		if !sluzhbyNet(err) {
+			return nil, false, fmt.Errorf("служба не открывается: %w", err)
+		}
+		return sozdatNovuyu(m, putBinarya)
+	}
+	if err := ostanovitIZhdat(s); err != nil {
+		s.Close()
+		return nil, false, err
+	}
+	k, err := s.Config()
+	if err != nil {
+		s.Close()
+		return nil, false, fmt.Errorf("настройки службы не читаются: %w", err)
+	}
+	if err := s.UpdateConfig(obnovitNastroyki(k, putBinarya)); err != nil {
+		s.Close()
+		if !pometkaNaUdalenie(err) {
+			return nil, false, fmt.Errorf("настройки службы не обновлены: %w", err)
+		}
+		// Прошлое снятие пометило службу к удалению, и она ещё держится чьим-то
+		// дескриптором. Обновлять её бессмысленно, она уйдёт; sozdatSluzhbu
+		// дождётся этого и заведёт новую. Снятие успело убрать и автозапуск,
+		// поэтому для него это первая установка.
+		return sozdatNovuyu(m, putBinarya)
+	}
+	return s, false, nil
+}
+
+func sozdatNovuyu(m *mgr.Mgr, putBinarya string) (*mgr.Service, bool, error) {
+	s, err := sozdatSluzhbu(m, putBinarya)
+	if err != nil {
+		return nil, false, fmt.Errorf("не удалось создать службу: %w", err)
+	}
+	return s, true, nil
+}
+
+// nastroykiSluzhby это то, с чем служба создаётся и что установка поверх
+// выставляет заново.
+func nastroykiSluzhby() mgr.Config {
+	return mgr.Config{
+		DisplayName: "Affory",
+		Description: "Туннель Affory",
+		StartType:   mgr.StartAutomatic,
+		// LocalSystem and nothing else: machine DPAPI requires it, and so does
+		// writing into Program Files during an update.
+		ServiceStartName: "LocalSystem",
+	}
+}
+
+// obnovitNastroyki кладёт наши настройки поверх прочитанных у живой службы.
+//
+// Тип службы и реакция на ошибку берутся у неё же: UpdateConfig передаёт
+// каждое поле как есть, и ноль там означает не «без изменений», а другое
+// значение. Путь в кавычках, так же как его пишет CreateService: без них путь
+// с пробелом SCM читает как `C:\Program` с аргументами.
+func obnovitNastroyki(k mgr.Config, putBinarya string) mgr.Config {
+	n := nastroykiSluzhby()
+	k.DisplayName = n.DisplayName
+	k.Description = n.Description
+	k.StartType = n.StartType
+	k.ServiceStartName = n.ServiceStartName
+	k.BinaryPathName = syscall.EscapeArg(putBinarya)
+	k.Password = ""
+	return k
 }
 
 func zhdatSostoyaniya(s *mgr.Service, hotim svc.State) error {
@@ -353,14 +485,7 @@ func zhdatSostoyaniya(s *mgr.Service, hotim svc.State) error {
 //
 // Ждём столько же, сколько отведено SCM на остальные его асинхронные дела.
 func sozdatSluzhbu(m *mgr.Mgr, putBinarya string) (*mgr.Service, error) {
-	konfig := mgr.Config{
-		DisplayName: "Affory",
-		Description: "Туннель Affory",
-		StartType:   mgr.StartAutomatic,
-		// LocalSystem and nothing else: machine DPAPI requires it, and so does
-		// writing into Program Files during an update.
-		ServiceStartName: "LocalSystem",
-	}
+	konfig := nastroykiSluzhby()
 	konec := time.Now().Add(zhdatSCM)
 	for {
 		s, err := m.CreateService(imyaSluzhby, putBinarya, konfig)
