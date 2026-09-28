@@ -1135,6 +1135,45 @@ describe("замер полосы", () => {
     await waitFor(() => expect(most.skolkoRaz("status")).toBeGreaterThan(bylo));
   });
 
+  // О5 аудита 1.6.1. Видимость окна сидела в зависимостях стартовых запросов,
+  // и каждый показ и уход в трей заново спрашивали список серверов, hello и
+  // статус, а подписку на статистику дёргали лишний раз.
+  it("показ и скрытие окна не повторяют стартовые запросы", async () => {
+    const most = mostProby();
+    render(<App periodOprosaMs={100000} />);
+    await waitFor(() => expect(most.skolkoRaz("hello")).toBeGreaterThan(0));
+    await waitFor(() => expect(most.podpiskaSluzhby()).toBe(true));
+    await new Promise((r) => setTimeout(r, 50));
+    const spisok = most.skolkoRaz("listServers");
+    const hello = most.skolkoRaz("hello");
+    const status = most.skolkoRaz("status");
+
+    most.okno(false);
+    await waitFor(() => expect(most.podpiskaSluzhby()).toBe(false));
+    most.okno(true);
+    await waitFor(() => expect(most.podpiskaSluzhby()).toBe(true));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(most.skolkoRaz("listServers")).toBe(spisok);
+    expect(most.skolkoRaz("hello")).toBe(hello);
+    // Ровно один статус: тот, что спрашивается сразу при возврате окна.
+    expect(most.skolkoRaz("status")).toBe(status + 1);
+  });
+
+  // О4 аудита 1.6.1: замер скорости опрашивался и из трея, раз в секунду, пока
+  // он шёл, хотя смотреть на полосу некому.
+  it("не опрашивает замер скорости, пока окно в трее", async () => {
+    const most = mostProby();
+    most.otvechatTelom("speedTestStatus", { id: 1, phase: "download", path: "vpn", provider: "p", name: "p", attempt: 1 });
+    render(<App periodOprosaMs={100000} />);
+    await waitFor(() => expect(most.skolkoRaz("speedTestStatus")).toBeGreaterThan(1), { timeout: 3000 });
+
+    most.okno(false);
+    await waitFor(() => expect(most.podpiskaSluzhby()).toBe(false));
+    const bylo = most.skolkoRaz("speedTestStatus");
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(most.skolkoRaz("speedTestStatus")).toBe(bylo);
+  }, 10000);
+
 });
 
 // 13.09.2026, три живые жалобы об одной минуте: «перебросило на dev версию»,

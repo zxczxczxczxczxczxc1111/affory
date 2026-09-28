@@ -195,8 +195,15 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // не видит, незачем. Начальное true: окно, стартовавшее без ключа --trey,
   // уже на экране, а ушедшее в трей получит false первым же событием.
   const [oknoVidno, zadatOknoVidno] = useState(true);
+  // Та же видимость для стартовых запросов. Через ссылку, а не зависимостью:
+  // иначе каждый показ и уход в трей перезапускали эффект монтирования и
+  // заново спрашивали статус, список серверов и hello (О5 аудита 1.6.1).
+  const oknoVidnoRef = useRef(true);
+  oknoVidnoRef.current = oknoVidno;
   const [svyaz, zadatSvyaz] = useState<Svyaz>("zhdyom");
-  const speed = useSkorost(zvat, svyaz === "est");
+  // Замер скорости опрашивается только при видимом окне: в трее смотреть на
+  // полосу некому (О4 аудита 1.6.1). Вернувшееся окно спросит состояние сразу.
+  const speed = useSkorost(zvat, svyaz === "est" && oknoVidno);
   // null until the service actually answers subscribeStats with numbers.
   // It answers not-implemented until wave 6, so this stays null on purpose.
   const [statistika, zadatStat] = useState<Statistika | null>(null);
@@ -675,11 +682,11 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     // висела на размонтировании компонента, которого при уходе в трей не
     // случается никогда: окно прячется, а не закрывается. Отдельный эффект
     // ниже включает и выключает её по видимости.
-    soobshchitPodpisku(oknoVidno);
+    soobshchitPodpisku(oknoVidnoRef.current);
     // listRules is NOT here: it is fetched by the effect below, once hello
     // has said the command exists. Asking a deferred command for data would
     // turn its refusal into a banner about a wave that has not landed yet.
-  }, [obnovitSpisok, zagruzitOtlozhennye, soobshchitPodpisku, oknoVidno]);
+  }, [obnovitSpisok, zagruzitOtlozhennye, soobshchitPodpisku]);
 
   useEffect(() => {
     void oprosit();
