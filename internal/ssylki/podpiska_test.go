@@ -100,6 +100,20 @@ func TestPustoySpisokEtoOtkaz(t *testing.T) {
 	}
 }
 
+// П7 аудита 1.6.1. Панель, отдающая настройки чужого клиента целиком, давала
+// сотни отказов строк, из которых не понять главного: это не список ссылок.
+func TestNastroykiVmestoSpiskaEtoSvoyOtkaz(t *testing.T) {
+	for imya, t2 := range map[string]string{
+		"sing-box":  `{"outbounds":[{"type":"vless","server":"203.0.113.1"}]}`,
+		"clash":     "port: 7890\nproxies:\n  - name: a\n    type: vless\n",
+		"wireguard": "\xef\xbb\xbf[Interface]\nPrivateKey = x\n",
+	} {
+		if _, err := ssylki.RazobratSpisok([]byte(t2)); !errors.Is(err, ssylki.ErrNeSsylki) {
+			t.Errorf("%s: %v", imya, err)
+		}
+	}
+}
+
 func TestChastichnoBityySpisok(t *testing.T) {
 	// Nine good servers must not be lost because the tenth line has a typo, and
 	// the tenth must not vanish silently either: it comes back with its line number.

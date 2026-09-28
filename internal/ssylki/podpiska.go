@@ -98,6 +98,11 @@ type Razbor struct {
 // Отказ и частичный успех это РАЗНЫЕ вещи, и обе возвращают заполненный Razbor:
 // причины нужны человеку и при отказе, иначе на экране остаётся слово «пусто».
 func RazobratSpisok(telo []byte) (Razbor, error) {
+	// Настройки чужого клиента по строкам дали бы сотни отказов, из которых не
+	// понять главного: панель отдаёт не список ссылок (П7 аудита 1.6.1).
+	if pohozheNaNastroyki(string(telo)) {
+		return Razbor{}, ErrNeSsylki
+	}
 	r := razobratStroki(telo, true)
 	if len(r.Servery) > 0 {
 		return r, nil

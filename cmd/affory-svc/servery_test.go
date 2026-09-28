@@ -14,6 +14,7 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
 
@@ -248,6 +249,18 @@ func TestIstekshayaPodpiskaDohoditTekstomPaneli(t *testing.T) {
 	}
 	if !strings.Contains(o.Oshib.Tekst, "Подписка закончилась") {
 		t.Fatalf("текст панели потерян: %s", o.Oshib.Tekst)
+	}
+}
+
+// П7 аудита 1.6.1: файл настроек вместо списка это ответ панели по существу,
+// а не недоступность, и прежний список остаётся.
+func TestPodpiskaSNastroykamiNazyvaetPrichinu(t *testing.T) {
+	o := otkazPodpiski(protokol.Kadr{}, ssylki.Razbor{}, ssylki.ErrNeSsylki)
+	if o.Oshib == nil || o.Oshib.Kod != protokol.KodSubscriptionMalformed {
+		t.Fatalf("отказ %+v", o.Oshib)
+	}
+	if !strings.Contains(o.Oshib.Tekst, "файл настроек") || !strings.Contains(o.Oshib.Tekst, "прежний список сохранён") {
+		t.Fatalf("текст %q", o.Oshib.Tekst)
 	}
 }
 
