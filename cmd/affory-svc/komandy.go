@@ -391,7 +391,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.adresProverki = set.AdresProverkiPoUmolchaniyu
 	s.sprositVyhod = set.AdresVyhoda
 	s.ipv6Zaglushen = set.PravilaIPv6Est
-	s.zapustitPodmenshchika = zapustitPodmenshchikaVTemp
+	s.zapustitPodmenshchika = zapustitPodmenshchika
 	s.dirDannyh = sostoyanie.KatalogDannyh()
 	s.dirProgrammy = sostoyanie.KatalogProgrammy()
 	s.zagruzitSnimok = set.ZagruzitSnimok

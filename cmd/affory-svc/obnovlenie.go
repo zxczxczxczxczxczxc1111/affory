@@ -38,6 +38,10 @@ import (
 
 const rezhimPodmeny = "swap"
 
+// prefiksPodmeny начинает имя каталога, который подменщик заводит себе внутри
+// каталога данных.
+const prefiksPodmeny = "podmena-"
+
 func (s *Sluzhba) installUpdate(k protokol.Kadr) protokol.Kadr {
 	var telo struct {
 		Put string `json:"path"`
@@ -105,24 +109,13 @@ func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) p
 	return otvet(k.Id, k.Imya, map[string]any{"zapushchena": true, "srok_s": int(obnovlenie.SrokPodyoma.Seconds())})
 }
 
-// zapustitPodmenshchikaVTemp копирует ТЕКУЩУЮ службу во временный каталог и
-// запускает её в режиме swap отвязанным процессом: служба, которая сейчас
-// отвечает, через секунды будет остановлена вместе со всеми своими детьми.
-func zapustitPodmenshchikaVTemp(prog, novaya string) error {
-	svoy, err := os.Executable()
+// zapustitPodmenshchika копирует ТЕКУЩУЮ службу в свой каталог внутри каталога
+// данных и запускает её в режиме swap отвязанным процессом: служба, которая
+// сейчас отвечает, через секунды будет остановлена вместе со всеми своими
+// детьми.
+func zapustitPodmenshchika(prog, novaya string) error {
+	exe, err := prigotovitPodmenshchika(sostoyanie.KatalogDannyh())
 	if err != nil {
-		return err
-	}
-	vrem := filepath.Join(os.TempDir(), "affory-podmena")
-	if err := os.MkdirAll(vrem, 0o700); err != nil {
-		return err
-	}
-	b, err := os.ReadFile(svoy)
-	if err != nil {
-		return err
-	}
-	exe := filepath.Join(vrem, "affory-svc.exe")
-	if err := os.WriteFile(exe, b, 0o700); err != nil {
 		return err
 	}
 	cmd := exec.Command(exe, rezhimPodmeny, prog, novaya)
@@ -131,6 +124,61 @@ func zapustitPodmenshchikaVTemp(prog, novaya string) error {
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008, // DETACHED_PROCESS
 	}
 	return cmd.Start()
+}
+
+// prigotovitPodmenshchika кладёт копию службы в новый каталог внутри каталога
+// данных и отдаёт путь к ней.
+//
+// До 1.6.2 копия ложилась в `%TEMP%\affory-podmena`. У SYSTEM на старых
+// Windows 10 это `C:\Windows\Temp`, где обычный пользователь может завести
+// каталог заранее: MkdirAll принимал его молча, и копию можно было подменить
+// между записью и запуском от SYSTEM. Каталог данных закрыт от записи всем,
+// кроме SYSTEM и администраторов, а MkdirTemp заводит каталог сам и никогда не
+// берёт уже существующий.
+func prigotovitPodmenshchika(dannye string) (string, error) {
+	svoy, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(svoy)
+	if err != nil {
+		return "", err
+	}
+	vrem, err := os.MkdirTemp(dannye, prefiksPodmeny+"*")
+	if err != nil {
+		return "", err
+	}
+	exe := filepath.Join(vrem, "affory-svc.exe")
+	if err := os.WriteFile(exe, b, 0o700); err != nil {
+		return "", errors.Join(err, os.RemoveAll(vrem))
+	}
+	return exe, nil
+}
+
+// ubratKatalogiPodmeny убирает каталоги прошлых подменщиков из каталога данных
+// и возвращает то, что убрать не вышло.
+//
+// Служба стартует раньше, чем её подменщик дождался ответа, поэтому каталог
+// работающего подменщика здесь не убирается: его exe занят. Он уйдёт на
+// следующем старте.
+func ubratKatalogiPodmeny(dannye string) []string {
+	zapisi, err := os.ReadDir(dannye)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return []string{fmt.Sprintf("каталог %s не прочитан: %v", dannye, err)}
+	}
+	var zhaloby []string
+	for _, z := range zapisi {
+		if !z.IsDir() || !strings.HasPrefix(z.Name(), prefiksPodmeny) {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(dannye, z.Name())); err != nil {
+			zhaloby = append(zhaloby, fmt.Sprintf("%s не убран: %v", z.Name(), err))
+		}
+	}
+	return zhaloby
 }
 
 // podmenit это режим swap: тело подменщика. Пишет в log\obnovlenie.log: у
@@ -268,11 +316,15 @@ func (s *Sluzhba) pokazatItogObnovleniya() {
 }
 
 // ubratHvostyPodmeny стирает *.ubrat в каталоге программы: файл работавшего
-// окна, отодвинутый подменой, удалить в тот момент было нельзя.
+// окна, отодвинутый подменой, удалить в тот момент было нельзя. Заодно
+// убираются каталоги прошлых подменщиков.
 func ubratHvostyPodmeny() {
 	hvosty, _ := filepath.Glob(filepath.Join(sostoyanie.KatalogProgrammy(), "*.ubrat"))
 	for _, h := range hvosty {
 		_ = os.Remove(h)
+	}
+	for _, z := range ubratKatalogiPodmeny(sostoyanie.KatalogDannyh()) {
+		log.Printf("уборка после подмены: %s", z)
 	}
 }
 

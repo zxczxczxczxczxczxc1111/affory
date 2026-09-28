@@ -73,6 +73,11 @@ func main() {
 			if steretKlyuchiIz(os.Args) {
 				fmt.Fprintln(vyvod, "данные и ключи стёрты")
 			} else {
+				// Копии службы от прошлых обновлений это не данные человека, а
+				// наш временный файл: после удаления ему лежать незачем.
+				for _, zhaloba := range ubratKatalogiPodmeny(sostoyanie.KatalogDannyh()) {
+					fmt.Fprintln(vyvod, "след остался: "+zhaloba)
+				}
 				fmt.Fprintln(vyvod, "данные и ключи оставлены")
 			}
 			// Следы вне двух каталогов снимаются ВСЕГДА, а не по флагу: ярлык в
