@@ -158,11 +158,11 @@ func TestKatalogAdresYadraOstaetsyaVRazresheniyahPosleUdalenia(t *testing.T) {
 	hranilishcheProby(t, s, Nabor{})
 	s.portClash = 9090
 	s.zapomnitServeryYadra([]protokol.Server{{Id: "removed", Host: "203.0.113.9", Port: 443}})
-	s.sobratAdresaSet = func(v []protokol.Server, _ string, _ ...string) ([]netip.Addr, error) {
+	s.sobratAdresaSet = func(v []protokol.Server, _ string, _ ...string) (set.Adresa, error) {
 		if len(v) != 1 || v[0].Host != "203.0.113.9" {
 			t.Fatal("адрес ядра пропал из разрешений")
 		}
-		return []netip.Addr{netip.MustParseAddr(v[0].Host)}, nil
+		return adresaIz(netip.MustParseAddr(v[0].Host)), nil
 	}
 	if _, err := s.adresaKandidatov(); err != nil {
 		t.Fatal(err)

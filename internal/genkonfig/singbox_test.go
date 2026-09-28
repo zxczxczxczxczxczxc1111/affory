@@ -120,29 +120,44 @@ func TestInvariant1DirectTolkoPoYavnym(t *testing.T) {
 	}
 }
 
-func TestInvariant2PetlyaVseKandidaty(t *testing.T) {
-	v := obraztsovyyVhod()
-	k := sobrat(t, v)
+// podpravilaPetli достаёт подправила петли: адреса и порты каждого сервера.
+func podpravilaPetli(t *testing.T, k map[string]any) []map[string]any {
+	t.Helper()
 	i := indeksPravila(t, k, func(m map[string]any) bool {
-		s, ok := m["ip_cidr"]
-		if !ok {
-			return false
-		}
-		return strings.Contains(strings.Join(strok(s), ","), "192.0.2.225")
+		return m["type"] == "logical" && m["outbound"] == TegPryamo
 	})
 	if i == -1 {
-		t.Fatal("нет правила петли по кандидатам")
+		t.Fatal("нет правила петли по серверам")
 	}
-	seti := strok(pravilaIz(t, k)[i].(map[string]any)["ip_cidr"])
-	for _, kand := range v.Kandidaty {
-		nashli := false
-		for _, s := range seti {
-			if strings.HasPrefix(s, kand.String()+"/") {
-				nashli = true
-			}
-		}
-		if !nashli {
-			t.Fatalf("кандидат %v не попал в правило петли: переключение на него закрутит трафик", kand)
+	var itog []map[string]any
+	for _, p := range spisok(pravilaIz(t, k)[i].(map[string]any)["rules"]) {
+		itog = append(itog, p.(map[string]any))
+	}
+	return itog
+}
+
+// С2 аудита 1.6.1: в правиле петли каждый сервер со СВОИМ портом, и больше
+// ничего. Адрес подписки (203.0.113.7 в образце) туда не попадает: весь его
+// хостинг шёл бы мимо туннеля.
+func TestInvariant2PetlyaVseKandidaty(t *testing.T) {
+	v := obraztsovyyVhod()
+	v.Servery = []protokol.Server{v.Server, {
+		Id: "hy", Transport: "hy2", Host: "srv.example", Porty: "20000-30000", Parol: "p", Sni: "srv.example",
+	}}
+	v.AdresaServerov = map[string][]netip.Addr{"srv.example": {netip.MustParseAddr("198.51.100.4")}}
+	pod := podpravilaPetli(t, sobrat(t, v))
+	if len(pod) != 2 {
+		t.Fatalf("подправил петли %d, серверов два: %v", len(pod), pod)
+	}
+	if got := strok(pod[0]["ip_cidr"]); len(got) != 1 || got[0] != "192.0.2.225/32" || len(spisok(pod[0]["port"])) != 1 || spisok(pod[0]["port"])[0] != float64(443) {
+		t.Fatalf("reality-сервер в петле: %v", pod[0])
+	}
+	if got := strok(pod[1]["ip_cidr"]); len(got) != 1 || got[0] != "198.51.100.4/32" || strok(pod[1]["port_range"])[0] != "20000:30000" {
+		t.Fatalf("hy2 по имени в петле: %v", pod[1])
+	}
+	for _, p := range pod {
+		if strings.Contains(strings.Join(strok(p["ip_cidr"]), ","), "203.0.113.7") {
+			t.Fatal("адрес не сервера попал в правило петли")
 		}
 	}
 }

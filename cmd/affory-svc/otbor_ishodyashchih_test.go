@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
 
@@ -33,11 +34,11 @@ func TestOtvergnutyyYadromServerIsklyuchaetsyaAOstalnyePodnimayutsya(t *testing.
 	s.nabor = func() (Nabor, error) {
 		return Nabor{Servery: []protokol.Server{serverProby(), plohoy}, Vybran: "nl"}, nil
 	}
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(
 			netip.MustParseAddr("192.0.2.225"),
 			netip.MustParseAddr("203.0.113.9"),
-		}, nil
+		), nil
 	}
 
 	// Ядро изображается швом: настоящее ядро в тесте недоступно, а поведение
@@ -102,11 +103,11 @@ func TestOtvergnutyyVybrannyyServerEtoOtkazANePodmena(t *testing.T) {
 	s.nabor = func() (Nabor, error) {
 		return Nabor{Servery: []protokol.Server{serverProby(), vtoroyServer()}, Vybran: "nl"}, nil
 	}
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(
 			netip.MustParseAddr("192.0.2.225"),
 			netip.MustParseAddr("203.0.113.9"),
-		}, nil
+		), nil
 	}
 	s.proveritKonfig = func(put string) error {
 		n, est := nomerPoTegu(t, put, "srv-nl")

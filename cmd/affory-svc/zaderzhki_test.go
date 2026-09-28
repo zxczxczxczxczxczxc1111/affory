@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
 
@@ -237,8 +238,8 @@ func podstavnayaSAdresom(t *testing.T, adres string) *Sluzhba {
 	}); err != nil {
 		t.Fatalf("набор не записан: %v", err)
 	}
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr(host)}, nil
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(netip.MustParseAddr(host)), nil
 	}
 	// Умолчание боевого пути: настоящий tcping. Тесты, которым нужен туннель,
 	// подменяют только s.zamerit.

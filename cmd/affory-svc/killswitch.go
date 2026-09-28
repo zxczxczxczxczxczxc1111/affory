@@ -183,7 +183,8 @@ func (s *Sluzhba) spisokRazreshyonnogo(tun set.Adapter) (set.Razreshyonnoe, erro
 
 	r := set.Razreshyonnoe{
 		AdresTun:  adres,
-		Kandidaty: kandidaty,
+		Kandidaty: kandidaty.Vse,
+		Porty:     kandidaty.Porty,
 		Protsessy: puti,
 		// Чужие туннели этой машины. Без них режим «весь трафик» убивал Radmin
 		// VPN и Hamachi молча: их сети не частные и в общий список не входят.

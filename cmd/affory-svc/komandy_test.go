@@ -42,7 +42,7 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	s.dirProgrammy = t.TempDir()
 	s.vklyuchitVes = func(set.Razreshyonnoe, bool) error { return nil }
 	s.vyklyuchitVes = func() error { return nil }
-	s.suzitServery = func([]netip.Addr) error { return nil }
+	s.suzitServery = func(set.Adresa) error { return nil }
 	s.naboryZhelaemye = func() []genkonfig.NaborPravil { return nil }
 	s.skachatNabor = func(context.Context, string) ([]byte, error) {
 		return nil, errors.New("network disabled in service fixture")
@@ -148,8 +148,8 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 		naborProby = n
 		return nil
 	}
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr("192.0.2.225")}, nil
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(netip.MustParseAddr("192.0.2.225")), nil
 	}
 	// Конфиг второго ядра в тесте не пишем: настоящая запись ходит в
 	// C:\ProgramData живой машины.

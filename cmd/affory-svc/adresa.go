@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/netip"
 	"strings"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
@@ -31,17 +30,17 @@ func (s *Sluzhba) serveryDlyaPodyoma() ([]protokol.Server, error) {
 // Адрес подписки входит в список ОБЯЗАТЕЛЬНО: без него запертый режим отрезает
 // обновление подписки ровно тогда, когда список серверов протух и обновить его
 // нужнее всего.
-func (s *Sluzhba) adresaKandidatov() ([]netip.Addr, error) {
+func (s *Sluzhba) adresaKandidatov() (set.Adresa, error) {
 	n, err := s.nabor()
 	if err != nil {
-		return nil, err
+		return set.Adresa{}, err
 	}
 	servery := s.serveryDlyaRazresheniy(n.Servery)
 	if len(servery) == 0 {
-		return nil, ErrNetServerov
+		return set.Adresa{}, ErrNetServerov
 	}
-	// Хосты наборов входят наравне с подпиской: загрузка идёт мимо туннеля, а
-	// мимо туннеля ходит только то, что стоит в обоих списках.
+	// Хосты наборов входят наравне с подпиской: загрузка идёт мимо туннеля, и
+	// в запертом режиме ей нужно разрешение брандмауэра.
 	// Запасные подписки идут наравне с активной: первое же переключение в
 	// запертом режиме иначе упёрлось бы в собственный killswitch, и починить
 	// это изнутри клиента было бы нечем.
@@ -68,7 +67,7 @@ func (s *Sluzhba) adresaKandidatov() ([]netip.Addr, error) {
 //
 // Пустой список кандидатов остаётся отказом: правило петли без единого адреса
 // это запертая машина без выхода к собственному серверу.
-func (s *Sluzhba) kandidatySIsklyucheniem() ([]netip.Addr, error) {
+func (s *Sluzhba) kandidatySIsklyucheniem() (set.Adresa, error) {
 	kandidaty, err := s.sobratAdresa()
 	if err == nil {
 		return kandidaty, nil
@@ -76,16 +75,16 @@ func (s *Sluzhba) kandidatySIsklyucheniem() ([]netip.Addr, error) {
 
 	var oshib *set.OshibkaRazresheniya
 	if !errors.As(err, &oshib) {
-		return nil, fmt.Errorf("адреса кандидатов не собраны: %w", err)
+		return set.Adresa{}, fmt.Errorf("адреса кандидатов не собраны: %w", err)
 	}
-	if len(kandidaty) == 0 {
+	if len(kandidaty.Vse) == 0 {
 		// Не разрешилось НИ ОДНО имя. Прежде это уезжало голой ошибкой и
 		// доезжало до firewall-failed, то есть человек шёл чинить netsh при
 		// исправном netsh. Причина другая и действие другое: молчит резолвер.
 		//
 		// Оба %w намеренно: вызывающему нужен новый признак, а прежний судья
 		// исключения одного хоста по-прежнему спрашивает ErrImyaNeRazreshilos.
-		return nil, fmt.Errorf("%w: %w", ErrRezolverMolchit, err)
+		return set.Adresa{}, fmt.Errorf("%w: %w", ErrRezolverMolchit, err)
 	}
 
 	// Молча выкинуть сервер значит оставить человека с подпиской, которая тихо

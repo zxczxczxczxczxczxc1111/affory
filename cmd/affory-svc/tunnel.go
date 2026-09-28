@@ -211,7 +211,8 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 		VneAvto: n.VneAvto,
 		// Адреса берутся из ТОГО ЖЕ сборщика, что и разрешающие правила
 		// брандмауэра. Своя сборка здесь однажды разошлась бы с той, и молча.
-		Kandidaty:      kandidaty,
+		Kandidaty:      kandidaty.Vse,
+		AdresaServerov: kandidaty.Servery,
 		Resolver:       resolver,
 		PutiProtsessov: puti,
 		ClashApi:       genkonfig.ClashApi{Adres: "127.0.0.1", Port: portClash, Sekret: sekret},

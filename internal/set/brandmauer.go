@@ -30,8 +30,11 @@ var (
 const (
 	PravAllowTun = "Affory-Allow-Tun"
 	PravAllowSrv = "Affory-Allow-Server"
-	PravAllowLan = "Affory-Allow-Local"
-	PravAllowDns = "Affory-Allow-Dns"
+	// Порт у netsh задаётся только вместе с протоколом, поэтому серверам два
+	// правила: TCP под прежним именем и UDP для hy2 и tuic.
+	PravAllowSrvUdp = "Affory-Allow-Server-Udp"
+	PravAllowLan    = "Affory-Allow-Local"
+	PravAllowDns    = "Affory-Allow-Dns"
 	// Отдельным именем, а не вторым правилом с тем же: снятие идёт по именам,
 	// и одно имя на два правила читается как «одно правило», пока кто-нибудь не
 	// начнёт их считать.
@@ -47,7 +50,7 @@ const (
 // По маске снятие не идёт принципиально: маска однажды заденет чужое правило с
 // похожим именем, и заметят это не сразу.
 func VseImenaPravil() []string {
-	imena := []string{PravAllowTun, PravAllowSrv, PravAllowLan, PravAllowDns, PravAllowDnsTcp, ImyaPravilaIPv6}
+	imena := []string{PravAllowTun, PravAllowSrv, PravAllowSrvUdp, PravAllowLan, PravAllowDns, PravAllowDnsTcp, ImyaPravilaIPv6}
 	for i := 0; i < 10; i++ {
 		imena = append(imena, fmt.Sprintf("%s-%d", PravAllowProc, i))
 	}
@@ -65,6 +68,11 @@ type Razreshyonnoe struct {
 	// Kandidaty это адреса ВСЕХ серверов, а не только выбранного: иначе
 	// переключение сервера в запертом режиме отрезает само себя.
 	Kandidaty []netip.Addr
+	// Porty это порты серверов, подписок и загрузок в записи netsh. Без них
+	// правило пускало любую программу на любой порт этих адресов (С2 аудита
+	// 1.6.1). Пустой список значит «правил на серверы нет»: правило без порта
+	// снова стало бы распахнутым.
+	Porty []string
 
 	// Shlyuz и Resolver берутся из системы (см. sistema.go). Без них умирают
 	// локальная сеть, принтер и повторный резолв по TTL.
@@ -328,8 +336,8 @@ func pravilaRazresheniya(r Razreshyonnoe) [][]string {
 
 	// 2. Адреса серверов и ВСЕ кандидаты, включая узел подписки: без него режим
 	// отрезает обновление списка ровно тогда, когда оно нужнее всего.
-	if s := spisokAdresov(r.Kandidaty); s != "" {
-		dobavit(PravAllowSrv, "remoteip="+s)
+	for _, k := range pravilaServerov(r.Kandidaty, r.Porty) {
+		dobavit(k[0], k[1:]...)
 	}
 
 	// 3. Частные диапазоны и шлюз: иначе умирают локальная сеть и принтер.
@@ -363,6 +371,19 @@ func pravilaRazresheniya(r Razreshyonnoe) [][]string {
 			"dir=out", "action=allow", "profile=any", "program=" + p})
 	}
 	return itog
+}
+
+// pravilaServerov даёт пары: имя правила и его условия. Пусто, если адресов или
+// портов нет: правило без них у netsh значит «любой адрес» или «любой порт».
+func pravilaServerov(kandidaty []netip.Addr, porty []string) [][]string {
+	adresa, p := spisokAdresov(kandidaty), strings.Join(porty, ",")
+	if adresa == "" || p == "" {
+		return nil
+	}
+	return [][]string{
+		{PravAllowSrv, "remoteip=" + adresa, "remoteport=" + p, "protocol=tcp"},
+		{PravAllowSrvUdp, "remoteip=" + adresa, "remoteport=" + p, "protocol=udp"},
+	}
 }
 
 func spisokAdresov(a []netip.Addr) string {
@@ -538,23 +559,23 @@ func podmesti() (bool, bool, error) {
 // живом туннеле, значит правило уже заведено и уже записано, а пустой список
 // его снимает, и снятие несуществующего правила при выключении режима ничего
 // не стоит.
-func PerezavestiRazreshyonnyeServery(kandidaty []netip.Addr) error {
+func PerezavestiRazreshyonnyeServery(a Adresa) error {
 	// Правила могло не быть вовсе: это не отказ. Отличает SnyatPravilo, и
 	// глотать здесь ЛЮБОЙ отказ нельзя: молчащий netsh означал бы, что старый
 	// список остался стоять, а мы доложили об успехе.
-	if err := SnyatPravilo(PravAllowSrv); err != nil {
-		return err
+	for _, imya := range []string{PravAllowSrv, PravAllowSrvUdp} {
+		if err := SnyatPravilo(imya); err != nil {
+			return err
+		}
 	}
-	s := spisokAdresov(kandidaty)
-	if s == "" {
-		// Серверов не осталось: разрешать некуда, и правило без адресов у netsh
-		// значит «любой адрес», то есть распахнутую дыру вместо снятой.
-		return nil
-	}
-	if _, err := vypolnit([]string{"advfirewall", "firewall", "add", "rule",
-		"name=" + PravAllowSrv, "dir=out", "action=allow", "profile=any",
-		"remoteip=" + s}); err != nil {
-		return fmt.Errorf("правило %s не переучреждено: %w", PravAllowSrv, err)
+	// Серверов не осталось: разрешать некуда, и правило без адресов у netsh
+	// значит «любой адрес», то есть распахнутую дыру вместо снятой. Этим
+	// заведует pravilaServerov.
+	for _, k := range pravilaServerov(a.Vse, a.Porty) {
+		if _, err := vypolnit(append([]string{"advfirewall", "firewall", "add", "rule",
+			"name=" + k[0], "dir=out", "action=allow", "profile=any"}, k[1:]...)); err != nil {
+			return fmt.Errorf("правило %s не переучреждено: %w", k[0], err)
+		}
 	}
 	return nil
 }

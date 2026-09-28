@@ -19,17 +19,28 @@ import (
 // потерянный кандидат и забытый адрес подписки проходят одинаково. Поэтому оба
 // списка строятся настоящими генераторами и сверяются с тем, что подали на вход.
 //
+// С С2 аудита 1.6.1 списки разные: в правиле петли только серверы на своих
+// портах, в брандмауэре ещё подписка и загрузки. Общим осталось одно: каждый
+// адрес петли обязан быть и в брандмауэре, иначе запертый режим отрежет туннель
+// от собственного сервера.
+//
 // Тест живёт здесь, а не в internal/set, намеренно: заставить set импортировать
 // genkonfig запрещено долгом №3 того же файла, а cmd/affory-svc видит оба
 // пакета по своей природе.
 
-func adresaProby() []netip.Addr {
-	return []netip.Addr{
+// adresaIz заворачивает список в итог сборщика. Хосты-литералы генератор и так
+// берёт как есть, а брандмауэру без порта правила на серверы не завести.
+func adresaIz(a ...netip.Addr) set.Adresa {
+	return set.Adresa{Vse: a, Porty: []string{"443"}}
+}
+
+func adresaProby() set.Adresa {
+	return adresaIz(
 		netip.MustParseAddr("192.0.2.225"),
 		netip.MustParseAddr("203.0.113.1"),
 		netip.MustParseAddr("203.0.113.2"),
 		netip.MustParseAddr("198.51.100.9"), // адрес подписки
-	}
+	)
 }
 
 func serveryProby() []protokol.Server {
@@ -46,18 +57,20 @@ func serveryProby() []protokol.Server {
 	}
 }
 
-func vhodS(adresa []netip.Addr, servery []protokol.Server) genkonfig.Vhod {
+func vhodS(a set.Adresa, servery []protokol.Server) genkonfig.Vhod {
 	return genkonfig.Vhod{
 		Server:         servery[0],
 		Servery:        servery,
-		Kandidaty:      adresa,
+		Kandidaty:      a.Vse,
+		AdresaServerov: a.Servery,
 		Resolver:       netip.MustParseAddr("10.7.0.1"),
 		PutiProtsessov: []string{`C:\x\sing-box.exe`, `C:\x\affory-svc.exe`},
 		ClashApi:       genkonfig.ClashApi{Adres: "127.0.0.1", Port: 9090, Sekret: "s"},
 	}
 }
 
-// ipCidrIz достаёт адреса правила петли из готового конфига sing-box.
+// ipCidrIz достаёт адреса правила петли из готового конфига sing-box. Правило
+// петли составное: подправило на каждый сервер со своим портом.
 func ipCidrIz(t *testing.T, v genkonfig.Vhod) []string {
 	t.Helper()
 	b, err := genkonfig.SingBox(v)
@@ -74,17 +87,17 @@ func ipCidrIz(t *testing.T, v genkonfig.Vhod) []string {
 	}
 	var out []string
 	for _, p := range k.Route.Rules {
-		seti, est := p["ip_cidr"].([]any)
-		if !est {
+		if p["type"] != "logical" || p["outbound"] != genkonfig.TegPryamo {
 			continue
 		}
-		for _, s := range seti {
-			str, _ := s.(string)
-			// Многоадресные и широковещательные это отдельное правило, не наше.
-			if strings.HasPrefix(str, "224.") || strings.HasPrefix(str, "255.") {
-				continue
+		pod, _ := p["rules"].([]any)
+		for _, r := range pod {
+			m, _ := r.(map[string]any)
+			seti, _ := m["ip_cidr"].([]any)
+			for _, s := range seti {
+				str, _ := s.(string)
+				out = append(out, strings.TrimSuffix(strings.TrimSuffix(str, "/32"), "/128"))
 			}
-			out = append(out, strings.TrimSuffix(strings.TrimSuffix(str, "/32"), "/128"))
 		}
 	}
 	sort.Strings(out)
@@ -110,6 +123,10 @@ func remoteIpIz(t *testing.T, r set.Razreshyonnoe) []string {
 	return nil
 }
 
+func razreshyonnoeIz(a set.Adresa) set.Razreshyonnoe {
+	return set.Razreshyonnoe{AdresTun: netip.MustParseAddr("172.19.0.1"), Kandidaty: a.Vse, Porty: a.Porty}
+}
+
 func ravnyMnozhestva(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -128,15 +145,12 @@ func ravnyMnozhestva(a, b []string) bool {
 func TestSostavSpiskovProtivVhoda(t *testing.T) {
 	adresa, servery := adresaProby(), serveryProby()
 	petlya := ipCidrIz(t, vhodS(adresa, servery))
-	razresh := remoteIpIz(t, set.Razreshyonnoe{
-		AdresTun: netip.MustParseAddr("172.19.0.1"), Kandidaty: adresa,
-	})
-	ozhidaem := []string{"192.0.2.225", "203.0.113.1", "203.0.113.2", "198.51.100.9"}
+	razresh := remoteIpIz(t, razreshyonnoeIz(adresa))
 
-	if !ravnyMnozhestva(petlya, ozhidaem) {
-		t.Fatalf("правило петли: %v, ожидалось %v", petlya, ozhidaem)
+	if ozhidaem := []string{"192.0.2.225", "203.0.113.1", "203.0.113.2"}; !ravnyMnozhestva(petlya, ozhidaem) {
+		t.Fatalf("правило петли: %v, ожидалось %v (адрес подписки туда не входит)", petlya, ozhidaem)
 	}
-	if !ravnyMnozhestva(razresh, ozhidaem) {
+	if ozhidaem := []string{"192.0.2.225", "203.0.113.1", "203.0.113.2", "198.51.100.9"}; !ravnyMnozhestva(razresh, ozhidaem) {
 		t.Fatalf("разрешающие правила: %v, ожидалось %v", razresh, ozhidaem)
 	}
 }
@@ -144,35 +158,31 @@ func TestSostavSpiskovProtivVhoda(t *testing.T) {
 func TestUbrannyyAdresIschezaetIzOboih(t *testing.T) {
 	// Отрицательный случай. Без него тест выше проходит и на списке, вбитом
 	// в код гвоздями.
-	adresa := adresaProby()[:2]
+	adresa := adresaIz(adresaProby().Vse[:2]...)
 	servery := serveryProby()[:1]
 	if soderzhitStroku(ipCidrIz(t, vhodS(adresa, servery)), "203.0.113.2") {
 		t.Fatal("убранный адрес остался в правиле петли")
 	}
-	razresh := remoteIpIz(t, set.Razreshyonnoe{
-		AdresTun: netip.MustParseAddr("172.19.0.1"), Kandidaty: adresa,
-	})
-	if soderzhitStroku(razresh, "203.0.113.2") {
+	if soderzhitStroku(remoteIpIz(t, razreshyonnoeIz(adresa)), "203.0.113.2") {
 		t.Fatal("убранный адрес остался в разрешающих правилах")
 	}
 }
 
-func TestOdinIstochnikDayotOdinakovyeSpiski(t *testing.T) {
-	// Сборщик один, и это проверяется на его СОБСТВЕННОМ выходе, а не на
-	// совпадении двух обёрток: адреса берутся из SobratAdresa и подаются в оба
-	// генератора. Расхождение здесь означало бы либо петлю, либо туннель,
-	// отрезающий сам себя в запертом режиме.
+func TestAdresaPetliEstVBrandmauere(t *testing.T) {
+	// Сборщик один, и это проверяется на его СОБСТВЕННОМ выходе: адреса берутся
+	// из SobratAdresa и подаются в оба генератора. Адрес петли без разрешения в
+	// брандмауэре означал бы туннель, отрезающий сам себя в запертом режиме.
 	servery := serveryProby()
 	adresa, err := set.SobratAdresa(servery, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	petlya := ipCidrIz(t, vhodS(adresa, servery))
-	razresh := remoteIpIz(t, set.Razreshyonnoe{
-		AdresTun: netip.MustParseAddr("172.19.0.1"), Kandidaty: adresa,
-	})
-	if !ravnyMnozhestva(petlya, razresh) {
-		t.Fatalf("списки разошлись: петля %v, брандмауэр %v", petlya, razresh)
+	razresh := remoteIpIz(t, razreshyonnoeIz(adresa))
+	for _, a := range petlya {
+		if !soderzhitStroku(razresh, a) {
+			t.Fatalf("адрес петли %s не разрешён брандмауэром: %v", a, razresh)
+		}
 	}
 	if len(petlya) != len(servery) {
 		t.Fatalf("адресов %v, а серверов %d", petlya, len(servery))
@@ -202,8 +212,10 @@ func TestObaPotrebitelyaIdutCherezOdinSbornik(t *testing.T) {
 		t.Fatal(err)
 	}
 	adrServera := netip.MustParseAddr(servery[0].Host)
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{adrServera, primetnyy}, nil
+	s.sobratAdresa = func() (set.Adresa, error) {
+		a := adresaIz(adrServera, primetnyy)
+		a.Servery = map[string][]netip.Addr{servery[0].Host: {adrServera, primetnyy}}
+		return a, nil
 	}
 
 	telo, _, _, err := s.sobratTun(nil, false)
@@ -229,7 +241,7 @@ func TestOtkazSbornikaOstanavlivaetOboih(t *testing.T) {
 	// Неразрешившееся имя обязано ОСТАНОВИТЬ подъём, а не тихо сузить список.
 	// Дыра в правиле петли не видна ничем, пока однажды не станет петлёй.
 	s := podstavnaya(t, nil)
-	s.sobratAdresa = func() ([]netip.Addr, error) { return nil, errors.New("имя не разрешилось") }
+	s.sobratAdresa = func() (set.Adresa, error) { return set.Adresa{}, errors.New("имя не разрешилось") }
 
 	if _, _, _, err := s.sobratTun(nil, false); err == nil {
 		t.Fatal("конфиг туннеля собрался при отказе сборщика адресов")

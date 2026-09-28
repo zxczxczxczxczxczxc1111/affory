@@ -86,6 +86,7 @@ func obraztsovoeRazreshyonnoe() Razreshyonnoe {
 	return Razreshyonnoe{
 		AdresTun:  netip.MustParseAddr("172.19.0.1"),
 		Kandidaty: []netip.Addr{netip.MustParseAddr("192.0.2.225")},
+		Porty:     []string{"443"},
 		Shlyuz:    netip.MustParseAddr("10.7.0.1"),
 		Resolver:  netip.MustParseAddr("10.7.0.1"),
 		Protsessy: []string{`C:\Program Files\Affory\xray.exe`, `C:\Program Files\Affory\affory-svc.exe`},
@@ -244,7 +245,7 @@ func TestSnyatieUbiraetImennoZavedyonnye(t *testing.T) {
 			}
 		}
 	}
-	for _, imya := range []string{PravAllowTun, PravAllowSrv, PravAllowLan, PravAllowDns,
+	for _, imya := range []string{PravAllowTun, PravAllowSrv, PravAllowSrvUdp, PravAllowLan, PravAllowDns,
 		PravAllowProc + "-0", PravAllowProc + "-1"} {
 		if !snyato[imya] {
 			t.Fatalf("правило %s не снято", imya)
@@ -690,9 +691,9 @@ func TestPraviloDnsTcpSnimaetsyaVmesteSOstalnymi(t *testing.T) {
 func TestPerezavestiServeryMenyaetTolkoSvoyoPravilo(t *testing.T) {
 	zhurnal := perehvat(t, func([]string) (string, error) { return "Ok.", nil })
 
-	err := PerezavestiRazreshyonnyeServery([]netip.Addr{
-		netip.MustParseAddr("203.0.113.7"),
-		netip.MustParseAddr("198.51.100.9"),
+	err := PerezavestiRazreshyonnyeServery(Adresa{
+		Vse:   []netip.Addr{netip.MustParseAddr("203.0.113.7"), netip.MustParseAddr("198.51.100.9")},
+		Porty: []string{"443", "20000-30000"},
 	})
 	if err != nil {
 		t.Fatalf("переучреждение правила: %v", err)
@@ -702,17 +703,19 @@ func TestPerezavestiServeryMenyaetTolkoSvoyoPravilo(t *testing.T) {
 	for _, z := range *zhurnal {
 		stroki = append(stroki, strings.Join(z.argumenty, " "))
 	}
-	if len(stroki) != 2 {
-		t.Fatalf("вызовов netsh %d, ждали два (снять и завести): %v", len(stroki), stroki)
+	if len(stroki) != 4 {
+		t.Fatalf("вызовов netsh %d, ждали четыре (снять и завести оба): %v", len(stroki), stroki)
 	}
-	if !strings.Contains(stroki[0], "delete rule name="+PravAllowSrv) {
-		t.Errorf("первым обязано идти снятие прежнего правила, а идёт: %s", stroki[0])
+	if !strings.Contains(stroki[0], "delete rule name="+PravAllowSrv) || !strings.Contains(stroki[1], "delete rule name="+PravAllowSrvUdp) {
+		t.Errorf("первым обязано идти снятие прежних правил, а идёт: %v", stroki[:2])
 	}
-	if !strings.Contains(stroki[1], "add rule name="+PravAllowSrv) {
-		t.Errorf("вторым обязано идти заведение, а идёт: %s", stroki[1])
-	}
-	if !strings.Contains(stroki[1], "remoteip=203.0.113.7,198.51.100.9") {
-		t.Errorf("в правиле не тот список адресов: %s", stroki[1])
+	for i, pr := range map[int]string{2: "tcp", 3: "udp"} {
+		if !strings.Contains(stroki[i], "add rule name=") || !strings.Contains(stroki[i], "protocol="+pr) {
+			t.Errorf("вызов %d обязан завести правило %s, а это: %s", i, pr, stroki[i])
+		}
+		if !strings.Contains(stroki[i], "remoteip=203.0.113.7,198.51.100.9") || !strings.Contains(stroki[i], "remoteport=443,20000-30000") {
+			t.Errorf("в правиле не те адреса или порты: %s", stroki[i])
+		}
 	}
 	// Ни политика, ни чужие правила, ни файл отката: у этой функции ровно один
 	// предмет. Тронуть политику при мёртвом ядре значило бы распечатать машину.
@@ -728,14 +731,44 @@ func TestPerezavestiServeryMenyaetTolkoSvoyoPravilo(t *testing.T) {
 func TestPerezavestiServeryBezAdresovSnimaetPravilo(t *testing.T) {
 	zhurnal := perehvat(t, func([]string) (string, error) { return "Ok.", nil })
 
-	if err := PerezavestiRazreshyonnyeServery(nil); err != nil {
+	if err := PerezavestiRazreshyonnyeServery(Adresa{Porty: []string{"443"}}); err != nil {
 		t.Fatalf("переучреждение пустым списком: %v", err)
 	}
-	if len(*zhurnal) != 1 {
-		t.Fatalf("вызовов netsh %d, ждали один (только снятие): %v", len(*zhurnal), *zhurnal)
+	if len(*zhurnal) != 2 {
+		t.Fatalf("вызовов netsh %d, ждали два (только снятие): %v", len(*zhurnal), *zhurnal)
 	}
-	if s := strings.Join((*zhurnal)[0].argumenty, " "); !strings.Contains(s, "delete rule name="+PravAllowSrv) {
-		t.Errorf("единственным вызовом обязано быть снятие, а это: %s", s)
+	for _, z := range *zhurnal {
+		if s := strings.Join(z.argumenty, " "); !strings.Contains(s, "delete rule name=") {
+			t.Errorf("вызовом обязано быть снятие, а это: %s", s)
+		}
+	}
+}
+
+// С2 аудита 1.6.1. Правило серверов без порта пускало любую программу на любой
+// порт этих адресов, а среди них адреса подписки и GitHub. Без портов правила
+// нет вовсе: без remoteport оно снова стало бы распахнутым.
+func TestPraviloServerovTolkoNaIhPortah(t *testing.T) {
+	r := obraztsovoeRazreshyonnoe()
+	r.Porty = []string{"443", "20000-30000"}
+	nashli := map[string]bool{}
+	for _, k := range KomandyRazresheniya(r) {
+		if k[0] != PravAllowSrv && k[0] != PravAllowSrvUdp {
+			continue
+		}
+		s := strings.Join(k, " ")
+		if !strings.Contains(s, "remoteport=443,20000-30000") || !strings.Contains(s, "remoteip=192.0.2.225") {
+			t.Fatalf("правило серверов без своих портов: %s", s)
+		}
+		nashli[k[0]] = true
+	}
+	if !nashli[PravAllowSrv] || !nashli[PravAllowSrvUdp] {
+		t.Fatalf("правил серверов %v, ждали TCP и UDP", nashli)
+	}
+	r.Porty = nil
+	for _, k := range KomandyRazresheniya(r) {
+		if k[0] == PravAllowSrv || k[0] == PravAllowSrvUdp {
+			t.Fatalf("правило серверов без портов: %v", k)
+		}
 	}
 }
 

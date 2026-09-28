@@ -312,7 +312,7 @@ type Sluzhba struct {
 	// Узкая пересборка ОДНОГО правила, списка адресов серверов. Отдельный шов
 	// от vklyuchitVes, потому что зовётся ровно там, где тот бессилен: ядро
 	// умерло, адреса TUN нет, набор целиком не собрать.
-	suzitServery func([]netip.Addr) error
+	suzitServery func(set.Adresa) error
 
 	// killSwitch это НЕ производная от состояния брандмауэра: система может
 	// быть заперта чужим правилом, а мы про это ничего не знаем. Здесь только
@@ -376,10 +376,10 @@ type Sluzhba struct {
 	//
 	// Шов ещё и потому, что настоящий сборщик ходит в системный резолвер, а тест
 	// не должен зависеть от чужого DNS.
-	sobratAdresa func() ([]netip.Addr, error)
+	sobratAdresa func() (set.Adresa, error)
 	// Сам сборщик по спискам. Шов, чтобы тест мог увидеть, ЧТО ему ушло
 	// (адреса наборов), не трогая резолвер машины.
-	sobratAdresaSet func(servery []protokol.Server, podpiska string, zagruzki ...string) ([]netip.Addr, error)
+	sobratAdresaSet func(servery []protokol.Server, podpiska string, zagruzki ...string) (set.Adresa, error)
 
 	// Наборы rule_set. Желаемые: шов, потому что настоящие лежат в ProgramData.
 	// Загрузка: шов, потому что настоящая ходит в сеть.

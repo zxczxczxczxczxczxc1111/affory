@@ -10,6 +10,7 @@ import (
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
 
@@ -192,9 +193,9 @@ func TestZapasnyePodpiskiPopadayutVRazreshyonnye(t *testing.T) {
 	s.naboryZhelaemye = func() []genkonfig.NaborPravil { return nil }
 
 	var vidennye []string
-	s.sobratAdresaSet = func(_ []protokol.Server, podpiska string, zagruzki ...string) ([]netip.Addr, error) {
+	s.sobratAdresaSet = func(_ []protokol.Server, podpiska string, zagruzki ...string) (set.Adresa, error) {
 		vidennye = append([]string{podpiska}, zagruzki...)
-		return []netip.Addr{netip.MustParseAddr("192.0.2.1")}, nil
+		return adresaIz(netip.MustParseAddr("192.0.2.1")), nil
 	}
 
 	if _, err := s.adresaKandidatov(); err != nil {

@@ -321,13 +321,13 @@ func TestDobavlenieServeraPriVklyuchennomRezhimePeresobiraetPravila(t *testing.T
 		return nil
 	}
 	s.prochitatProksi = func() ([]set.ProksiCheloveka, error) { return nil, nil }
-	s.sobratAdresa = func() ([]netip.Addr, error) {
+	s.sobratAdresa = func() (set.Adresa, error) {
 		n, _ := s.nabor()
 		out := make([]netip.Addr, 0, len(n.Servery))
 		for _, srv := range n.Servery {
 			out = append(out, netip.MustParseAddr(srv.Host))
 		}
-		return out, nil
+		return adresaIz(out...), nil
 	}
 
 	if err := s.Connect(context.Background()); err != nil {

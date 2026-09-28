@@ -229,23 +229,23 @@ func TestPeresborkaKotoroyNeByloNeNazyvaetsyaUdachnoy(t *testing.T) {
 // набор отвечает тем же ErrNetServerov, что и настоящий adresaKandidatov, иначе
 // проверка пустого списка судила бы поведение, которого в продукте нет.
 func adresaZaNaborom(s *Sluzhba) {
-	s.sobratAdresa = func() ([]netip.Addr, error) {
+	s.sobratAdresa = func() (set.Adresa, error) {
 		n, err := s.nabor()
 		if err != nil {
-			return nil, err
+			return set.Adresa{}, err
 		}
 		if len(n.Servery) == 0 {
-			return nil, ErrNetServerov
+			return set.Adresa{}, ErrNetServerov
 		}
 		var a []netip.Addr
 		for _, srv := range n.Servery {
 			adr, err := netip.ParseAddr(srv.Host)
 			if err != nil {
-				return nil, err
+				return set.Adresa{}, err
 			}
 			a = append(a, adr)
 		}
-		return a, nil
+		return adresaIz(a...), nil
 	}
 }
 
@@ -260,8 +260,8 @@ func TestUdalenieServeraPriMyortvomYadreSuzhaetPravila(t *testing.T) {
 	s, _, _ := sKillSwitch(t)
 	adresaZaNaborom(s)
 	var suzheno [][]netip.Addr
-	s.suzitServery = func(k []netip.Addr) error {
-		suzheno = append(suzheno, append([]netip.Addr{}, k...))
+	s.suzitServery = func(k set.Adresa) error {
+		suzheno = append(suzheno, append([]netip.Addr{}, k.Vse...))
 		return nil
 	}
 	if o := vypolnit(t, s, "addServer", map[string]string{"ssylka": ssylkaProby}); o.Oshib != nil {
@@ -320,7 +320,7 @@ func TestUdalenieServeraPriMyortvomYadreSuzhaetPravila(t *testing.T) {
 func TestPriZhivomYadreSuzheniyaNeProishodit(t *testing.T) {
 	s, vklyucheno, _ := sKillSwitch(t)
 	suzheno := 0
-	s.suzitServery = func([]netip.Addr) error { suzheno++; return nil }
+	s.suzitServery = func(set.Adresa) error { suzheno++; return nil }
 	if err := s.Connect(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestUdaleniePoslednegoServeraNeSnimaetPravilo(t *testing.T) {
 	s, _, _ := sKillSwitch(t)
 	adresaZaNaborom(s)
 	suzheno := 0
-	s.suzitServery = func([]netip.Addr) error { suzheno++; return nil }
+	s.suzitServery = func(set.Adresa) error { suzheno++; return nil }
 	if err := s.Connect(context.Background()); err != nil {
 		t.Fatal(err)
 	}

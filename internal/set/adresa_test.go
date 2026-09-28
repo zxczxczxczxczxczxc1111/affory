@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
@@ -40,8 +41,8 @@ func TestLiteralyNeRezolvyatsya(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(a) != 2 {
-		t.Fatalf("адресов %v, ожидалось два", stroki(a))
+	if len(a.Vse) != 2 {
+		t.Fatalf("адресов %v, ожидалось два", stroki(a.Vse))
 	}
 }
 
@@ -55,8 +56,8 @@ func TestAdresPodpiskiPopadaetVSpisok(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !soderzhitStroku(stroki(a), "198.51.100.9") {
-		t.Fatalf("адреса подписки нет в списке: %v", stroki(a))
+	if !soderzhitStroku(stroki(a.Vse), "198.51.100.9") {
+		t.Fatalf("адреса подписки нет в списке: %v", stroki(a.Vse))
 	}
 }
 
@@ -70,8 +71,8 @@ func TestPortVAdresePodpiskiNeMeshaet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !soderzhitStroku(stroki(a), "198.51.100.9") {
-		t.Fatalf("порт в адресе подписки сломал резолв: %v", stroki(a))
+	if !soderzhitStroku(stroki(a.Vse), "198.51.100.9") {
+		t.Fatalf("порт в адресе подписки сломал резолв: %v", stroki(a.Vse))
 	}
 }
 
@@ -87,8 +88,8 @@ func TestNerazreshimoeImyaNeProglatyvaetsya(t *testing.T) {
 	}
 	// Разрешившееся обязано доехать: решать, поднимать ли туннель с дырой, не
 	// сборщику адресов.
-	if !soderzhitStroku(stroki(a), "203.0.113.1") {
-		t.Fatalf("разрешившийся адрес потерян вместе с ошибкой: %v", stroki(a))
+	if !soderzhitStroku(stroki(a.Vse), "203.0.113.1") {
+		t.Fatalf("разрешившийся адрес потерян вместе с ошибкой: %v", stroki(a.Vse))
 	}
 }
 
@@ -113,8 +114,8 @@ func TestDublikatyShlopyvayutsya(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(a) != 1 {
-		t.Fatalf("адресов %v, ожидался один", stroki(a))
+	if len(a.Vse) != 1 {
+		t.Fatalf("адресов %v, ожидался один", stroki(a.Vse))
 	}
 }
 
@@ -133,8 +134,8 @@ func TestPoryadokUstoychiv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stroki(a)[0] != stroki(b)[0] || stroki(a)[1] != stroki(b)[1] {
-		t.Fatalf("порядок неустойчив: %v против %v", stroki(a), stroki(b))
+	if stroki(a.Vse)[0] != stroki(b.Vse)[0] || stroki(a.Vse)[1] != stroki(b.Vse)[1] {
+		t.Fatalf("порядок неустойчив: %v против %v", stroki(a.Vse), stroki(b.Vse))
 	}
 }
 
@@ -153,10 +154,52 @@ func soderzhitStroku(s []string, chto string) bool {
 	return false
 }
 
+// С2 аудита 1.6.1. Правило петли в ядре берёт только адреса серверов: адрес
+// подписки и хост наборов, попав туда, пускали мимо туннеля весь их хостинг.
+func TestAdresaServerovOtdelnyOtPodpiskiIZagruzok(t *testing.T) {
+	a, err := sobratAdresaS(context.Background(),
+		rezolverIz(map[string][]string{
+			"srv.example":      {"203.0.113.5", "203.0.113.4"},
+			"podpiska.example": {"198.51.100.9"},
+			"nabory.example":   {"198.51.100.20"},
+		}),
+		[]protokol.Server{{Host: "srv.example", Port: 443}, {Host: "192.0.2.225", Port: 8443}},
+		"https://podpiska.example/sub", "https://nabory.example/ru.srs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Servery) != 2 || len(a.Servery["srv.example"]) != 2 || a.Servery["192.0.2.225"][0] != netip.MustParseAddr("192.0.2.225") {
+		t.Fatalf("адреса серверов: %v", a.Servery)
+	}
+	if got := stroki(a.Servery["srv.example"]); got[0] != "203.0.113.4" {
+		t.Fatalf("порядок адресов имени неустойчив: %v", got)
+	}
+	if len(a.Vse) != 5 {
+		t.Fatalf("брандмауэру нужны все адреса: %v", stroki(a.Vse))
+	}
+}
+
+// Порты уходят в правило брандмауэра. Мусор в портах hy2 отбрасывается: netsh
+// отверг бы правило целиком, и с ним весь режим «весь трафик».
+func TestPortyServerovIZagruzok(t *testing.T) {
+	a, err := sobratAdresaS(context.Background(),
+		rezolverIz(map[string][]string{"podpiska.example": {"198.51.100.9"}}),
+		[]protokol.Server{
+			{Host: "192.0.2.225", Port: 443},
+			{Host: "192.0.2.226", Porty: "20000-30000, abc,443,70000,5-3"},
+		},
+		"https://podpiska.example:8443/sub", "http://192.0.2.1/ru.srs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"20000-30000", "443", "80", "8443"}; !slices.Equal(a.Porty, want) {
+		t.Fatalf("порты %v, ждали %v", a.Porty, want)
+	}
+}
+
 func TestAdresaZagruzokPopadayutVSpisok(t *testing.T) {
-	// Наборы rule_set качаются мимо туннеля (решено 31.08.2026), а
-	// мимо туннеля ходит только то, что стоит в правиле петли и в разрешающих
-	// правилах. Хост набора обязан быть в обоих списках, то есть здесь.
+	// Наборы rule_set качаются мимо туннеля (решено 31.08.2026). Хост набора
+	// входит в список разрешающих правил брандмауэра, то есть здесь.
 	a, err := sobratAdresaS(context.Background(),
 		rezolverIz(map[string][]string{"nabory.example": {"198.51.100.20"}}),
 		[]protokol.Server{{Host: "192.0.2.225"}},
@@ -164,7 +207,7 @@ func TestAdresaZagruzokPopadayutVSpisok(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !soderzhitStroku(stroki(a), "198.51.100.20") {
-		t.Fatalf("адреса хоста наборов нет в списке: %v", stroki(a))
+	if !soderzhitStroku(stroki(a.Vse), "198.51.100.20") {
+		t.Fatalf("адреса хоста наборов нет в списке: %v", stroki(a.Vse))
 	}
 }

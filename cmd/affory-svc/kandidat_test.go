@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
 // Подготовка кандидата до остановки (A6).
@@ -44,8 +45,8 @@ func sluzhbaPodnyatayaS(t *testing.T, doPodyoma func(*Sluzhba)) *Sluzhba {
 	s.nabor = func() (Nabor, error) {
 		return Nabor{Servery: []protokol.Server{srv}, Vybran: srv.Id}, nil
 	}
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr(srv.Host)}, nil
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(netip.MustParseAddr(srv.Host)), nil
 	}
 	if doPodyoma != nil {
 		doPodyoma(s)

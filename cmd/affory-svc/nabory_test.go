@@ -8,10 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"net/netip"
-
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
 // naborVoVremennom подменяет желаемые наборы одним, чей файл лежит во
@@ -105,9 +104,9 @@ func TestHostyNaborovVhodyatVAdresaKandidatov(t *testing.T) {
 	s := podstavnaya(t, nil)
 	n := naborVoVremennom(t, s)
 	var poluchil []string
-	s.sobratAdresaSet = func(_ []protokol.Server, _ string, zagruzki ...string) ([]netip.Addr, error) {
+	s.sobratAdresaSet = func(_ []protokol.Server, _ string, zagruzki ...string) (set.Adresa, error) {
 		poluchil = zagruzki
-		return nil, nil
+		return set.Adresa{}, nil
 	}
 	if _, err := s.adresaKandidatov(); err != nil {
 		t.Fatal(err)
@@ -158,9 +157,9 @@ func TestBezRuSpiskaUbiraetAdresNaboraIzKandidatov(t *testing.T) {
 		t.Fatalf("набор не записан: %v", err)
 	}
 	var poluchil []string
-	s.sobratAdresaSet = func(_ []protokol.Server, _ string, zagruzki ...string) ([]netip.Addr, error) {
+	s.sobratAdresaSet = func(_ []protokol.Server, _ string, zagruzki ...string) (set.Adresa, error) {
 		poluchil = zagruzki
-		return nil, nil
+		return set.Adresa{}, nil
 	}
 	if _, err := s.adresaKandidatov(); err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
 // Область автовыбора (A5): человек распоряжается составом автомата, но не
@@ -167,12 +168,12 @@ func podstavnayaSPolnymNaborom(t *testing.T) *Sluzhba {
 	}); err != nil {
 		t.Fatalf("набор не записан: %v", err)
 	}
-	s.sobratAdresa = func() ([]netip.Addr, error) {
+	s.sobratAdresa = func() (set.Adresa, error) {
 		adresa := make([]netip.Addr, 0, len(servery))
 		for _, srv := range servery {
 			adresa = append(adresa, netip.MustParseAddr(srv.Host))
 		}
-		return adresa, nil
+		return adresaIz(adresa...), nil
 	}
 	return s
 }

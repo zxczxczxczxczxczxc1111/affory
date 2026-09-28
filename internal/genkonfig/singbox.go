@@ -211,7 +211,11 @@ func pravila(v Vhod) []any {
 		// живьём 03.09.2026: проверка утечек обвинила туннель, а виновато
 		// было это правило.
 		map[string]any{"inbound": []string{"tun-in"}, "process_path": v.PutiProtsessov, "outbound": TegPryamo},
-		map[string]any{"ip_cidr": setiKandidatov(v.Kandidaty), "outbound": TegPryamo},
+	}
+	if pp, est := praviloPetli(v); est {
+		p = append(p, pp)
+	}
+	p = append(p,
 		map[string]any{"ip_cidr": []string{"224.0.0.0/4", "255.255.255.255/32"}, "outbound": TegPryamo},
 		map[string]any{
 			"type": "logical", "mode": "or",
@@ -221,7 +225,7 @@ func pravila(v Vhod) []any {
 			},
 			"action": "hijack-dns",
 		},
-	}
+	)
 	// В режиме "весь трафик" отменяются УДОБНЫЕ исключения, а не петлевые.
 	if v.Trafik != nil {
 		// Explicit proxy traffic requests the VPN even in selective mode.
@@ -277,6 +281,43 @@ func praviloProtsessov(v Vhod) (map[string]any, bool) {
 		return nil, false
 	}
 	return map[string]any{"process_path": v.Protsessy, "outbound": TegPryamo}, true
+}
+
+// praviloPetli ведёт мимо туннеля адреса серверов, но только на их портах.
+//
+// До С2 аудита 1.6.1 правило брало все адреса кандидатов на любом порту, а в
+// них входили подписка и raw.githubusercontent.com: сайт на том же хостинге или
+// на GitHub Pages шёл мимо туннеля. Службе и загрузкам ядра правило не нужно,
+// их ведут правило процессов и detour наборов. У sing-box условия одного
+// правила складываются через «и», поэтому у каждого сервера своё подправило.
+func praviloPetli(v Vhod) (map[string]any, bool) {
+	var pod []any
+	for _, s := range v.kandidaty() {
+		adresa, est := v.AdresaServerov[s.Host]
+		if !est {
+			a, err := netip.ParseAddr(s.Host)
+			if err != nil {
+				// Имя без адресов не разрешилось и у службы. Ядро к такому
+				// серверу не пойдёт вовсе, петле неоткуда взяться.
+				continue
+			}
+			adresa = []netip.Addr{a.Unmap()}
+		}
+		if len(adresa) == 0 {
+			continue
+		}
+		r := map[string]any{"ip_cidr": setiKandidatov(adresa)}
+		if s.Porty != "" {
+			r["port_range"] = portyHy2(s.Porty)
+		} else {
+			r["port"] = []int{s.Port}
+		}
+		pod = append(pod, r)
+	}
+	if len(pod) == 0 {
+		return nil, false
+	}
+	return map[string]any{"type": "logical", "mode": "or", "rules": pod, "outbound": TegPryamo}, true
 }
 
 func setiKandidatov(a []netip.Addr) []string {

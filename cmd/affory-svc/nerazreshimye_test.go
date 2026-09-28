@@ -23,8 +23,8 @@ import (
 func TestMyortvyyHostNeZapreshchaetRezhim(t *testing.T) {
 	s := podstavnaya(t, nil)
 	zhivoy := netip.MustParseAddr("192.0.2.225")
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{zhivoy}, &set.OshibkaRazresheniya{Imena: []string{"podpiska.example"}}
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(zhivoy), &set.OshibkaRazresheniya{Imena: []string{"podpiska.example"}}
 	}
 
 	r, err := s.spisokRazreshyonnogo(set.Adapter{
@@ -43,8 +43,8 @@ func TestMyortvyyHostNeZapreshchaetRezhim(t *testing.T) {
 // подпиской, которая тихо стала короче.
 func TestNerazreshivshiysyaHostUezzhaetSobytiem(t *testing.T) {
 	s := podstavnaya(t, nil)
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr("192.0.2.225")},
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(netip.MustParseAddr("192.0.2.225")),
 			&set.OshibkaRazresheniya{Imena: []string{"podpiska.example"}}
 	}
 
@@ -75,8 +75,8 @@ func TestNerazreshivshiysyaHostUezzhaetSobytiem(t *testing.T) {
 // запертую машину без выхода к своему же серверу.
 func TestKogdaNeRazreshilosNichegoEtoOtkaz(t *testing.T) {
 	s := podstavnaya(t, nil)
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return nil, &set.OshibkaRazresheniya{Imena: []string{"a.example", "b.example"}}
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return set.Adresa{}, &set.OshibkaRazresheniya{Imena: []string{"a.example", "b.example"}}
 	}
 
 	_, err := s.spisokRazreshyonnogo(set.Adapter{
@@ -101,8 +101,8 @@ func TestKogdaNeRazreshilosNichegoEtoOtkaz(t *testing.T) {
 func TestPolnyyOtkazDNSNeNazyvayetsyaPolomkoyBrandmauera(t *testing.T) {
 	s, _, _ := sKillSwitch(t)
 	// Не разрешилось НИ ОДНО имя: это отказ резолвера, а не netsh.
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return nil, &set.OshibkaRazresheniya{Imena: []string{"a.example", "b.example"}}
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return set.Adresa{}, &set.OshibkaRazresheniya{Imena: []string{"a.example", "b.example"}}
 	}
 	if err := s.Connect(context.Background()); err != nil {
 		t.Fatal(err)
@@ -124,8 +124,8 @@ func TestPolnyyOtkazDNSNeNazyvayetsyaPolomkoyBrandmauera(t *testing.T) {
 // назвать отказом DNS любое исключение одного мёртвого хоста.
 func TestChastichnyyOtkazDNSNeNazyvayetsyaOtkazomRezolvera(t *testing.T) {
 	s, vklyucheno, _ := sKillSwitch(t)
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr("192.0.2.225")},
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(netip.MustParseAddr("192.0.2.225")),
 			&set.OshibkaRazresheniya{Imena: []string{"a.example"}}
 	}
 	if err := s.Connect(context.Background()); err != nil {

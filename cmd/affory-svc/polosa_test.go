@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 )
 
@@ -165,8 +166,8 @@ func podstavnayaSHy2(t *testing.T) *Sluzhba {
 	// Адрес кандидата обязан быть в правиле петли, иначе генератор отвергает
 	// конфиг целиком (sveritKandidatov). Своей сборки адресов здесь нет
 	// намеренно: подставляем ровно тот адрес, что у сервера фикстуры.
-	s.sobratAdresa = func() ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr(srv.Host)}, nil
+	s.sobratAdresa = func() (set.Adresa, error) {
+		return adresaIz(netip.MustParseAddr(srv.Host)), nil
 	}
 	return s
 }
