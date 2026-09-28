@@ -31,7 +31,7 @@ func (w *Watcher) Views(session uint32) ([]ProcessView, error) {
 		}
 	}
 	at := clockTicks()
-	processes, err := snapshotSession(w.graph, &session)
+	processes, err := w.snap.take(w.graph, &session)
 	if err != nil {
 		return nil, err
 	}

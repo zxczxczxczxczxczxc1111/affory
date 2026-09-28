@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -14,6 +15,7 @@ import (
 type Watcher struct {
 	graph  *Graph
 	events *processEvents
+	snap   *snapshotter
 	cancel context.CancelFunc
 	done   chan struct{}
 }
@@ -34,8 +36,9 @@ func newWatcher(report func(error), withEvents bool) (*Watcher, error) {
 			return nil, err
 		}
 	}
+	snap := &snapshotter{}
 	at := clockTicks()
-	initial, err := snapshot(g)
+	initial, err := snap.take(g, nil)
 	if err != nil {
 		if events != nil {
 			events.Close()
@@ -44,10 +47,10 @@ func newWatcher(report func(error), withEvents bool) (*Watcher, error) {
 	}
 	g.Observe(initial, at)
 	ctx, cancel := context.WithCancel(context.Background())
-	w := &Watcher{graph: g, events: events, cancel: cancel, done: make(chan struct{})}
+	w := &Watcher{graph: g, events: events, snap: snap, cancel: cancel, done: make(chan struct{})}
 	go func() {
 		defer close(w.done)
-		ticker := time.NewTicker(250 * time.Millisecond)
+		ticker := time.NewTicker(pollInterval(withEvents))
 		defer ticker.Stop()
 		failed := false
 		for {
@@ -59,7 +62,7 @@ func newWatcher(report func(error), withEvents bool) (*Watcher, error) {
 					events.flush()
 				}
 				at := clockTicks()
-				processes, err := snapshot(g)
+				processes, err := snap.take(g, nil)
 				if err != nil {
 					if !failed && report != nil {
 						report(err)
@@ -73,6 +76,16 @@ func newWatcher(report func(error), withEvents bool) (*Watcher, error) {
 		}
 	}()
 	return w, nil
+}
+
+// Without events only the poll catches a short-lived launcher. With them start
+// and exit events keep the graph current, and the poll merely refreshes live
+// processes well inside retentionTicks.
+func pollInterval(withEvents bool) time.Duration {
+	if withEvents {
+		return 2 * time.Second
+	}
+	return 250 * time.Millisecond
 }
 
 func (w *Watcher) Close() error {
@@ -209,19 +222,25 @@ func readProcess(pid uint32) (Process, error) {
 		Created: uint64(created.HighDateTime)<<32 | uint64(created.LowDateTime), Path: windows.UTF16ToString(buf[:n]), observed: observed}, nil
 }
 
-func snapshot(g *Graph) ([]Process, error) {
-	return snapshotSession(g, nil)
+// snapshotter keeps one buffer between polls: the returned processes never
+// point into it, so the next snapshot may overwrite it.
+type snapshotter struct {
+	mu  sync.Mutex
+	buf []byte
 }
 
-func snapshotSession(g *Graph, session *uint32) ([]Process, error) {
-	var buf []byte
+func (s *snapshotter) take(g *Graph, session *uint32) ([]Process, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var used uint32
-	for size := uint32(1 << 20); ; {
+	for size := max(uint32(len(s.buf)), 1<<20); ; {
 		if size > 16<<20 {
 			return nil, errors.New("process snapshot exceeds 16 MiB")
 		}
-		buf = make([]byte, size)
-		err := windows.NtQuerySystemInformation(windows.SystemProcessInformation, unsafe.Pointer(&buf[0]), size, &used)
+		if uint32(len(s.buf)) < size {
+			s.buf = make([]byte, size)
+		}
+		err := windows.NtQuerySystemInformation(windows.SystemProcessInformation, unsafe.Pointer(&s.buf[0]), size, &used)
 		if err == nil {
 			break
 		}
@@ -230,6 +249,7 @@ func snapshotSession(g *Graph, session *uint32) ([]Process, error) {
 		}
 		size = max(size*2, used+65536)
 	}
+	buf := s.buf
 	defer runtime.KeepAlive(buf)
 	var result []Process
 	for offset := uint32(0); ; {
