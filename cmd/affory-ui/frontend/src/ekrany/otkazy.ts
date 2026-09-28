@@ -28,6 +28,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "subscription-unreachable": { deystvie: "obnovit-podpisku", tekst: "подписка недоступна, работают серверы из прошлого обновления" },
   "subscription-timeout": { deystvie: "povtorit", tekst: "подписка не ответила вовремя, работают серверы из прошлого обновления" },
   "subscription-auth-failed": { deystvie: "obnovit-podpisku", tekst: "панель подписки не приняла ссылку, проверь её" },
+  "subscription-device-limit": { deystvie: "obnovit-podpisku", tekst: "подписка не пускает это устройство, работают серверы из прошлого обновления" },
   "subscription-malformed": { deystvie: "obnovit-podpisku", tekst: "подписка отдала непонятное" },
   "subscription-expired": { deystvie: "obnovit-podpisku", tekst: "подписка отдала сообщение вместо серверов" },
   "selected-server-gone": { deystvie: "otkryt-servery", tekst: "выбранного сервера больше нет в подписке" },

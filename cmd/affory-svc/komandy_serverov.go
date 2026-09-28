@@ -239,6 +239,8 @@ func otkazPodpiski(k protokol.Kadr, r ssylki.Razbor, err error) protokol.Kadr {
 		// Текст панели дословно и без нашей формулировки поверх: в нём и
 		// причина, и, у некоторых панелей, код оплаты.
 		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionExpired, textyUvedomleniy(r))
+	case errors.Is(err, ssylki.ErrPodpiskaUstroystvo):
+		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaUstroystvo, err.Error()+", прежний список сохранён")
 	case errors.Is(err, ssylki.ErrNeSsylki):
 		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed,
 			"подписка отдала файл настроек другого приложения, а не список ссылок, прежний список сохранён")

@@ -3,6 +3,8 @@ package ssylki
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -26,7 +28,54 @@ var (
 	ErrPodpiskaNedostupna = errors.New("подписка не загрузилась")
 	ErrPodpiskaVelika     = errors.New("тело подписки больше потолка")
 	ErrPonizhenieTLS      = errors.New("перенаправление понижает https до http")
+	// Панель с лимитом устройств отвечает пустым телом и заголовком, а не
+	// кодом ошибки (subscription.service.ts у Remnawave).
+	ErrPodpiskaUstroystvo = errors.New("панель подписки не пускает это устройство")
 )
+
+// Ustroystvo это то, что панель подписки узнаёт о машине (П9 аудита 1.6.1).
+// Пустые поля не отправляются.
+type Ustroystvo struct {
+	Versiya string // версия клиента для User-Agent
+	// Постоянный номер машины. Наружу уходит только хеш вместе с хостом
+	// подписки: общий номер позволил бы поставщикам сопоставить машину.
+	Id        string
+	OS        string
+	VersiyaOS string
+	Model     string
+}
+
+func (u Ustroystvo) zagolovki(h http.Header, host string) {
+	ua := "Affory"
+	if u.Versiya != "" {
+		ua += "/" + u.Versiya
+	}
+	h.Set("User-Agent", ua)
+	h.Del("x-hwid")
+	if u.Id != "" {
+		// hex от SHA-256 это 64 знака: панель принимает от 10 до 64 из
+		// латиницы, цифр, «=» и «-».
+		sum := sha256.Sum256([]byte(u.Id + "\n" + strings.ToLower(host)))
+		h.Set("x-hwid", hex.EncodeToString(sum[:]))
+	}
+	for k, v := range map[string]string{"x-device-os": u.OS, "x-ver-os": u.VersiyaOS, "x-device-model": u.Model} {
+		if v != "" {
+			h.Set(k, v)
+		}
+	}
+}
+
+// otkazUstroystva читает ответ панели о лимите устройств при любом коде
+// ответа: старые версии отвечали 404, нынешние 200 с пустым телом.
+func otkazUstroystva(h http.Header) error {
+	switch {
+	case strings.EqualFold(h.Get("x-hwid-max-devices-reached"), "true"):
+		return fmt.Errorf("%w: на подписке заняты все места под устройства", ErrPodpiskaUstroystvo)
+	case strings.EqualFold(h.Get("x-hwid-not-supported"), "true"):
+		return fmt.Errorf("%w: панель не получила номер устройства", ErrPodpiskaUstroystvo)
+	}
+	return nil
+}
 
 // OtkazZagruzki это отказ загрузки вместе с ШАГОМ, на котором он случился.
 //
@@ -208,7 +257,8 @@ type Zagruzchik struct {
 	Chasy   Chasy
 	// Spat отдельно от Chasy: расписание смотрит на часы, а повторы именно
 	// спят, и подменять их надо порознь.
-	Spat func(time.Duration)
+	Spat       func(time.Duration)
+	Ustroystvo Ustroystvo
 }
 
 func NovyyZagruzchik() *Zagruzchik {
@@ -257,10 +307,21 @@ func (z *Zagruzchik) Zagruzit(ctx context.Context, adres string) (Razbor, error)
 		return Razbor{}, fmt.Errorf("%w: адрес не разобран", ErrPodpiskaNedostupna)
 	}
 
+	z.Ustroystvo.zagolovki(zapros.Header, zapros.URL.Hostname())
+
 	// Копия, а не правка чужого клиента: вызывающий отдал нам клиент, а не
 	// разрешение менять его поведение у себя за спиной.
 	klient := *z.Klient
-	klient.CheckRedirect = zapretPonizheniya(zapros.URL.Scheme)
+	zapret := zapretPonizheniya(zapros.URL.Scheme)
+	klient.CheckRedirect = func(r *http.Request, bylo []*http.Request) error {
+		if err := zapret(r, bylo); err != nil {
+			return err
+		}
+		// Перенаправление на другой хост несёт номер машины для НЕГО, а не
+		// для прежнего: net/http копирует заголовки как есть.
+		z.Ustroystvo.zagolovki(r.Header, r.URL.Hostname())
+		return nil
+	}
 
 	otvet, err := klient.Do(zapros)
 	if err != nil {
@@ -271,6 +332,10 @@ func (z *Zagruzchik) Zagruzit(ctx context.Context, adres string) (Razbor, error)
 			fmt.Errorf("%w: %s", ErrPodpiskaNedostupna, bezAdresa(err, adres)))
 	}
 	defer otvet.Body.Close()
+
+	if err := otkazUstroystva(otvet.Header); err != nil {
+		return Razbor{}, err
+	}
 
 	if otvet.StatusCode != http.StatusOK {
 		// Только код. Тело чужое, и печатать его целиком значит однажды

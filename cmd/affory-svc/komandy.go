@@ -496,6 +496,7 @@ func NovayaSluzhba() *Sluzhba {
 	// собирается на месте: порт локального входа живёт ровно столько, сколько
 	// поднят туннель, и меняется между подъёмами.
 	zagr := ssylki.NovyyZagruzchik()
+	zagr.Ustroystvo = ustroystvoMashiny()
 	s.zagruzitCherez = func(ctx context.Context, adres, proksi string, popytok int) (ssylki.Razbor, error) {
 		if proksi == "" {
 			return zagr.ZagruzitSPovtorami(ctx, adres, popytok)
@@ -504,6 +505,7 @@ func NovayaSluzhba() *Sluzhba {
 		if err != nil {
 			return ssylki.Razbor{}, err
 		}
+		cherez.Ustroystvo = zagr.Ustroystvo
 		return cherez.ZagruzitSPovtorami(ctx, adres, popytok)
 	}
 	s.zagruzitPodpisku = s.zagruzitPodpiskuStrategiey

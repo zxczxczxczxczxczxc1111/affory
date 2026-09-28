@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"strings"
 	"sync/atomic"
@@ -261,6 +262,28 @@ func TestPodpiskaSNastroykamiNazyvaetPrichinu(t *testing.T) {
 	}
 	if !strings.Contains(o.Oshib.Tekst, "файл настроек") || !strings.Contains(o.Oshib.Tekst, "прежний список сохранён") {
 		t.Fatalf("текст %q", o.Oshib.Tekst)
+	}
+}
+
+// П9 аудита 1.6.1: лимит устройств на панели это свой код, а не «пустая
+// подписка» и не «недоступна».
+func TestLimitUstroystvSvoyKod(t *testing.T) {
+	err := fmt.Errorf("%w: на подписке заняты все места под устройства", ssylki.ErrPodpiskaUstroystvo)
+	o := otkazPodpiski(protokol.Kadr{}, ssylki.Razbor{}, err)
+	if o.Oshib == nil || o.Oshib.Kod != protokol.KodPodpiskaUstroystvo {
+		t.Fatalf("отказ %+v", o.Oshib)
+	}
+	if !strings.Contains(o.Oshib.Tekst, "места") || !strings.Contains(o.Oshib.Tekst, "прежний список сохранён") {
+		t.Fatalf("текст %q", o.Oshib.Tekst)
+	}
+}
+
+// Номер машины читается из реестра только на чтение. Без него панель с
+// лимитом устройств не пустит вовсе.
+func TestUstroystvoMashiny(t *testing.T) {
+	u := ustroystvoMashiny()
+	if len(u.Id) < 10 || u.OS != "Windows" || !strings.HasPrefix(u.VersiyaOS, "10.") || u.Versiya != versiyaProgrammy {
+		t.Fatalf("%+v", u)
 	}
 }
 

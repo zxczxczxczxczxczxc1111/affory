@@ -2,7 +2,9 @@ package ssylki_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -217,6 +219,72 @@ func TestZagruzkaRazbiraetOtvet(t *testing.T) {
 	}
 	if len(r.Servery) != 2 {
 		t.Fatalf("серверов %d, ожидалось 2", len(r.Servery))
+	}
+}
+
+// П9 аудита 1.6.1. Панели с лимитом устройств (Remnawave) без x-hwid не пускают
+// вовсе, а номер машины один на всех поставщиков позволил бы им сопоставить
+// её между собой. Поэтому хеш берётся вместе с хостом подписки.
+func TestZaprosNesyotZagolovkiUstroystva(t *testing.T) {
+	var naB http.Header
+	b := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		naB = r.Header.Clone()
+		_, _ = w.Write([]byte(telo(ssylkaOdna)))
+	}))
+	t.Cleanup(b.Close)
+	_, portB, _ := strings.Cut(strings.TrimPrefix(b.URL, "http://"), ":")
+	var naA http.Header
+	a := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		naA = r.Header.Clone()
+		http.Redirect(w, r, "http://localhost:"+portB+"/sub", http.StatusFound)
+	}))
+	t.Cleanup(a.Close)
+
+	z := ssylki.NovyyZagruzchik()
+	z.Ustroystvo = ssylki.Ustroystvo{Versiya: "1.7.0", Id: "guid-mashiny", OS: "Windows", VersiyaOS: "10.0.26200", Model: "Model X"}
+	if _, err := z.Zagruzit(context.Background(), a.URL+"/sub"); err != nil {
+		t.Fatal(err)
+	}
+	hwid := func(host string) string {
+		h := sha256.Sum256([]byte("guid-mashiny\n" + host))
+		return hex.EncodeToString(h[:])
+	}
+	if naA.Get("User-Agent") != "Affory/1.7.0" || naA.Get("x-device-os") != "Windows" ||
+		naA.Get("x-ver-os") != "10.0.26200" || naA.Get("x-device-model") != "Model X" {
+		t.Fatalf("заголовки: %v", naA)
+	}
+	if naA.Get("x-hwid") != hwid("127.0.0.1") {
+		t.Fatalf("x-hwid %q", naA.Get("x-hwid"))
+	}
+	// После перенаправления на другой хост номер свой, а не прежнего.
+	if naB.Get("x-hwid") != hwid("localhost") {
+		t.Fatalf("x-hwid после перенаправления %q", naB.Get("x-hwid"))
+	}
+	if strings.Contains(naA.Get("x-hwid")+naB.Get("x-hwid"), "guid-mashiny") {
+		t.Fatal("номер машины уехал открытым")
+	}
+}
+
+// Панель с исчерпанным лимитом отвечает пустым телом и заголовком, а не
+// ошибкой. Без разбора заголовка человек читал бы «подписка пуста».
+func TestLimitUstroystvEtoSvoyOtkaz(t *testing.T) {
+	for _, c := range []struct {
+		zagolovok string
+		kod       int
+		prichina  string
+	}{
+		{"x-hwid-max-devices-reached", http.StatusOK, "места"},
+		{"x-hwid-not-supported", http.StatusNotFound, "номер устройства"},
+	} {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(c.zagolovok, "true")
+			w.WriteHeader(c.kod)
+		}))
+		_, err := ssylki.NovyyZagruzchik().Zagruzit(context.Background(), s.URL)
+		s.Close()
+		if !errors.Is(err, ssylki.ErrPodpiskaUstroystvo) || !strings.Contains(err.Error(), c.prichina) {
+			t.Errorf("%s: %v", c.zagolovok, err)
+		}
 	}
 }
 
