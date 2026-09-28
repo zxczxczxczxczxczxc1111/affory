@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/reklama"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
 // Каталог наборов один на весь прогон пакета (TestMain), поэтому файлы
@@ -44,9 +46,11 @@ var obyazatelnyeReklamy = []string{
 }
 
 // spisokLight собирает годный по форме список light из pravil правил.
-func spisokLight(pravil int) []byte {
+func spisokLight(pravil int) []byte { return spisokUrovnya("Multi LIGHT", pravil) }
+
+func spisokUrovnya(metka string, pravil int) []byte {
 	var b strings.Builder
-	b.WriteString("[Adblock Plus]\n! Title: HaGeZi's Multi LIGHT - test\n")
+	b.WriteString("[Adblock Plus]\n! Title: HaGeZi's " + metka + " - test\n")
 	b.WriteString("! Last modified: 28 Sep 2026 08:46 UTC\n! Version: 2026.0928.0846.00\n")
 	fmt.Fprintf(&b, "! Number of entries: %d\n", pravil)
 	for _, d := range obyazatelnyeReklamy {
@@ -281,7 +285,13 @@ func TestReklamaSmenaUrovnyaTolchkomSrazu(t *testing.T) {
 		if adres == reklama.Bazovyy.Adres() {
 			return spisokLight(30000), nil
 		}
-		return nil, errors.New("network disabled in service fixture")
+		return spisokUrovnya("Multi NORMAL", 120000), nil
+	}
+	var podyomov atomic.Int32
+	prezhniy := s.podnyatTunnel
+	s.podnyatTunnel = func(ctx context.Context) (set.Adapter, error) {
+		podyomov.Add(1)
+		return prezhniy(ctx)
 	}
 	vklyuchitReklamu(t, s, `{"reklama":{"vkl":true}}`)
 	sh := zapustitShagi(t, s)
@@ -296,6 +306,13 @@ func TestReklamaSmenaUrovnyaTolchkomSrazu(t *testing.T) {
 	got := z.vse()
 	if len(got) != 2 || got[1] == reklama.Bazovyy.Adres() {
 		t.Fatalf("после смены уровня запросы %v: multi не запрошен", got)
+	}
+	if m := s.metaReklamy(); m == nil || m.Uroven != "multi" || m.Pravil != 120000 {
+		t.Fatalf("мета после смены уровня: %+v", m)
+	}
+	// И6: за весь прогон расписания туннель не поднимался ни разу.
+	if n := podyomov.Load(); n != 0 {
+		t.Fatalf("расписание рекламы подняло туннель %d раз", n)
 	}
 }
 
@@ -406,7 +423,12 @@ func TestReklamaIsporchennyyFaylZamenyaetsya(t *testing.T) {
 	if err := os.WriteFile(putReklamy(), []byte("SRS\x02 испорчен"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.obespechitFaylReklamy(); err != nil {
+	var zhurnal bytes.Buffer
+	prezhniy := log.Writer()
+	log.SetOutput(&zhurnal)
+	err := s.obespechitFaylReklamy()
+	log.SetOutput(prezhniy)
+	if err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(putReklamy())
@@ -415,6 +437,9 @@ func TestReklamaIsporchennyyFaylZamenyaetsya(t *testing.T) {
 	}
 	if !bytes.Equal(b, vstroennyy) {
 		t.Fatal("испорченный файл остался на месте")
+	}
+	if !strings.Contains(zhurnal.String(), "не сошёлся с метой") {
+		t.Fatalf("починка не названа в журнале: %q", zhurnal.String())
 	}
 
 	svoy := []byte("SRS\x02 свой")
@@ -600,6 +625,31 @@ func TestReklamaOtvergnutayaYadromPodnimaetsyaBezBloka(t *testing.T) {
 	st := sostoyanieReklamy(t, s)
 	if st.Deystvuet || st.Otkaz == "" {
 		t.Fatalf("статус после отказа ядра: %+v", st)
+	}
+}
+
+// Повтор без блока ровно один: отказ ядра, к рекламе не относящийся, валит
+// подъём как прежде, а файл списка остаётся на месте.
+func TestReklamaChuzhoyOtkazYadraValitPodyom(t *testing.T) {
+	chistayaReklama(t)
+	s := podstavnaya(t, nil)
+	vklyuchitReklamu(t, s, `{"reklama":{"vkl":true}}`)
+	zvali := 0
+	s.proveritKonfig = func(string) error {
+		zvali++
+		return errors.New("initialize inbound[0]: listen tcp: bind: address already in use")
+	}
+	if _, _, err := s.sobratTunProverennyy(filepath.Join(t.TempDir(), "sing-box.json"), false); err == nil {
+		t.Fatal("подъём прошёл при отказе ядра, не связанном с рекламой")
+	}
+	if zvali != 2 {
+		t.Fatalf("ядро спросили %d раз, ждали 2: с блоком и один раз без", zvali)
+	}
+	if _, err := os.Stat(putReklamy()); err != nil {
+		t.Fatalf("файл списка тронут: %v", err)
+	}
+	if _, err := os.Stat(putReklamy() + ".otvergnut"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("файл отложен, хотя виновато не оно: %v", err)
 	}
 }
 
