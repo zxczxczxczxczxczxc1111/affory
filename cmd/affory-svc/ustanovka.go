@@ -54,8 +54,37 @@ func podgotovitUstanovku(katalog string) error {
 		if err := zhdatSvobodnyhFaylov(katalog, zhdatOsvobozhdeniya); err != nil {
 			return err
 		}
+		// Запирается ДО копирования: установщик кладёт файлы следом, и они
+		// сразу получают права каталога, а не родителя. Каталог к этому моменту
+		// уже заведён командой SetOutPath установщика.
+		if err := zakrytKatalogProgrammy(katalog); err != nil {
+			return err
+		}
 	}
 	return errors.Join(set.VyklyuchitVesTrafik(), set.VernutIPv6())
+}
+
+// zakrytKatalogProgrammy запирает каталог программы от записи обычным
+// пользователем (К2 аудита 1.6.1).
+//
+// Общий каталог прежней установки (`D:\Games`) оставляется как есть и только
+// называется в журнале: переустановка кладёт программу в отдельный каталог
+// Affory, и тогда он запирается. Ссылка на месте каталога и любой другой
+// отказ останавливают установку: служба с правами SYSTEM из каталога, куда
+// может писать кто угодно, это ровно то, что здесь закрывается.
+func zakrytKatalogProgrammy(dir string) error {
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	err := sostoyanie.ZakrytKatalogProgrammy(dir)
+	if errors.Is(err, sostoyanie.ErrKatalogObshchiy) {
+		log.Printf("%v: права не трогаю, переустановка в отдельный каталог Affory их запрёт", err)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("каталог программы не заперт от записи: %w", err)
+	}
+	return nil
 }
 
 // Сколько ждать, пока файлы отпустят. Держатель бывает не наш (антивирус,
@@ -182,6 +211,11 @@ func vosstanovlenieSluzhby() ([]mgr.RecoveryAction, uint32) {
 // configure recovery, start, wait.
 func ustanovit(putBinarya string) error {
 	if err := sostoyanie.ZavestiKatalogDannyh(); err != nil {
+		return err
+	}
+	// Второй раз после prepare-install, и это не лишнее: самообновление идёт
+	// мимо установщика и зовёт одну эту команду.
+	if err := zakrytKatalogProgrammy(filepath.Dir(putBinarya)); err != nil {
 		return err
 	}
 	// Аварийный лист кладётся рядом с программой. Прежде его клал только скрипт

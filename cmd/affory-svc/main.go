@@ -155,6 +155,11 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 	if err := sostoyanie.ZavestiKatalogDannyh(); err != nil {
 		log.Printf("права каталога данных не выставлены при старте: %v", err)
 	}
+	// Каталог программы тем же порядком: права мог сбросить кто угодно с
+	// правами администратора, а служба стартует из этого каталога от SYSTEM.
+	if err := sostoyanie.ZakrytKatalogProgrammy(sostoyanie.KatalogProgrammy()); err != nil {
+		log.Printf("права каталога программы не выставлены при старте: %v", err)
+	}
 
 	ctx, otmena := context.WithCancel(context.Background())
 	defer otmena()

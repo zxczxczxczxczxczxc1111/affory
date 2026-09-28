@@ -1,9 +1,12 @@
 package sostoyanie
 
 import (
+	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -104,6 +107,153 @@ func TestChuzhayaZapisVSpiskeDostupaUbiraetsya(t *testing.T) {
 			t.Fatalf("чужая запись осталась в списке доступа: %v", sidyKataloga(t, k))
 		}
 	}
+}
+
+// Каталог данных, заведённый заранее обычным пользователем, после нас уже не
+// его. Владелец может переписать список доступа всегда, и без смены владельца
+// запертый каталог ключей он отпирает себе обратно одной командой (К2 аудита
+// 1.6.1).
+func TestKatalogDannyhMenyaetVladelca(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("нужен повышенный процесс: владельца иначе не сменить")
+	}
+	k := t.TempDir()
+	svoy := svoySid(t)
+	if err := windows.SetNamedSecurityInfo(k, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION, svoy, nil, nil, nil); err != nil {
+		t.Fatalf("подготовка владельца не удалась: %v", err)
+	}
+	if vladelec(t, k) != svoy.String() {
+		t.Fatal("подготовка не сработала: владелец не свой, тест доказывал бы не то")
+	}
+
+	if err := zavestiKatalog(k); err != nil {
+		t.Fatalf("каталог не заведён: %v", err)
+	}
+	if v := vladelec(t, k); v != "S-1-5-32-544" {
+		t.Fatalf("владелец каталога данных %s, а должны быть администраторы", v)
+	}
+}
+
+// Каталог программы запирается вместе с содержимым: подложенный заранее файл
+// со своей явной записью в списке доступа её теряет.
+func TestKatalogProgrammyZapiraetsyaSSoderzhimym(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("нужен повышенный процесс: список доступа иначе не переписать")
+	}
+	dir := filepath.Join(t.TempDir(), "Affory")
+	if err := os.MkdirAll(filepath.Join(dir, "novaya"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fayly := []string{filepath.Join(dir, "affory-svc.exe"), filepath.Join(dir, "novaya", "sing-box.exe")}
+	for _, f := range fayly {
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svoy := svoySid(t).String()
+	if out, err := exec.Command("icacls", fayly[0], "/grant", "*"+svoy+":F").CombinedOutput(); err != nil {
+		t.Fatalf("подготовка не удалась: %v: %s", err, out)
+	}
+
+	if err := ZakrytKatalogProgrammy(dir); err != nil {
+		t.Fatalf("каталог не заперт: %v", err)
+	}
+	hotim := "S-1-15-2-1 S-1-5-18 S-1-5-32-544 S-1-5-32-545"
+	for _, put := range append([]string{dir, filepath.Join(dir, "novaya")}, fayly...) {
+		if s := strings.Join(sidyKataloga(t, put), " "); s != hotim {
+			t.Errorf("%s: записи %s, ждали %s", put, s, hotim)
+		}
+		if v := vladelec(t, put); v != "S-1-5-32-544" {
+			t.Errorf("%s: владелец %s, а должны быть администраторы", put, v)
+		}
+	}
+}
+
+// Общий каталог не трогаем: запереть `D:\Games` значит отнять его у человека.
+func TestObshchiyKatalogNeZapiraetsya(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Games")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	do := strings.Join(sidyKataloga(t, dir), " ")
+	if err := ZakrytKatalogProgrammy(dir); !errors.Is(err, ErrKatalogObshchiy) {
+		t.Fatalf("общий каталог не опознан: %v", err)
+	}
+	if posle := strings.Join(sidyKataloga(t, dir), " "); posle != do {
+		t.Fatalf("права общего каталога изменены: было %s, стало %s", do, posle)
+	}
+}
+
+// Точка соединения на месте каталога не уводит права в чужой каталог. Права
+// ставятся от SYSTEM, и ссылка на System32, заведённая заранее, превратила бы
+// запирание нашего каталога в переписывание системного.
+func TestSsylkaNaMesteKatalogaNeProhoditsya(t *testing.T) {
+	baza := t.TempDir()
+	tsel := filepath.Join(baza, "tsel")
+	if err := os.MkdirAll(tsel, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	do := strings.Join(sidyKataloga(t, tsel), " ")
+	ssylka := filepath.Join(baza, "Affory")
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", ssylka, tsel).CombinedOutput(); err != nil {
+		t.Skipf("точка соединения не заводится: %v: %s", err, out)
+	}
+
+	if err := ZakrytKatalogProgrammy(ssylka); !errors.Is(err, ErrKatalogSsylka) {
+		t.Fatalf("ссылка на месте каталога не опознана: %v", err)
+	}
+	if posle := strings.Join(sidyKataloga(t, tsel), " "); posle != do {
+		t.Fatalf("права ушли по ссылке в чужой каталог: было %s, стало %s", do, posle)
+	}
+}
+
+// Ссылка ВНУТРИ каталога пропускается, а сам каталог запирается.
+func TestSsylkaVnutriKatalogaPropuskaetsya(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("нужен повышенный процесс: список доступа иначе не переписать")
+	}
+	baza := t.TempDir()
+	dir := filepath.Join(baza, "Affory")
+	tsel := filepath.Join(baza, "tsel")
+	for _, k := range []string{dir, tsel} {
+		if err := os.MkdirAll(k, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	do := strings.Join(sidyKataloga(t, tsel), " ")
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", filepath.Join(dir, "vnutri"), tsel).CombinedOutput(); err != nil {
+		t.Skipf("точка соединения не заводится: %v: %s", err, out)
+	}
+
+	if err := ZakrytKatalogProgrammy(dir); err != nil {
+		t.Fatalf("каталог не заперт: %v", err)
+	}
+	if posle := strings.Join(sidyKataloga(t, tsel), " "); posle != do {
+		t.Fatalf("права ушли по ссылке в чужой каталог: было %s, стало %s", do, posle)
+	}
+}
+
+func svoySid(t *testing.T) *windows.SID {
+	t.Helper()
+	kto, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatalf("свой SID не читается: %v", err)
+	}
+	return kto.User.Sid
+}
+
+func vladelec(t *testing.T, put string) string {
+	t.Helper()
+	sd, err := windows.GetNamedSecurityInfo(put, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatalf("владелец %s не читается: %v", put, err)
+	}
+	v, _, err := sd.Owner()
+	if err != nil {
+		t.Fatalf("владелец %s не разобран: %v", put, err)
+	}
+	return v.String()
 }
 
 // sidyKataloga читает DACL и отдаёт SID его записей строками.
