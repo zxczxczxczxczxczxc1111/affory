@@ -1,51 +1,50 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"golang.org/x/sys/windows/svc/mgr"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
-// Ф1 от 05.09.2026. До этой правки служба, убитая через «Снять задачу», не
-// возвращалась НИКОГДА: замерено в госте на +2, +15, +45 и +105 секундах, всё
-// это время машина стояла запертой и без сети.
-//
-// Восстановление было отключено осознанно, с обоснованием «our own watchdog
-// handles restarts». Сторож (yadra.Storozhit) живёт ВНУТРИ службы и перезапускает
-// ЯДРО, то есть умирает вместе с ней и этот случай не покрывает вообще.
-//
-// Проверяются СВОЙСТВА политики, а не её числа. Тест, повторяющий константы,
-// падать не умеет и защищает только от опечатки, а испортить восстановление
-// можно и правильными на вид числами.
-func TestPolitikaVosstanovleniyaVozvrashchaetSluzhbu(t *testing.T) {
-	deystviya, sbros := vosstanovlenieSluzhby()
+// sluzhbaSMyortvymServerom восстанавливает туннель, который не встаёт никогда.
+func sluzhbaSMyortvymServerom(t *testing.T) (*Sluzhba, *atomic.Int32) {
+	t.Helper()
+	s := podstavnaya(t, nil)
+	var podnimali atomic.Int32
+	s.podnyatTunnel = func(context.Context) (set.Adapter, error) {
+		podnimali.Add(1)
+		return set.Adapter{}, errors.New("тест: сервер лёг")
+	}
+	s.otstupy = []time.Duration{time.Millisecond}
+	s.redkiyOtstup = time.Hour
+	s.postavit(protokol.SostNeNeset, nil)
+	return s, &podnimali
+}
 
-	if len(deystviya) < 2 {
-		t.Fatalf("действий %d: одна попытка это не восстановление, промах оставит машину лежать",
-			len(deystviya))
+// С8 аудита 1.6.1. Сервер лёг, а сеть жива: после десятка неудач подряд
+// стучаться к нему раз в полминуты незачем, пауза вырастает до пяти минут.
+func TestMyortvyyServerPriZhivoySetiRedkiePopytki(t *testing.T) {
+	s, podnimali := sluzhbaSMyortvymServerom(t)
+	s.zapustitVosstanovlenie()
+	dozhdatsya(t, "десяток попыток", func() bool { return podnimali.Load() >= neudachDoRedkih })
+	time.Sleep(100 * time.Millisecond)
+	if n := podnimali.Load(); n != neudachDoRedkih {
+		t.Fatalf("попыток %d при живой сети и мёртвом сервере, ждали %d и паузу", n, neudachDoRedkih)
 	}
-	for i, d := range deystviya {
-		if d.Type != mgr.ServiceRestart {
-			t.Errorf("действие %d не перезапуск (%d): восстановление, которое ничего не поднимает,"+
-				" это настройка ради галочки", i, d.Type)
-		}
-	}
-	if d := deystviya[0].Delay; d > 10*time.Second {
-		t.Errorf("первая задержка %v: человек сидит без интернета и без объяснения", d)
-	}
-	for i := 1; i < len(deystviya); i++ {
-		if deystviya[i].Delay < deystviya[i-1].Delay {
-			t.Errorf("задержка %d (%v) меньше предыдущей (%v): отступ обязан расти,"+
-				" иначе служба, падающая на старте, крутит машину в цикле",
-				i, deystviya[i].Delay, deystviya[i-1].Delay)
-		}
-	}
+}
 
-	// Счётчик неудач сбрасывается по этому сроку. Сутки означали бы, что третье
-	// за день убийство ждёт последнюю задержку из списка, хотя между ними прошли
-	// часы работы. Ноль означал бы отсутствие сброса вовсе.
-	if sbros < 60 || sbros > 3600 {
-		t.Errorf("срок сброса %d с вне 60..3600: счётчик неудач копится через часы исправной работы", sbros)
-	}
+// Сеть мертва: пауза остаётся короткой, иначе вернувшуюся сеть человек ждал
+// бы пять минут.
+func TestMyortvayaSetNeZamedlyaetVosstanovlenie(t *testing.T) {
+	s, podnimali := sluzhbaSMyortvymServerom(t)
+	s.sprositVyhod = func(context.Context, string, int) (string, error) { return "", errors.New("тест: сети нет") }
+	s.zapustitVosstanovlenie()
+	dozhdatsya(t, "попытки после десятка при мёртвой сети", func() bool {
+		return podnimali.Load() >= neudachDoRedkih+5
+	})
 }

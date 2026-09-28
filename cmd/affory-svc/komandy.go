@@ -86,6 +86,14 @@ var otstupyPoUmolchaniyu = []time.Duration{
 	time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 30 * time.Second,
 }
 
+// После десятка неудач подряд при ЖИВОЙ сети сервер, похоже, лёг надолго, и
+// стучаться к нему раз в полминуты сутками незачем (С8 аудита 1.6.1). Сеть
+// спрашивается напрямую перед каждой длинной паузой: при мёртвой сети
+// остаётся обычный отступ, иначе вернувшуюся сеть человек ждал бы пять минут.
+const neudachDoRedkih = 10
+
+const redkiyOtstupPoUmolchaniyu = 5 * time.Minute
+
 type Sluzhba struct {
 	processTracker    *nablyudatelPrilozheniy
 	processTrackerErr error
@@ -246,6 +254,7 @@ type Sluzhba struct {
 	shagDosprosa      time.Duration
 	provalov          int
 	otstupy           []time.Duration
+	redkiyOtstup      time.Duration
 	// Период опроса системного прокси. Поле, а не пакетная переменная: см.
 	// periodProksiPoUmolchaniyu.
 	periodProksi time.Duration
@@ -451,6 +460,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.adaptery = set.Adaptery
 	s.probaImeni = proby.Imya
 	s.otstupy = otstupyPoUmolchaniyu
+	s.redkiyOtstup = redkiyOtstupPoUmolchaniyu
 	s.periodProksi = periodProksiPoUmolchaniyu
 	s.proveritKonfig = func(put string) error { return yadra.Proverit(imyaYadraTun, put) }
 	s.fonCtx, s.fonOtmena = context.WithCancel(context.Background())
@@ -1791,6 +1801,22 @@ func (s *Sluzhba) zapustitVosstanovlenie() {
 	})
 }
 
+// setZhiva спрашивает внешний адрес напрямую, тем же путём, что проверка
+// выхода при выключенном VPN. Между попытками туннеля нет, и свой запрос
+// служба в запертом режиме шлёт по правилу процессов.
+func (s *Sluzhba) setZhiva(ctx context.Context) bool {
+	ctx, otmena := context.WithTimeout(ctx, 10*time.Second)
+	defer otmena()
+	s.mu.Lock()
+	endpoint := s.adresProverki
+	s.mu.Unlock()
+	if _, err := s.sprositVyhod(ctx, endpoint, 0); err != nil {
+		log.Printf("сеть напрямую не отвечает, пауза восстановления остаётся короткой: %v", err)
+		return false
+	}
+	return true
+}
+
 // vosstanavlivat поднимает туннель обратно после АВАРИИ.
 //
 // Своим контекстом, а не контекстом подключения: тот уже отменён Disconnect'ом,
@@ -1798,6 +1824,12 @@ func (s *Sluzhba) zapustitVosstanovlenie() {
 func (s *Sluzhba) vosstanavlivat(ctx context.Context) {
 	for popytka := 0; ; popytka++ {
 		otstup := s.otstupy[min(popytka, len(s.otstupy)-1)]
+		// Цикл идёт на новый круг только после неудачи, так что номер попытки
+		// и есть число неудач подряд.
+		if popytka >= neudachDoRedkih && s.setZhiva(ctx) {
+			otstup = s.redkiyOtstup
+			log.Printf("сеть жива, а туннель не встаёт %d раз подряд: следующая попытка через %s", popytka, otstup)
+		}
 		// Сон прерываемый. Голый Sleep означал, что отключение человеком
 		// доходит до цикла только после текущего отступа, а он на последних
 		// попытках достигает минуты: кнопка нажата, а туннель ещё поднимется.
