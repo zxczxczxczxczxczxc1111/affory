@@ -1,8 +1,6 @@
 package kachestvo_test
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"testing"
@@ -44,11 +42,7 @@ var razreshennyeDeystviya = map[string]string{
 var reDeystvie = regexp.MustCompile("(?m)^[|] `([a-z0-9-]+)` [|].*[|] `([a-z0-9-]+)` [|][ \t]*\r?$")
 
 func TestUKazhdogoKodaEstDeystvie(t *testing.T) {
-	syroe, err := os.ReadFile(filepath.FromSlash(putSpeki))
-	if err != nil {
-		t.Skipf("спека недоступна (%v): сверять не с чем, и притворяться, что сверили, хуже", err)
-	}
-	spec, est := razdel91(string(syroe))
+	spec, est := razdel91(trebovatSpeku(t))
 	if !est {
 		t.Fatal("в спеке не найден раздел 9.1: сверять не с чем")
 	}

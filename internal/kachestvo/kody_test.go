@@ -2,8 +2,6 @@ package kachestvo_test
 
 import (
 	"go/types"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -31,10 +29,7 @@ var kodyBezStroki = map[string]string{
 }
 
 func TestKodyProtokolaOpisanyVSpeke(t *testing.T) {
-	syroe, err := os.ReadFile(filepath.FromSlash(putSpeki))
-	if err != nil {
-		t.Skipf("спека недоступна (%v): сверять не с чем, и притворяться, что сверили, хуже", err)
-	}
+	syroe := trebovatSpeku(t)
 	// Разбор ограничен разделом §9.1, а не всей спекой. Первый заход этого не
 	// делал и притащил `geosite`, `httpupgrade` и `pktmon` из соседних таблиц:
 	// строка вида «| `слово` |» в markdown встречается где угодно.

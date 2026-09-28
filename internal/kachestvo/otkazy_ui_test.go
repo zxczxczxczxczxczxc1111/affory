@@ -22,11 +22,7 @@ const putOtkazovTS = "../../cmd/affory-ui/frontend/src/ekrany/otkazy.ts"
 var reZapisTS = regexp.MustCompile(`(?m)^\s*"([a-z0-9-]+)":\s*\{\s*deystvie:\s*"([a-z0-9-]+)"`)
 
 func TestDeystviyaEkranovSovpadayutSoSpekoy(t *testing.T) {
-	syroe, err := os.ReadFile(filepath.FromSlash(putSpeki))
-	if err != nil {
-		t.Skipf("спека недоступна (%v): сверять не с чем", err)
-	}
-	spec, est := razdel91(string(syroe))
+	spec, est := razdel91(trebovatSpeku(t))
 	if !est {
 		t.Fatal("в спеке не найден раздел 9.1")
 	}
