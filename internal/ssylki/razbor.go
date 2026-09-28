@@ -264,11 +264,16 @@ func vless(s string) (protokol.Server, error) {
 	// запись уносит ВЕСЬ конфиг, а человеку показывает разговор про исходящий
 	// номер ноль. Непонятая строка подписки видна на экране, и это честнее.
 	case "raw", "tcp":
-		if bezopasnost != "reality" {
+		// Голый TCP без TLS не наш: vless сам ничего не шифрует.
+		switch bezopasnost {
+		case "reality":
+			transport = "reality-tcp"
+		case "tls":
+			transport = "tls-tcp"
+		default:
 			return protokol.Server{}, fmt.Errorf(
-				"%w: vless поверх %q без reality", ErrTransportNePodderzhan, tip)
+				"%w: vless поверх %q без tls и reality", ErrTransportNePodderzhan, tip)
 		}
-		transport = "reality-tcp"
 	case "grpc":
 		// reality поверх grpc это ДРУГОЙ транспорт, а не grpc с лишними
 		// параметрами. До 26.09.2026 ветка была общей с ws: pbk и sid

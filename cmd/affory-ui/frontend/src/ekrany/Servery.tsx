@@ -181,6 +181,8 @@ const TRANSPORT: Record<string, string> = {
   // Added 26.09.2026: reality over grpc became its own transport once the link
   // parser stopped folding it into plain grpc with ordinary TLS.
   "reality-grpc": "reality + grpc",
+  // Added 28.09.2026: vless over bare TCP with ordinary TLS (audit 1.6.1, П1).
+  "tls-tcp": "vless + tls",
 };
 
 /** "3 ч назад" for the subscription row; `undefined` when unknown. */

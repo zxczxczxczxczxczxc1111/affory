@@ -31,7 +31,7 @@ func Sobrat(s protokol.Server) (string, error) {
 	}
 	adres := net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
 	switch s.Transport {
-	case "reality-tcp", "reality-grpc", "ws", "grpc", "httpupgrade":
+	case "reality-tcp", "tls-tcp", "reality-grpc", "ws", "grpc", "httpupgrade":
 		return sobratVless(s, adres), nil
 	case "trojan", "trojan-ws":
 		return sobratTrojan(s, adres), nil
@@ -91,7 +91,7 @@ func sobratVless(s protokol.Server, adres string) string {
 	case "reality-grpc", "grpc":
 		q.Set("type", "grpc")
 		dobavit(q, "serviceName", s.Put)
-	case "reality-tcp":
+	case "reality-tcp", "tls-tcp":
 		q.Set("type", "tcp")
 		dobavit(q, "path", s.Put)
 	default:

@@ -313,20 +313,18 @@ func TestFormyZhivoyPodpiski(t *testing.T) {
 		// ему reality-исходящий, и рукопожатие не состоялось бы никогда.
 		for _, f := range []string{"realno-tcp-tls.txt", "realno-grpc-tls.txt"} {
 			srv, err := ssylki.Razobrat(vzyat(t, f))
-			if f == "realno-tcp-tls.txt" {
-				if !errors.Is(err, ssylki.ErrTransportNePodderzhan) {
-					t.Fatalf("%s: vless поверх обычного tls принят как наш транспорт (%v, %q)",
-						f, err, srv.Transport)
-				}
-				continue
-			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			// С 1.7.0 (П1 аудита 1.6.1) vless поверх tcp и обычного tls это
+			// свой транспорт, а не отказ.
+			if f == "realno-tcp-tls.txt" && srv.Transport != "tls-tcp" {
+				t.Fatalf("%s: транспорт %q", f, srv.Transport)
 			}
 			if srv.PublicKey != "" {
 				t.Fatalf("%s: у tls-сервера появился ключ reality", f)
 			}
-			if srv.Alpn != "h2" {
+			if f == "realno-grpc-tls.txt" && srv.Alpn != "h2" {
 				t.Fatalf("alpn %q потерян", srv.Alpn)
 			}
 		}

@@ -314,6 +314,9 @@ func profili() map[string]Vhod {
 		"reality-grpc": {Id: "rg", Transport: "reality-grpc", Host: "203.0.113.15", Port: 110,
 			Uuid: baza.Server.Uuid, PublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
 			ShortId: "01ab", Sni: "www.example.com", Put: "5d69fee28fa9"},
+		// П1 аудита 1.6.1: vless поверх голого TCP под обычным TLS, с Vision.
+		"tls-tcp": {Id: "tt", Transport: "tls-tcp", Host: "203.0.113.17", Port: 443,
+			Uuid: baza.Server.Uuid, Sni: "www.example.com", Flow: "xtls-rprx-vision", Fp: "chrome"},
 		"ws":   {Id: "ws", Transport: "ws", Host: "203.0.113.11", Port: 443, Uuid: baza.Server.Uuid, Put: "/ws", Sni: "www.example.com"},
 		"grpc": {Id: "gr", Transport: "grpc", Host: "203.0.113.12", Port: 443, Uuid: baza.Server.Uuid, Put: "gun", Sni: "www.example.com"},
 		"hy2":  {Id: "h2", Transport: "hy2", Host: "203.0.113.13", Port: 443, Parol: "parol", Sni: "www.example.com"},
@@ -408,8 +411,8 @@ func TestInvariant8ProfiliProhodyatCheck(t *testing.T) {
 	//
 	// Число проверяется ЯВНО. По «PASS на каждом имени» нельзя отличить
 	// сделанное от несделанного: молча потерянный профиль тоже даёт зелёный.
-	// 21 с 26.09.2026: добавлен reality поверх grpc.
-	const skolkoZhdyom = 21
+	// 21 с 26.09.2026: добавлен reality поверх grpc. 22 с 28.09.2026: tls-tcp.
+	const skolkoZhdyom = 22
 	if n := len(profili()); n != skolkoZhdyom {
 		t.Fatalf("профилей %d, а ожидалось %d: профиль потерян или добавлен молча", n, skolkoZhdyom)
 	}
@@ -503,8 +506,8 @@ func TestBezProksiVhodTolkoOdin(t *testing.T) {
 // уже игнорируем insecure.
 func TestFlowTolkoTamGdeOnSushchestvuet(t *testing.T) {
 	baza := obraztsovyyVhod()
-	nesut := map[string]bool{"reality-tcp": true}
-	for _, transport := range []string{"reality-tcp", "reality-grpc", "ws", "grpc", "httpupgrade"} {
+	nesut := map[string]bool{"reality-tcp": true, "tls-tcp": true}
+	for _, transport := range []string{"reality-tcp", "tls-tcp", "reality-grpc", "ws", "grpc", "httpupgrade"} {
 		t.Run(transport, func(t *testing.T) {
 			s := protokol.Server{
 				Id: "f", Transport: transport, Host: "203.0.113.30", Port: 443,
@@ -984,6 +987,40 @@ func TestRealityPoverhGrpcNesyotKlyuch(t *testing.T) {
 	tr, _ := o["transport"].(map[string]any)
 	if tr["type"] != "grpc" || tr["service_name"] != v.Server.Put {
 		t.Fatalf("транспорт %v", tr)
+	}
+}
+
+// П1 аудита 1.6.1. vless поверх TCP с обычным TLS: TLS без reality, браузерное
+// рукопожатие, пин из ссылки и Vision.
+func TestTlsTcpNesyotTlsIVision(t *testing.T) {
+	v := obraztsovyyVhod()
+	v.Server = profili()["tls-tcp"].Server
+	v.Server.Pin = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+	v.Servery = []protokol.Server{v.Server}
+	v.Kandidaty = []netip.Addr{netip.MustParseAddr(v.Server.Host)}
+	telo, err := SingBox(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := ishodyashchiyPoTegu(t, telo, TegKandidata(v.Server.Id))
+	if o["type"] != "vless" || o["flow"] != "xtls-rprx-vision" {
+		t.Fatalf("тип %v, flow %v", o["type"], o["flow"])
+	}
+	if _, est := o["transport"]; est {
+		t.Fatalf("у голого TCP появился транспорт: %v", o["transport"])
+	}
+	tls, _ := o["tls"].(map[string]any)
+	if tls["enabled"] != true || tls["server_name"] != v.Server.Sni {
+		t.Fatalf("tls %v", tls)
+	}
+	if _, est := tls["reality"]; est {
+		t.Fatalf("у обычного TLS появился reality: %v", tls)
+	}
+	if u, _ := tls["utls"].(map[string]any); u["enabled"] != true {
+		t.Fatalf("utls нет: %v", tls)
+	}
+	if !strings.Contains(string(telo), v.Server.Pin) {
+		t.Fatal("пин из ссылки не доехал до TLS")
 	}
 }
 

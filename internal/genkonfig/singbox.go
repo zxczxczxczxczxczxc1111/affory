@@ -365,6 +365,15 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 		dobavitAlpn(o, s)
 		return o, nil
 
+	case "tls-tcp":
+		// vless поверх голого TCP под обычным TLS, с Vision или без (П1 аудита
+		// 1.6.1). До 1.7.0 такая ссылка отвергалась разбором.
+		o := vless(s, teg)
+		o["tls"] = tlsSPinom(s, sni)
+		dobavitUtls(o, s)
+		dobavitAlpn(o, s)
+		return o, nil
+
 	case "reality-grpc":
 		// Тот же reality, что выше, плюс транспорт grpc. Flow здесь нет и быть
 		// не может: vision живёт только на голом TCP (см. flowVozmozhen).
@@ -606,7 +615,9 @@ func vless(s protokol.Server, teg string) map[string]any {
 // Список от РАЗРЕШЁННОГО, а не от запрещённого: новый транспорт по умолчанию
 // оказывается без flow, и это верная сторона для ошибки. Обратный список молча
 // раздал бы flow всему, что добавят потом.
-func flowVozmozhen(transport string) bool { return transport == "reality-tcp" }
+func flowVozmozhen(transport string) bool {
+	return transport == "reality-tcp" || transport == "tls-tcp"
+}
 
 // tlsReality это TLS-блок reality. У reality без utls рукопожатие не
 // состоится вовсе, поэтому отпечаток входит в блок всегда.

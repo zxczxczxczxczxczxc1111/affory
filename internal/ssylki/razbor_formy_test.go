@@ -16,6 +16,34 @@ func ssIz(metodParol, adres string) string {
 	return "ss://" + base64.StdEncoding.EncodeToString([]byte(metodParol)) + "@" + adres
 }
 
+// П1. vless поверх голого TCP под обычным TLS, с Vision или без, отвергался как
+// «не наш транспорт», хотя ядро несёт его без условий сборки.
+func TestVlessTlsTcpRazbiraetsya(t *testing.T) {
+	s := "vless://" + uuidFormy + "@203.0.113.1:443?security=tls&type=tcp&flow=xtls-rprx-vision" +
+		"&sni=a.example&fp=chrome&alpn=h2&pinSHA256=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8%3D#V"
+	srv, err := Razobrat(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Transport != "tls-tcp" || srv.BezTLS || srv.Flow != "xtls-rprx-vision" ||
+		srv.Sni != "a.example" || srv.Pin != "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" {
+		t.Fatalf("%+v", srv)
+	}
+	// Туда и обратно: выгрузка даёт ссылку, из которой выходит та же запись.
+	nazad, err := Sobrat(srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snova, err := Razobrat(nazad)
+	if err != nil || snova != srv {
+		t.Fatalf("выгрузка %q разобралась в %+v (%v)", nazad, snova, err)
+	}
+	// Без TLS голый TCP по-прежнему не наш: vless сам ничего не шифрует.
+	if _, err := Razobrat("vless://" + uuidFormy + "@203.0.113.1:443?security=none&type=tcp#V"); !errors.Is(err, ErrTransportNePodderzhan) {
+		t.Fatalf("vless поверх голого tcp без tls принят: %v", err)
+	}
+}
+
 // П2. url.Parse отвергает «%» без двух шестнадцатеричных знаков, и ссылка с
 // именем «Скидка 50%» падала целиком, хотя имя серверу не нужно вовсе.
 func TestGolyyProtsentVImeniNeRonyaetSsylku(t *testing.T) {
