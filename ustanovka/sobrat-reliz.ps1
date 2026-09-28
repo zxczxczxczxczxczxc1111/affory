@@ -17,7 +17,10 @@ param(
     # и громко об этом говорит: молчаливая сборка без подписи это ровно тот
     # случай, когда о ней забывают.
     [string]$Otpechatok = '',
-    [switch]$BezFronta
+    [switch]$BezFronta,
+    # Пробная сборка для стенда из дерева без ворот. Выкладывать её нельзя, и
+    # в каталог выпуска кладётся файл, который об этом говорит.
+    [switch]$Proba
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -37,6 +40,14 @@ if (Test-Path $faylVersii) {
 } else {
     throw "нет файла VERSIYA в корне дерева: собирать релиз вслепую нельзя"
 }
+# Б2 аудита 1.6.1: выпуск собирается только из дерева, прошедшего ворота.
+. (Join-Path $PSScriptRoot 'otmetka-vorot.ps1')
+$metkaProby = Join-Path $PSScriptRoot 'vypusk\NE-DLYA-VYKLADKI.txt'
+if ($Proba) {
+    Write-Host 'ПРОБНАЯ СБОРКА: ворота не проверены, выкладывать нельзя' -ForegroundColor Yellow
+} else {
+    Proverit-OtmetkuVorot (Split-Path $PSScriptRoot -Parent)
+}
 if (-not (Test-Path $Yadro)) { throw "нет ядра $Yadro" }
 if (-not (Test-Path $Makensis)) { throw "нет makensis: $Makensis" }
 
@@ -48,6 +59,11 @@ $taskExpectedPath = Join-Path ([IO.Path]::GetFullPath($PSScriptRoot)) 'sborka'
 if ($taskBuildPath -ne $taskExpectedPath) { throw 'build cleanup escaped the installer workspace' }
 if (Test-Path -LiteralPath $taskBuildPath) { Remove-Item -LiteralPath $taskBuildPath -Recurse -Force }
 $null = New-Item -ItemType Directory -Path $sborka, $vypusk -Force
+if ($Proba) {
+    [IO.File]::WriteAllText($metkaProby, "Пробная сборка $Versiya без ворот, $(Get-Date -Format o). Не выкладывать.`n", [Text.UTF8Encoding]::new($false))
+} elseif (Test-Path $metkaProby) {
+    Remove-Item $metkaProby -Force
+}
 
 Push-Location $koren
 try {
