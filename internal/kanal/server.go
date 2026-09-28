@@ -26,7 +26,17 @@ const ImyaKanala = `\\.\pipe\affory-v1`
 // applied once, at listener creation, which happens before anybody logs in, so
 // the console user's SID does not exist yet. Narrowing it would mean recreating
 // the listener per session, which fights the first-instance protection below.
-const sddl = "O:SYG:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
+//
+// Чтение и запись у INTERACTIVE перечислены правами, а не GRGW (Н7 аудита
+// 1.6.1). GENERIC_WRITE раскрывается в FILE_GENERIC_WRITE вместе с
+// FILE_APPEND_DATA, а у канала это FILE_CREATE_PIPE_INSTANCE: любой вошедший
+// пользователь заводил СВОЙ экземпляр под нашим именем и принимал на нём
+// клиентов службы. Проверка владельца по имени такого не видит.
+var sddl = fmt.Sprintf("O:SYG:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;%#x;;;IU)", PravaKanala)
+
+// PravaKanala это чтение и запись данных канала без создания экземпляра.
+// Клиент просит ровно их: запрос GENERIC_WRITE получил бы отказ.
+const PravaKanala = (windows.FILE_GENERIC_READ | windows.FILE_GENERIC_WRITE) &^ windows.FILE_APPEND_DATA
 
 // Squatting protection is a creation mode, not a flag: go-winio never calls
 // CreateNamedPipe and never uses FILE_FLAG_FIRST_PIPE_INSTANCE. It calls

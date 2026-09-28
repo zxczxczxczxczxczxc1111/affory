@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/Microsoft/go-winio"
 	"golang.org/x/sys/windows"
@@ -53,6 +54,66 @@ func proveritVladeltsaPoImeni(imya string) error {
 		return fmt.Errorf("%s: владелец канала %s", protokol.KodPipeSquatted, vlad)
 	}
 	return nil
+}
+
+// ImyaSluzhby это имя службы в SCM.
+const ImyaSluzhby = "AfforySvc"
+
+// pidSluzhby это шов: в тесте службы в SCM нет.
+var pidSluzhby = pidSluzhbyIzSCM
+
+// sveritServerKanala сверяет процесс по ту сторону канала с процессом
+// службы, как его знает SCM (Н7 аудита 1.6.1).
+//
+// Владелец имени SYSTEM ещё не значит, что мы говорим со службой: экземпляр
+// канала мог завести кто-то другой, и имя при этом остаётся нашим. Процесс за
+// экземпляром подделать нельзя.
+func sveritServerKanala(c net.Conn) error {
+	f, ok := c.(interface{ Fd() uintptr })
+	if !ok {
+		return fmt.Errorf("%s: соединение не отдаёт дескриптор", protokol.KodPipeSquatted)
+	}
+	var pid uint32
+	if err := windows.GetNamedPipeServerProcessId(windows.Handle(f.Fd()), &pid); err != nil {
+		return fmt.Errorf("%s: процесс за каналом не узнать: %w", protokol.KodPipeSquatted, err)
+	}
+	ozhidaem, err := pidSluzhby()
+	if err != nil {
+		return fmt.Errorf("%s: служба не отвечает SCM: %w", protokol.KodNoAdmin, err)
+	}
+	if pid != ozhidaem {
+		return fmt.Errorf("%s: канал держит процесс %d, а служба это процесс %d", protokol.KodPipeSquatted, pid, ozhidaem)
+	}
+	return nil
+}
+
+// pidSluzhbyIzSCM спрашивает у SCM процесс службы. Права только
+// SC_MANAGER_CONNECT и SERVICE_QUERY_STATUS: их обычному пользователю дают.
+func pidSluzhbyIzSCM() (uint32, error) {
+	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseServiceHandle(m)
+	imya, err := windows.UTF16PtrFromString(ImyaSluzhby)
+	if err != nil {
+		return 0, err
+	}
+	s, err := windows.OpenService(m, imya, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseServiceHandle(s)
+	var st windows.SERVICE_STATUS_PROCESS
+	var nuzhno uint32
+	if err := windows.QueryServiceStatusEx(s, windows.SC_STATUS_PROCESS_INFO,
+		(*byte)(unsafe.Pointer(&st)), uint32(unsafe.Sizeof(st)), &nuzhno); err != nil {
+		return 0, err
+	}
+	if st.ProcessId == 0 {
+		return 0, errors.New("служба не запущена")
+	}
+	return st.ProcessId, nil
 }
 
 type helloTelo struct {
@@ -109,10 +170,13 @@ func Podklyuchitsya() (*Klient, error) {
 	// detail: at anonymous level the whole client check in task 1.3 is decorative.
 	ctx, otmena := context.WithTimeout(context.Background(), TaymautOtveta)
 	defer otmena()
-	c, err := winio.DialPipeAccessImpLevel(ctx, ImyaKanala,
-		uint32(windows.GENERIC_READ|windows.GENERIC_WRITE), winio.PipeImpLevelImpersonation)
+	c, err := winio.DialPipeAccessImpLevel(ctx, ImyaKanala, PravaKanala, winio.PipeImpLevelImpersonation)
 	if err != nil {
 		return nil, fmt.Errorf("канал не открылся: %w", err)
+	}
+	if err := sveritServerKanala(c); err != nil {
+		_ = c.Close()
+		return nil, err
 	}
 	k := &Klient{
 		c:        c,
