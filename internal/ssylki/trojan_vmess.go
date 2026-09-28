@@ -135,6 +135,7 @@ func vmess(s string) (protokol.Server, error) {
 		Host     string `json:"host"`
 		Path     string `json:"path"`
 		Tls      string `json:"tls"`
+		Type     string `json:"type"`
 		Sni      string `json:"sni"`
 		Alpn     string `json:"alpn"`
 		Fp       string `json:"fp"`
@@ -152,14 +153,21 @@ func vmess(s string) (protokol.Server, error) {
 	}
 	imya := v.Ps
 	if imya == "" {
-		if h, err := url.PathUnescape(hvost); err == nil {
-			imya = h
-		}
+		imya = imyaIzFragmenta(hvost)
+	}
+	host, err := asciiImya(v.Add)
+	if err != nil {
+		return protokol.Server{}, err
+	}
+	// reality у vmess ядро не несёт, а принятая ссылка стала бы обычным TLS
+	// и не поднялась бы никогда.
+	if v.Tls == "reality" {
+		return protokol.Server{}, fmt.Errorf("%w: vmess поверх reality", ErrTransportNePodderzhan)
 	}
 
 	srv := protokol.Server{
 		Imya:          imya,
-		Host:          v.Add,
+		Host:          host,
 		Port:          port,
 		Uuid:          v.Id,
 		AlterId:       chisloIz(v.Aid),
@@ -170,12 +178,17 @@ func vmess(s string) (protokol.Server, error) {
 		HostZagolovka: v.Host,
 		// tls тут строка, а не флаг: «tls», «none» или пусто. Открытый vmess
 		// это живой случай, порты 80 и 8080 в сборниках.
-		BezTLS:                  v.Tls != "tls" && v.Tls != "reality",
+		BezTLS:                  v.Tls != "tls",
 		NebezopasnyyIgnorirovan: stroka(v.Insecure) == "1" || strings.EqualFold(stroka(v.Insecure), "true"),
 	}
 
 	switch v.Net {
 	case "", "tcp", "raw":
+		// Маскировку TCP под HTTP ядро не несёт: без неё сервер ответит на
+		// первый же байт отказом.
+		if v.Type == "http" {
+			return protokol.Server{}, fmt.Errorf("%w: vmess с маскировкой под http (type=http)", ErrTransportNePodderzhan)
+		}
 		srv.Transport = "vmess"
 	case "ws":
 		srv.Transport = "vmess-ws"

@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/net/idna"
+
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
@@ -69,12 +71,47 @@ func Razobrat(s string) (protokol.Server, error) {
 	case "tuic":
 		return tuic(s)
 	default:
+		// Схема печатается, только если похожа на схему. У строки без неё до
+		// «://» стоит всё подряд, обычно uuid, и он уезжал бы в отказ подписки.
+		if !pohozheNaSkhemu(shema) {
+			return protokol.Server{}, fmt.Errorf("%w: неизвестная схема", ErrSsylkaKrivaya)
+		}
 		return protokol.Server{}, fmt.Errorf("%w: схема %s", ErrTransportNePodderzhan, shema)
 	}
 }
 
+// pohozheNaSkhemu: латинская буква, дальше буквы, цифры и «+-.», до 16 знаков.
+func pohozheNaSkhemu(s string) bool {
+	if s == "" || len(s) > 16 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i] | 0x20
+		bukva := c >= 'a' && c <= 'z'
+		if i == 0 && !bukva {
+			return false
+		}
+		if !bukva && !(s[i] >= '0' && s[i] <= '9') && s[i] != '+' && s[i] != '-' && s[i] != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// imyaIzFragmenta раскодирует имя один раз, а негодное кодирование оставляет
+// как есть. Имя серверу не нужно, и ронять из-за него ссылку незачем.
+func imyaIzFragmenta(f string) string {
+	if imya, err := url.PathUnescape(f); err == nil {
+		return imya
+	}
+	return f
+}
+
 // razobratURL это общая часть: разбор, хост, порт, имя из фрагмента.
 func razobratURL(s string) (*url.URL, string, int, string, error) {
+	// Имя отрезается ДО url.Parse: тот отвергает «%» без двух знаков после
+	// него, и ссылка с именем «Скидка 50%» падала целиком.
+	s, fragment, _ := strings.Cut(s, "#")
 	u, err := url.Parse(s)
 	if err != nil {
 		// Только причина, без самого адреса. url.Error печатает адрес ЦЕЛИКОМ,
@@ -91,10 +128,9 @@ func razobratURL(s string) (*url.URL, string, int, string, error) {
 	if err != nil {
 		return nil, "", 0, "", err
 	}
-	// Fragment url.Parse уже раскодировал, и «+» в нём остаётся плюсом. До
-	// 26.09.2026 тут стоял ещё PathUnescape, и имя «50%41», закодированное
-	// как 50%2541, становилось «50A».
-	imya := u.Fragment
+	// Раскодирование одно, «+» остаётся плюсом. До 26.09.2026 их было два, и
+	// имя «50%41», закодированное как 50%2541, становилось «50A».
+	imya := imyaIzFragmenta(fragment)
 	if err := proveritZaglushku(host, imya); err != nil {
 		return nil, "", 0, "", err
 	}
@@ -150,7 +186,26 @@ func hostPort(hp string) (string, int, error) {
 	if host == "" {
 		return "", 0, fmt.Errorf("%w: пустой хост", ErrSsylkaKrivaya)
 	}
+	if host, err = asciiImya(host); err != nil {
+		return "", 0, err
+	}
 	return host, port, nil
+}
+
+// asciiImya переводит кириллический домен в punycode: ядро и DNS знают только
+// ASCII-запись, и «пример.рф» добавлялся, но не находился. ASCII-имя не
+// трогается вовсе, иначе строгие правила IDNA отвергли бы, например, «_».
+func asciiImya(host string) (string, error) {
+	for i := 0; i < len(host); i++ {
+		if host[i] >= 0x80 {
+			a, err := idna.Lookup.ToASCII(host)
+			if err != nil {
+				return "", fmt.Errorf("%w: имя сервера не переводится в ASCII: %v", ErrSsylkaKrivaya, err)
+			}
+			return a, nil
+		}
+	}
+	return host, nil
 }
 
 // nebezopasnyy отвечает, стоял ли в ссылке флаг отключения проверки сертификата.
@@ -195,6 +250,12 @@ func vless(s string) (protokol.Server, error) {
 	// параметра означают открытый транспорт, и это НЕ придирка: такие серверы
 	// живут на портах 80 и 2200 в живых сборниках.
 	bezTLS := bezopasnost != "tls" && bezopasnost != "reality"
+	// Шифрование VLESS из Xray 25.x ядро не несёт. Без него сервер молча не
+	// поднимался бы. Значение не печатается: в нём ключ.
+	if e := q.Get("encryption"); e != "" && e != "none" {
+		return protokol.Server{}, fmt.Errorf(
+			"%w: vless с шифрованием encryption, клиент его не несёт", ErrTransportNePodderzhan)
+	}
 	var transport string
 	switch tip {
 	// xhttp сюда НЕ возвращать не подумав: он снят 06.09.2026 вместе с чужим
@@ -300,6 +361,10 @@ func vless(s string) (protokol.Server, error) {
 }
 
 func hysteria(s string) (protokol.Server, error) {
+	s, portyAdresa, err := vynestiPortyHy2(s)
+	if err != nil {
+		return protokol.Server{}, err
+	}
 	u, host, port, imya, err := razobratURL(s)
 	if err != nil {
 		return protokol.Server{}, err
@@ -335,7 +400,11 @@ func hysteria(s string) (protokol.Server, error) {
 	if srv.Obfs != "" && srv.ObfsParol == "" {
 		return protokol.Server{}, fmt.Errorf("%w: hy2 с obfs без obfs-password", ErrSsylkaKrivaya)
 	}
+	// Явный mport сильнее списка в адресе: его написали отдельно и нарочно.
 	srv.Porty = q.Get("mport")
+	if srv.Porty == "" {
+		srv.Porty = portyAdresa
+	}
 	// Полоса из ссылки. Пара или ничего: см. polosaIzZaprosa.
 	srv.PolosaVverh, srv.PolosaVniz = polosaIzZaprosa(q)
 	// Пин проверяется ЗДЕСЬ, а не в генераторе конфига и не ядром. Ядро
@@ -357,6 +426,53 @@ func hysteria(s string) (protokol.Server, error) {
 		srv.Id = IdHoppinga(srv.Host, srv.Port, srv.Transport)
 	}
 	return srv, nil
+}
+
+// vynestiPortyHy2 снимает список портов с адреса: «хост:443,20000-30000». Так
+// пишет ссылки сам Hysteria 2, а url.Parse такой порт не принимает. Первый
+// порт списка остаётся портом сервера, весь список уходит в прыжки.
+func vynestiPortyHy2(s string) (string, string, error) {
+	shema, ostatok, _ := strings.Cut(s, "://")
+	konets := strings.IndexAny(ostatok, "/?#")
+	if konets < 0 {
+		konets = len(ostatok)
+	}
+	avtoritet := ostatok[:konets]
+	hp := avtoritet[strings.LastIndex(avtoritet, "@")+1:]
+	dvoetochie := strings.LastIndex(hp, ":")
+	if dvoetochie < 0 || dvoetochie < strings.LastIndex(hp, "]") {
+		return s, "", nil
+	}
+	porty := hp[dvoetochie+1:]
+	if !strings.ContainsAny(porty, ",-") {
+		return s, "", nil
+	}
+	pervyy, err := pervyyPortSpiska(porty)
+	if err != nil {
+		return "", "", err
+	}
+	avtoritet = avtoritet[:len(avtoritet)-len(porty)] + strconv.Itoa(pervyy)
+	return shema + "://" + avtoritet + ostatok[konets:], porty, nil
+}
+
+// pervyyPortSpiska проверяет «443,20000-30000» целиком и отдаёт первый порт.
+func pervyyPortSpiska(spisok string) (int, error) {
+	pervyy := 0
+	for _, kusok := range strings.Split(spisok, ",") {
+		ot, do, diapazon := strings.Cut(kusok, "-")
+		if !diapazon {
+			do = ot
+		}
+		a, errA := strconv.Atoi(ot)
+		b, errB := strconv.Atoi(do)
+		if errA != nil || errB != nil || a < 1 || b > 65535 || a > b {
+			return 0, fmt.Errorf("%w: порты hy2 %q", ErrSsylkaKrivaya, spisok)
+		}
+		if pervyy == 0 {
+			pervyy = a
+		}
+	}
+	return pervyy, nil
 }
 
 // anytls разбирает `anytls://пароль@хост:порт?sni=&alpn=`.
@@ -538,12 +654,19 @@ func dekodirovat(s string) ([]byte, bool) {
 func shadowsocks(s string) (protokol.Server, error) {
 	telo := strings.TrimPrefix(s, "ss://")
 	telo, imyaSyroe, _ := strings.Cut(telo, "#")
-	imya, err := url.PathUnescape(imyaSyroe)
-	if err != nil {
-		imya = imyaSyroe
+	imya := imyaIzFragmenta(imyaSyroe)
+	// Прочие параметры SIP002 нам не нужны, но плагин меняет сам протокол:
+	// obfs или v2ray-plugin без поддержки дали бы сервер, который не
+	// поднимется. Отказ называет плагин, но не его настройки, в них адреса.
+	telo, zapros, _ := strings.Cut(telo, "?")
+	q, err := url.ParseQuery(zapros)
+	if err != nil && strings.Contains(zapros, "plugin=") {
+		return protokol.Server{}, fmt.Errorf("%w: ss: параметр plugin не разбирается", ErrSsylkaKrivaya)
 	}
-	// Плагин и прочие параметры SIP002 нам не нужны, но мешать разбору не должны.
-	telo, _, _ = strings.Cut(telo, "?")
+	if p := q.Get("plugin"); p != "" {
+		imyaPlagina, _, _ := strings.Cut(p, ";")
+		return protokol.Server{}, fmt.Errorf("%w: ss с плагином %s", ErrTransportNePodderzhan, imyaPlagina)
+	}
 	telo = strings.TrimSuffix(telo, "/")
 
 	var metodParol, adres string
