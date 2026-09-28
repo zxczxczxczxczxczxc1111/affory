@@ -128,6 +128,7 @@ function zameryIz(telo: unknown): ZamerZaderzhki[] {
       tcping_otkaz: tekst(o.tcping_otkaz),
       realping_ms: chislo(o.realping_ms),
       realping_otkaz: tekst(o.realping_otkaz),
+      tcping_net: o.tcping_net === true,
     }];
   });
 }

@@ -119,6 +119,8 @@ export interface ZamerZaderzhki {
   tcping_otkaz?: string;
   realping_ms?: number | null;
   realping_otkaz?: string;
+  /** hy2 и tuic ходят по UDP, узел по TCP для них не мерится. */
+  tcping_net?: boolean;
 }
 
 export interface ServeryProps {
@@ -757,8 +759,9 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
  *  то есть ровно наверх списка, что противоположно правде о мёртвом узле. */
 export function Zaderzhka({ zamer, compact = false }: { zamer?: ZamerZaderzhki; compact?: boolean }) {
   if (!zamer) return null;
-  const uzel =
-    typeof zamer.tcping_ms === "number" ? `узел ${zamer.tcping_ms} мс` : zamer.tcping_otkaz || "узел не измерен";
+  const uzel = zamer.tcping_net
+    ? "узел —"
+    : typeof zamer.tcping_ms === "number" ? `узел ${zamer.tcping_ms} мс` : zamer.tcping_otkaz || "узел не измерен";
   const tunnel =
     typeof zamer.realping_ms === "number"
       ? `VPN ${zamer.realping_ms} мс`
@@ -786,7 +789,7 @@ export function Zaderzhka({ zamer, compact = false }: { zamer?: ZamerZaderzhki; 
           соседние строки списка (16.09.2026). Длинный отказ узла в сжатом
           виде не печатается вовсе: он длиннее строки, а целиком всё лежит в
           подсказке. */}
-      {compact ? `${tunnelKratko} · ${typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}` : `${uzel} · ${tunnel}`}
+      {compact ? `${tunnelKratko} · ${zamer.tcping_net || typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}` : `${uzel} · ${tunnel}`}
     </span>
   );
 }

@@ -59,6 +59,24 @@ func TestZaderzhkiBezTunnelyaOtdayutTcpingANeOtkaz(t *testing.T) {
 	}
 }
 
+// С9 аудита 1.6.1. hy2 и tuic слушают UDP, и их TCP-порт ничего не говорит:
+// закрытый показал бы мёртвым исправный сервер, занятый чужой службой показал
+// бы живым мёртвый. Узел для них не мерится, окно рисует прочерк.
+func TestTcpingNeMeritsyaDlyaUDPProtokolov(t *testing.T) {
+	a := zhivoyUzel(t).Addr().(*net.TCPAddr)
+	s := podstavnaya(t, nil)
+	for _, tr := range []string{"hy2", "tuic"} {
+		z := s.zamerOdnogo(context.Background(), protokol.Server{Id: "u", Transport: tr, Host: a.IP.String(), Port: a.Port}, "", "")
+		b, err := json.Marshal(z)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if z.TcpingMs != nil || z.TcpingOtkaz != "" || !strings.Contains(string(b), `"tcping_net":true`) {
+			t.Fatalf("%s: узел замерен по TCP: %s", tr, b)
+		}
+	}
+}
+
 // TestZaderzhkiMolchashchiyUzelEtoOtkazANeNol: ноль вместо отказа поставил бы
 // мёртвый сервер ПЕРВЫМ по задержке, то есть ровно наверх списка.
 func TestZaderzhkiMolchashchiyUzelEtoOtkazANeNol(t *testing.T) {
@@ -228,7 +246,7 @@ func podstavnayaSAdresom(t *testing.T, adres string) *Sluzhba {
 	}
 	s := podstavnaya(t, nil)
 	srv := protokol.Server{
-		Id: "u1", Imya: "узел", Transport: "hy2",
+		Id: "u1", Imya: "узел", Transport: "trojan",
 		Host: host, Port: nomer, Parol: "parol",
 	}
 	if err := s.pravitNabor(func(n *Nabor) error {

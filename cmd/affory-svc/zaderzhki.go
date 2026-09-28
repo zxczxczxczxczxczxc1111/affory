@@ -47,6 +47,14 @@ type zamerZaderzhki struct {
 	TcpingOtkaz   string `json:"tcping_otkaz,omitempty"`
 	RealpingMs    *int64 `json:"realping_ms"`
 	RealpingOtkaz string `json:"realping_otkaz,omitempty"`
+	// Узел по TCP не мерится вовсе: протокол ходит по UDP. Окно рисует прочерк.
+	TcpingNet bool `json:"tcping_net,omitempty"`
+}
+
+// hy2 и tuic слушают UDP. Их TCP-порт закрыт у исправного сервера или занят
+// чужой службой у мёртвого, и tcping врал бы в обе стороны.
+func tcpingBessmyslen(transport string) bool {
+	return transport == "hy2" || transport == "tuic"
 }
 
 func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.Kadr {
@@ -88,7 +96,9 @@ func (s *Sluzhba) zamerOdnogo(ctx context.Context, srv protokol.Server, adresKla
 	z := zamerZaderzhki{Id: srv.Id}
 
 	// The TUN stack can acknowledge TCP locally; its optimism is not network latency.
-	if adresKlash != "" {
+	if tcpingBessmyslen(srv.Transport) {
+		z.TcpingNet = true
+	} else if adresKlash != "" {
 		z.TcpingOtkaz = "узел: проверка доступна при выключенном VPN"
 	} else if d, err := yadra.Tcping(ctx, srv.Host, srv.Port, srokTcping); err != nil {
 		z.TcpingOtkaz = err.Error()

@@ -504,6 +504,21 @@ describe("серверы: замер задержки", () => {
     expect(screen.getByTestId("zaderzhka-s1")).toHaveTextContent(/узел не отвечает/);
   });
 
+  it("узел hy2 и tuic показан прочерком, а не отказом", () => {
+    // С9 аудита 1.6.1. Эти протоколы ходят по UDP, их TCP-порт ничего не
+    // говорит, и служба узел не мерит.
+    render(
+      <Servery
+        {...svoystva({
+          zaderzhki: [{ id: "s1", tcping_net: true, realping_ms: 92 }],
+        })}
+      />,
+    );
+    const r = screen.getByTestId("zaderzhka-s1");
+    expect(r).toHaveTextContent("узел —");
+    expect(r).not.toHaveTextContent("не измерен");
+  });
+
   it("без замера строка задержки не появляется вовсе", () => {
     render(<Servery {...svoystva({})} />);
     expect(screen.queryByTestId("zaderzhka-s1")).toBeNull();
