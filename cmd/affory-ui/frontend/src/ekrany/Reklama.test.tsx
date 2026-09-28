@@ -98,6 +98,13 @@ describe("вкладка «Реклама»", () => {
     expect(screen.getByText("Есть неприменённые изменения")).toBeInTheDocument();
   });
 
+  it("раздел «Зачем включать» объясняет отличие от расширения браузера", () => {
+    risovat();
+    fireEvent.click(screen.getByRole("button", { name: "Зачем включать" }));
+    expect(screen.getByText(/Работает для всего компьютера/)).toBeInTheDocument();
+    expect(screen.getByText(/Расширение можно оставить/)).toBeInTheDocument();
+  });
+
   it("пустой список исключений так и назван", () => {
     risovat();
     expect(screen.getByText("Исключений нет")).toBeInTheDocument();
@@ -147,5 +154,8 @@ describe("служба прошлой версии", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Только выбранное" }));
     await primenit();
     expect(send).toHaveBeenCalledWith("setRules", { trafik: { ...TRAFIK, po_umolchaniyu: "direct" }, bez_ru_spiska: false, reviziya_pravil: "r1" });
+    // Сравнение тел не отличает поле со значением undefined от отсутствующего:
+    // ключ проверяется отдельно.
+    expect(Object.keys(send.mock.calls[0][1] as object)).not.toContain("reklama");
   });
 });
