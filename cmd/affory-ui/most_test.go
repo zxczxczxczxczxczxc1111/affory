@@ -150,6 +150,39 @@ func TestProfilEzditFaylomBezPoter(t *testing.T) {
 	}
 }
 
+// О7 аудита 1.6.1. Страница зовёт SohranitProfil и ProchitatProfil с любым
+// путём, а значит, и чужой скрипт на ней мог бы писать и читать что угодно от
+// имени человека. Путь принимается, только если его выбрали в диалоге этого окна.
+func TestProfilTolkoPoPutiIzDialoga(t *testing.T) {
+	m := &most{}
+	b64 := base64.StdEncoding.EncodeToString([]byte("profil"))
+	put := filepath.Join(t.TempDir(), "profil.affory")
+	chuzhoy := filepath.Join(t.TempDir(), "chuzhoy.affory")
+
+	if err := m.SohranitProfil(put, b64); err == nil {
+		t.Fatal("записан путь, который не выбирали в диалоге")
+	}
+	if _, err := os.Stat(put); err == nil {
+		t.Fatal("файл создан без выбора")
+	}
+	m.puti.zapomnit(&m.puti.sohranit, put)
+	if err := m.SohranitProfil(chuzhoy, b64); err == nil {
+		t.Fatal("записан путь мимо выбранного")
+	}
+	// Регистр букв у Windows путей не различает.
+	if err := m.SohranitProfil(strings.ToUpper(put), b64); err != nil {
+		t.Fatalf("выбранный путь не принят: %v", err)
+	}
+
+	if _, err := m.ProchitatProfil(put); err == nil {
+		t.Fatal("прочитан путь, который не выбирали в диалоге открытия")
+	}
+	m.puti.zapomnit(&m.puti.prochitat, put)
+	if s, err := m.ProchitatProfil(put); err != nil || s != b64 {
+		t.Fatalf("выбранный путь не прочитан: %q, %v", s, err)
+	}
+}
+
 // Непонятное на входе это отказ, а не файл из мусора: молча записанный мусор
 // человек обнаружит только при попытке восстановиться на другой машине.
 func TestSohranitProfilOtvergaetNeBase64(t *testing.T) {

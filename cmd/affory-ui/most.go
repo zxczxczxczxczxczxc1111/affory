@@ -136,30 +136,66 @@ func (m *most) VybratKudaSohranit() (string, error) {
 	// Заголовка у диалога сохранения в Wails v3 beta.16 нет: SetTitle есть
 	// только у OpenFile, а SaveFileDialogStruct его не отдаёт. Роль подписи
 	// берёт на себя SetMessage.
-	put, err := m.app.Dialog.SaveFile().
+	put, err := otvetDialoga(m.app.Dialog.SaveFile().
 		SetMessage("Куда вынести профиль Affory").
 		SetFilename("profil.affory").
 		AddFilter("Профиль Affory (*.affory)", "*.affory").
-		PromptForSingleSelection()
-	return otvetDialoga(put, err)
+		PromptForSingleSelection())
+	m.puti.zapomnit(&m.puti.sohranit, put)
+	return put, err
 }
 
 // VybratOtkuda это диалог открытия для файла профиля.
 func (m *most) VybratOtkuda() (string, error) {
-	put, err := m.app.Dialog.OpenFile().
+	put, err := otvetDialoga(m.app.Dialog.OpenFile().
 		SetTitle("Откуда внести профиль Affory").
 		AddFilter("Профиль Affory (*.affory)", "*.affory").
-		PromptForSingleSelection()
-	return otvetDialoga(put, err)
+		PromptForSingleSelection())
+	m.puti.zapomnit(&m.puti.prochitat, put)
+	return put, err
+}
+
+// vybrannyePuti помнит пути, выбранные человеком в диалогах этого окна (О7
+// аудита 1.6.1). Страница зовёт SohranitProfil и ProchitatProfil с любым
+// путём, и без этой сверки чужой скрипт на ней писал бы и читал что угодно от
+// имени человека.
+type vybrannyePuti struct {
+	mu                  sync.Mutex
+	sohranit, prochitat string
+}
+
+func (v *vybrannyePuti) zapomnit(kuda *string, put string) {
+	if put == "" {
+		return
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	*kuda = put
+}
+
+// vybran сверяет путь с выбранным. Регистр букв Windows в путях не различает.
+func (v *vybrannyePuti) vybran(kuda *string, put string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if *kuda == "" || !strings.EqualFold(filepath.Clean(*kuda), filepath.Clean(put)) {
+		return errors.New("файл не выбран в диалоге этого окна")
+	}
+	return nil
 }
 
 // SohranitProfil кладёт на диск то, что отдала команда exportProfile.
 func (m *most) SohranitProfil(put string, profil string) error {
+	if err := m.puti.vybran(&m.puti.sohranit, put); err != nil {
+		return err
+	}
 	return sohranitProfil(put, profil)
 }
 
 // ProchitatProfil поднимает файл профиля для команды importProfile.
 func (m *most) ProchitatProfil(put string) (string, error) {
+	if err := m.puti.vybran(&m.puti.prochitat, put); err != nil {
+		return "", err
+	}
 	return prochitatProfil(put)
 }
 
@@ -278,6 +314,8 @@ type most struct {
 
 	mu sync.Mutex
 	k  *kanal.Klient
+
+	puti vybrannyePuti
 }
 
 // podklyuchen reports whether the pipe is currently dialled.

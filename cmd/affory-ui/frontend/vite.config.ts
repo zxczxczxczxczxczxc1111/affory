@@ -1,6 +1,12 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { metaCsp } from "./src/csp";
+
+// Политика безопасности только в боевую сборку: см. src/csp.ts.
+function politikaBezopasnosti(): Plugin {
+  return { name: "affory-csp", apply: "build", transformIndexHtml: () => [metaCsp()] };
+}
 
 // No @wailsio/runtime/plugins/vite here, and that is a decision, not an
 // omission: the plugin exists to serve GENERATED bindings, and it fails the
@@ -12,5 +18,5 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), politikaBezopasnosti()],
 });
