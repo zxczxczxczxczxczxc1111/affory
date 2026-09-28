@@ -503,6 +503,28 @@ func TestReklamaSbrosKeshaDNS(t *testing.T) {
 	}
 }
 
+// Отказ обновления живёт, пока нужен тот же уровень: правка исключений его не
+// снимает, смена уровня снимает.
+func TestReklamaSmenaUrovnyaSnimaetOtkaz(t *testing.T) {
+	s, _, _ := podstavnayaReklamy(t)
+	vklyuchitReklamu(t, s, `{"reklama":{"vkl":true,"uroven":"multi"}}`)
+	s.zapomnitOtkazReklamy("список не скачан: multi.txt")
+	otkaz := func() string {
+		if r := s.Status().Reklama; r != nil {
+			return r.Otkaz
+		}
+		return ""
+	}
+	vklyuchitReklamu(t, s, `{"reklama":{"vkl":true,"uroven":"multi","razresheno":["mc.yandex.ru"]}}`)
+	if otkaz() == "" {
+		t.Fatal("правка исключений сняла отказ того же уровня")
+	}
+	vklyuchitReklamu(t, s, `{"reklama":{"vkl":true,"uroven":"light","razresheno":["mc.yandex.ru"]}}`)
+	if got := otkaz(); got != "" {
+		t.Fatalf("после смены уровня остался отказ прежнего: %q", got)
+	}
+}
+
 // Свои имена службы не блокируются: константы кода, хост подписки и имена
 // серверов. Адреса в списке имён не бывают.
 func TestSvoiHostyReklamy(t *testing.T) {

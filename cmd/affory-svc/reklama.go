@@ -228,6 +228,14 @@ func (s *Sluzhba) zapomnitOtkazReklamy(prichina string) {
 	s.sostReklamy.Otkaz = prichina
 }
 
+func (s *Sluzhba) sbrositOtkazReklamy() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sostReklamy != nil {
+		s.sostReklamy.Otkaz = ""
+	}
+}
+
 // pereimenovatSPovtorom: ядро читает набор при подмене, и Windows на это время
 // отказывает в замене. Пять попыток через 200 мс.
 func pereimenovatSPovtorom(iz, v string) error {
@@ -506,6 +514,12 @@ func (s *Sluzhba) posleSmenyReklamy(bylo, stalo *ReklamaPravila) {
 		if err := s.sbrositKeshDNS(); err != nil {
 			log.Printf("кэш DNS Windows не сброшен: %v", err)
 		}
+	}
+	// Отказ обновления относится к уровню, который тогда качался. Приёмка
+	// 29.09.2026: расширенный не скачался, человек вернулся на базовый, а окно
+	// сутки писало об отказе списка, который уже не нужен.
+	if bylo != nil && stalo != nil && bylo.Uroven != stalo.Uroven {
+		s.sbrositOtkazReklamy()
 	}
 	if stalo != nil && stalo.Vkl {
 		s.tolknutReklamu()
