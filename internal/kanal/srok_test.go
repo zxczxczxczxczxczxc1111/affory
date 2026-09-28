@@ -1,6 +1,7 @@
 package kanal
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -72,5 +73,16 @@ func TestDolgayaKomandaPerezhivaetSrokBystroy(t *testing.T) {
 	// минуту на мёртвой службе вместо честного «не отвечает».
 	if oshBys == nil {
 		t.Fatal("быстрая команда ждала дольше своего срока")
+	}
+	// О2 аудита 1.6.1: вышедший срок это своя ошибка, и канал после неё жив.
+	// Прежде окно принимало его за обрыв и рвало канал вместе с подпиской на
+	// события.
+	if !errors.Is(oshBys, ErrSrokOtveta) {
+		t.Fatalf("срок не узнаётся: %v", oshBys)
+	}
+	select {
+	case <-k.gotovo:
+		t.Fatal("канал закрыт из-за одного опоздавшего ответа")
+	default:
 	}
 }

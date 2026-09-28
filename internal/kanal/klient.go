@@ -156,6 +156,11 @@ type Klient struct {
 
 var ErrKanalZakryt = errors.New("канал закрыт")
 
+// ErrSrokOtveta: служба не ответила на команду в срок. Канал при этом жив, и
+// рвать его значит терять подписку на события и остальные команды в полёте
+// (О2 аудита 1.6.1). Опоздавший ответ chitat просто выбросит.
+var ErrSrokOtveta = errors.New("служба не ответила вовремя")
+
 func Podklyuchitsya() (*Klient, error) {
 	if err := proveritVladeltsa(); err != nil {
 		return nil, err
@@ -262,7 +267,7 @@ func (k *Klient) Zvat(imya string, telo any) (protokol.Kadr, error) {
 	case <-k.gotovo:
 		return pusto, k.pochemu
 	case <-time.After(protokol.SrokOtveta(imya)):
-		return pusto, fmt.Errorf("служба не ответила на %s за %s", imya, protokol.SrokOtveta(imya))
+		return pusto, fmt.Errorf("%w: %s за %s", ErrSrokOtveta, imya, protokol.SrokOtveta(imya))
 	}
 }
 

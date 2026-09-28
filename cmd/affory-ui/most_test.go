@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
@@ -52,6 +54,11 @@ func TestOtkazNeObryvKanala(t *testing.T) {
 	}
 	if obryvKanala(protokol.Kadr{Tip: "otvet", Id: 2, Imya: "status"}, nil) {
 		t.Fatal("успешный ответ принят за обрыв")
+	}
+	// О2 аудита 1.6.1: служба не ответила вовремя, но канал жив. Разрыв унёс
+	// бы подписку на события и остальные команды в полёте.
+	if obryvKanala(protokol.Kadr{}, fmt.Errorf("%w: status за 5s", kanal.ErrSrokOtveta)) {
+		t.Fatal("вышедший срок принят за обрыв канала")
 	}
 }
 

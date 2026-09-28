@@ -394,8 +394,10 @@ func (m *most) Otklyuchit() error {
 // the frame AND an error for a refusal; only an error without a frame is
 // the transport failing. Closing the pipe on a refusal cost the screen every
 // refusal frame and killed concurrent calls (seen live 02.09.2026).
+//
+// Вышедший срок тоже не обрыв (О2 аудита 1.6.1): служба занята, а канал жив.
 func obryvKanala(otvet protokol.Kadr, err error) bool {
-	return err != nil && otvet.Oshib == nil
+	return err != nil && otvet.Oshib == nil && !errors.Is(err, kanal.ErrSrokOtveta)
 }
 
 // klient returns the live connection, dialing once if there is none.
