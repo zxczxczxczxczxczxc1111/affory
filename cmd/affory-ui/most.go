@@ -313,6 +313,17 @@ var _ Most = (*most)(nil)
 // decoding base64 by hand.
 func (m *most) Zvat(imya string, telo string) (string, error) {
 	k, err := m.klient()
+	var ov kanal.OtkazVersii
+	if errors.As(err, &ov) {
+		// Разные версии это ответ, а не сбой оболочки: экран рисует по коду
+		// protocol-mismatch свой §9.1 «обнови программу» (О3 аудита 1.6.1).
+		b, errJ := json.Marshal(protokol.Kadr{Tip: "otvet", Imya: imya,
+			Oshib: &protokol.Oshibka{Kod: protokol.KodProtocolMismatch, Tekst: ov.Tekst}})
+		if errJ != nil {
+			return "", fmt.Errorf("отказ версии не сериализуется: %w", errJ)
+		}
+		return string(b), nil
+	}
 	if err != nil {
 		return "", err
 	}
@@ -400,6 +411,9 @@ func obryvKanala(otvet protokol.Kadr, err error) bool {
 	return err != nil && otvet.Oshib == nil && !errors.Is(err, kanal.ErrSrokOtveta)
 }
 
+// podklyuchitsya это шов над kanal.Podklyuchitsya для тестов моста.
+var podklyuchitsya = kanal.Podklyuchitsya
+
 // klient returns the live connection, dialing once if there is none.
 func (m *most) klient() (*kanal.Klient, error) {
 	m.mu.Lock()
@@ -407,7 +421,7 @@ func (m *most) klient() (*kanal.Klient, error) {
 	if m.k != nil {
 		return m.k, nil
 	}
-	k, err := kanal.Podklyuchitsya()
+	k, err := podklyuchitsya()
 	if err != nil {
 		return nil, err
 	}

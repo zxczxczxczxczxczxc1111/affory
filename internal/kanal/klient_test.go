@@ -2,6 +2,7 @@ package kanal
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,27 @@ func TestKlientOtvergaetChuzhuyuVersiyu(t *testing.T) {
 		t.Fatal("чужая версия принята")
 	} else if !strings.Contains(err.Error(), protokol.KodProtocolMismatch) {
 		t.Fatalf("не тот код: %v", err)
+	}
+}
+
+// О3 аудита 1.6.1. Разные версии это отдельный отказ, а не сбой подключения:
+// окно показывает по нему свой экран «обнови программу». Путей к нему два:
+// служба отказала сама кадром, или её ответ не сошёлся у нас.
+func TestRaznyeVersiiEtoOtkazVersii(t *testing.T) {
+	var ov OtkazVersii
+	chuzhaya := protokol.Kadr{Tip: "otvet", Imya: "hello", Telo: telo(t, map[string]any{"protocol": 99})}
+	if err := razobratPrivetstvie(chuzhaya, nil); !errors.As(err, &ov) || !strings.Contains(ov.Tekst, "99") {
+		t.Fatalf("наша сверка: %v", err)
+	}
+	otkazSluzhby := protokol.Kadr{Tip: "otvet", Imya: "hello",
+		Oshib: &protokol.Oshibka{Kod: protokol.KodProtocolMismatch, Tekst: "интерфейс говорит на версии 7, служба на 8"}}
+	err := razobratPrivetstvie(otkazSluzhby, errors.New("protocol-mismatch: интерфейс говорит на версии 7, служба на 8"))
+	if !errors.As(err, &ov) || ov.Tekst != otkazSluzhby.Oshib.Tekst {
+		t.Fatalf("отказ службы: %v", err)
+	}
+	// Обрыв при приветствии это не разные версии.
+	if err := razobratPrivetstvie(protokol.Kadr{}, ErrKanalZakryt); errors.As(err, &ov) {
+		t.Fatal("обрыв принят за разные версии")
 	}
 }
 

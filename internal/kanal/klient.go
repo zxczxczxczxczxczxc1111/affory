@@ -125,13 +125,32 @@ type helloTelo struct {
 func proveritHello(k protokol.Kadr) error {
 	var h helloTelo
 	if err := json.Unmarshal(k.Telo, &h); err != nil {
-		return fmt.Errorf("%s: приветствие не разбирается: %w", protokol.KodProtocolMismatch, err)
+		return OtkazVersii{Tekst: fmt.Sprintf("приветствие не разбирается: %v", err)}
 	}
 	if h.Protocol != protokol.Versiya {
-		return fmt.Errorf("%s: служба говорит на версии %d, интерфейс на %d",
-			protokol.KodProtocolMismatch, h.Protocol, protokol.Versiya)
+		return OtkazVersii{Tekst: fmt.Sprintf("служба говорит на версии %d, интерфейс на %d",
+			h.Protocol, protokol.Versiya)}
 	}
 	return nil
+}
+
+// OtkazVersii: служба и интерфейс разных версий. Отдельный тип, а не текст
+// ошибки подключения: окно показывает по нему свой экран «обнови программу»,
+// а не сбой оболочки (О3 аудита 1.6.1).
+type OtkazVersii struct{ Tekst string }
+
+func (o OtkazVersii) Error() string { return protokol.KodProtocolMismatch + ": " + o.Tekst }
+
+// razobratPrivetstvie сводит оба пути к разным версиям в OtkazVersii: служба
+// отказала сама кадром, или её ответ не сошёлся у нас.
+func razobratPrivetstvie(otvet protokol.Kadr, err error) error {
+	if err != nil {
+		if otvet.Oshib != nil && otvet.Oshib.Kod == protokol.KodProtocolMismatch {
+			return OtkazVersii{Tekst: otvet.Oshib.Tekst}
+		}
+		return err
+	}
+	return proveritHello(otvet)
 }
 
 // Events are dropped, not queued forever, when nobody reads them. A UI that
@@ -191,12 +210,7 @@ func Podklyuchitsya() (*Klient, error) {
 	}
 	go k.chitat()
 
-	otvet, err := k.Zvat("hello", helloTelo{Protocol: protokol.Versiya})
-	if err != nil {
-		k.Zakryt()
-		return nil, err
-	}
-	if err := proveritHello(otvet); err != nil {
+	if err := razobratPrivetstvie(k.Zvat("hello", helloTelo{Protocol: protokol.Versiya})); err != nil {
 		k.Zakryt()
 		return nil, err
 	}

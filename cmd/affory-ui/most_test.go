@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -59,6 +60,33 @@ func TestOtkazNeObryvKanala(t *testing.T) {
 	// бы подписку на события и остальные команды в полёте.
 	if obryvKanala(protokol.Kadr{}, fmt.Errorf("%w: status за 5s", kanal.ErrSrokOtveta)) {
 		t.Fatal("вышедший срок принят за обрыв канала")
+	}
+}
+
+// О3 аудита 1.6.1: служба другой версии. Окно получает кадр с кодом
+// protocol-mismatch и рисует свой экран, а не сбой оболочки.
+func TestRaznyeVersiiPriezzhayutKadrom(t *testing.T) {
+	bylo := podklyuchitsya
+	t.Cleanup(func() { podklyuchitsya = bylo })
+	podklyuchitsya = func() (*kanal.Klient, error) {
+		return nil, kanal.OtkazVersii{Tekst: "интерфейс говорит на версии 7, служба на 8"}
+	}
+	m := &most{}
+	s, err := m.Zvat("hello", "")
+	if err != nil {
+		t.Fatalf("разные версии пришли ошибкой, а не кадром: %v", err)
+	}
+	var k protokol.Kadr
+	if err := json.Unmarshal([]byte(s), &k); err != nil {
+		t.Fatal(err)
+	}
+	if k.Oshib == nil || k.Oshib.Kod != protokol.KodProtocolMismatch || !strings.Contains(k.Oshib.Tekst, "версии 7") || k.Imya != "hello" {
+		t.Fatalf("кадр %+v", k)
+	}
+	// Прочие отказы подключения остаются ошибкой.
+	podklyuchitsya = func() (*kanal.Klient, error) { return nil, errors.New("канал не открылся") }
+	if _, err := m.Zvat("status", ""); err == nil {
+		t.Fatal("отказ подключения стал кадром")
 	}
 }
 
