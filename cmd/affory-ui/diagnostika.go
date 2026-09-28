@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/windows"
 )
 
 // Выгрузка диагностики (О6 аудита 1.6.1). Каталог журналов открыт только
@@ -31,28 +28,10 @@ func (m *most) dialogDiagnostiki(imya string) (string, error) {
 		SetMessage("Куда сохранить диагностику Affory").
 		SetFilename(imya).
 		AddFilter("Текст (*.txt)", "*.txt")
-	if kat := katalogDiagnostiki(); kat != "" {
+	if kat := katalogDokumentov(); kat != "" {
 		d = d.SetDirectory(kat)
 	}
 	return otvetDialoga(d.PromptForSingleSelection())
-}
-
-// katalogDiagnostiki это «Документы» человека.
-//
-// Без каталога диалог открывается в рабочем каталоге процесса, а ярлык
-// запускает окно из Program Files: человеку без прав туда не записать, и на
-// «Сохранить» он первым делом получал отказ Windows. Выгрузка сделана как раз
-// для него (приёмка 1.7.0 в госте, 28.09.2026).
-//
-// Отказ оболочки не повод не показывать диалог: пустой каталог значит, что
-// папку выберет сам диалог, как до этой правки.
-func katalogDiagnostiki() string {
-	put, err := windows.KnownFolderPath(windows.FOLDERID_Documents, 0)
-	if err != nil {
-		log.Printf("папка «Документы» не найдена, диалог диагностики откроется где решит сам: %v", err)
-		return ""
-	}
-	return put
 }
 
 // SohranitDiagnostiku спрашивает, куда сохранить, забирает выгрузку у службы и

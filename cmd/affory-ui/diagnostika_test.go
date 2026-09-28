@@ -91,7 +91,7 @@ func TestDiagnostikaSkleivaetsyaVFayl(t *testing.T) {
 // Program Files, откуда ярлык запускает окно, и человек без прав на
 // «Сохранить» первым делом получал отказ Windows (приёмка 1.7.0, 28.09.2026).
 func TestDiagnostikaPredlagaetDokumenty(t *testing.T) {
-	kat := katalogDiagnostiki()
+	kat := katalogDokumentov()
 	if kat == "" {
 		t.Fatal("каталог для диагностики не выбран: диалог откроется в рабочем каталоге процесса")
 	}

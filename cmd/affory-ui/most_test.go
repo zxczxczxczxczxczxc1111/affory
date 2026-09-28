@@ -13,6 +13,7 @@ import (
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"golang.org/x/sys/windows"
 )
 
 func TestSluzhbaUstanovlenaSprashivaetDispetcherSluzhb(t *testing.T) {
@@ -180,6 +181,36 @@ func TestProfilTolkoPoPutiIzDialoga(t *testing.T) {
 	m.puti.zapomnit(&m.puti.prochitat, put)
 	if s, err := m.ProchitatProfil(put); err != nil || s != b64 {
 		t.Fatalf("выбранный путь не прочитан: %q, %v", s, err)
+	}
+}
+
+// Выгрузка профиля открывала диалог в рабочем каталоге процесса, как
+// диагностика до 1.7.0: ярлык запускает окно из Program Files, и человеку без
+// прав Windows отказывала в записи (найдено на приёмке 1.7.0, 28.09.2026).
+func TestProfilPredlagaetDokumenty(t *testing.T) {
+	dokumenty, err := windows.KnownFolderPath(windows.FOLDERID_Documents, 0)
+	if err != nil {
+		t.Fatalf("папка «Документы» не найдена: %v", err)
+	}
+	prezhniy := pokazatSohranenieProfilya
+	t.Cleanup(func() { pokazatSohranenieProfilya = prezhniy })
+	var katalog string
+	vybrano := filepath.Join(t.TempDir(), "profil.affory")
+	pokazatSohranenieProfilya = func(_ *most, k string) (string, error) {
+		katalog = k
+		return vybrano, nil
+	}
+
+	m := &most{}
+	put, err := m.VybratKudaSohranit()
+	if err != nil || put != vybrano {
+		t.Fatalf("диалог вернул %q, %v", put, err)
+	}
+	if !strings.EqualFold(katalog, dokumenty) {
+		t.Fatalf("диалог профиля откроется в %q, а не в «Документах» %q", katalog, dokumenty)
+	}
+	if err := m.SohranitProfil(vybrano, base64.StdEncoding.EncodeToString([]byte("profil"))); err != nil {
+		t.Fatalf("путь из диалога не запомнен: %v", err)
 	}
 }
 

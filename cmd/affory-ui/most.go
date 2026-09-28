@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,18 +136,48 @@ func otvetDialoga(put string, err error) (string, error) {
 	return "", err
 }
 
-// VybratKudaSohranit это диалог сохранения для файла профиля. Пустая строка
-// означает, что человек передумал.
-func (m *most) VybratKudaSohranit() (string, error) {
+// katalogDokumentov это «Документы» человека, с них открываются диалоги
+// сохранения.
+//
+// Без каталога диалог открывается в рабочем каталоге процесса, а ярлык
+// запускает окно из Program Files: человеку без прав туда не записать, и на
+// «Сохранить» он первым делом получал отказ Windows (приёмка 1.7.0 в госте,
+// 28.09.2026).
+//
+// Отказ оболочки не повод не показывать диалог: пустой каталог значит, что
+// папку выберет сам диалог, как до этой правки.
+func katalogDokumentov() string {
+	put, err := windows.KnownFolderPath(windows.FOLDERID_Documents, 0)
+	if err != nil {
+		log.Printf("папка «Документы» не найдена, диалог сохранения откроется где решит сам: %v", err)
+		return ""
+	}
+	return put
+}
+
+// Шов для тестов: диалог сохранения профиля. Каталог приходит снаружи, чтобы
+// тест видел, где диалог откроется.
+var pokazatSohranenieProfilya = (*most).dialogProfilya
+
+func (m *most) dialogProfilya(katalog string) (string, error) {
 	// Заголовка у диалога сохранения в Wails v3 beta.26 нет: SetTitle есть
 	// только у OpenFile. SetMessage на Windows ничего не показывает, в диалог
 	// уходят только заголовок, фильтры, имя и каталог (dialogs_windows.go).
 	// Заголовок ставит лишь SetOptions, а он переписывает все поля разом.
-	put, err := otvetDialoga(m.app.Dialog.SaveFile().
+	d := m.app.Dialog.SaveFile().
 		SetMessage("Куда вынести профиль Affory").
 		SetFilename("profil.affory").
-		AddFilter("Профиль Affory (*.affory)", "*.affory").
-		PromptForSingleSelection())
+		AddFilter("Профиль Affory (*.affory)", "*.affory")
+	if katalog != "" {
+		d = d.SetDirectory(katalog)
+	}
+	return otvetDialoga(d.PromptForSingleSelection())
+}
+
+// VybratKudaSohranit это диалог сохранения для файла профиля. Пустая строка
+// означает, что человек передумал.
+func (m *most) VybratKudaSohranit() (string, error) {
+	put, err := pokazatSohranenieProfilya(m, katalogDokumentov())
 	m.puti.zapomnit(&m.puti.sohranit, put)
 	return put, err
 }
