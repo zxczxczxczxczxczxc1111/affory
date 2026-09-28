@@ -493,7 +493,8 @@ func (m *most) PerezapustitOkno() error {
 	if _, err := os.Stat(novoe); err != nil {
 		return fmt.Errorf("новый файл окна не найден: %w", err)
 	}
-	cmd := exec.Command(novoe)
+	// flagSmena: это окно ещё живо, и без флага новое ушло бы, увидев его.
+	cmd := exec.Command(novoe, flagSmena)
 	cmd.Dir = katalog
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("новое окно не запустилось: %w", err)
@@ -551,10 +552,13 @@ func (m *most) PerezapustitSPravami(vkladka string) error {
 	}
 	verb, _ := windows.UTF16PtrFromString("runas")
 	fayl, _ := windows.UTF16PtrFromString(svoy)
-	var parametry *uint16
+	// flagSmena: это окно ещё живо, и без флага окно с правами ушло бы, увидев
+	// его (О1 аудита 1.6.1).
+	stroka := flagSmena
 	if vkladkiOkna[vkladka] {
-		parametry, _ = windows.UTF16PtrFromString(flagVkladka + "=" + vkladka)
+		stroka += " " + flagVkladka + "=" + vkladka
 	}
+	parametry, _ := windows.UTF16PtrFromString(stroka)
 	if err := windows.ShellExecute(0, verb, fayl, parametry, nil, windows.SW_SHOWNORMAL); err != nil {
 		// Отказ от запроса прав это не поломка: человек нажал «Нет». Свой текст,
 		// а не системный: Windows отвечает по-английски («The operation was

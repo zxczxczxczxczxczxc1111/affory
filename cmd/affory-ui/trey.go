@@ -388,6 +388,17 @@ func (t *Trey) OtkrytObnovlenieIzvne() {
 	t.naGlavnom(func() { t.otkrytObnovlenie() })
 }
 
+// PokazatIzvne показывает окно по просьбе второго запуска (О1 аудита 1.6.1).
+// Просьба приходит из горутины Wails, а показ трогает HWND, поэтому работа
+// уезжает на главный поток, как у OtkrytObnovlenieIzvne.
+func (t *Trey) PokazatIzvne() {
+	if t.naGlavnom == nil {
+		t.pokazat()
+		return
+	}
+	t.naGlavnom(func() { t.pokazat() })
+}
+
 func (t *Trey) Pokazat() {
 	t.okno.Show()
 	// Wails v3.0.0-beta.16: Show() on a window created Hidden and never run

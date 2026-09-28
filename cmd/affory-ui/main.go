@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -64,14 +65,28 @@ func main() {
 		soobshchitNetWebView2()
 		os.Exit(1)
 	}
+	// Преемник живого окна ждёт его ухода ДО application.New: там Wails берёт
+	// мьютекс одиночного запуска, и при живом прежнем окне преемник вышел бы.
+	if slices.Contains(os.Args[1:], flagSmena) && !dozhdatsyaMyuteksa(imyaMyuteksa(), srokSmeny) {
+		log.Printf("прежнее окно не ушло за %v", srokSmeny)
+	}
 	m := &most{}
 	uvedomleniya := notifications.New()
+	// Трей появляется позже приложения, а просьба второго запуска может прийти
+	// сразу. До трея показывать нечего: окно и так поднимается.
+	var treyGotov atomic.Pointer[Trey]
 	// Toast-уведомления Windows: служба Wails при старте регистрирует
 	// COM-активацию в HKCU (Software\Classes\CLSID\<guid>), это её цена.
-	app := application.New(prilozhenieOpcii(
+	opciiPrilozheniya := prilozhenieOpcii(
 		application.NewService(m),
 		application.NewService(uvedomleniya),
-	))
+	)
+	opciiPrilozheniya.SingleInstance = odinEkzemplyar(func() {
+		if t := treyGotov.Load(); t != nil {
+			t.PokazatIzvne()
+		}
+	})
+	app := application.New(opciiPrilozheniya)
 	// The service needs the app to emit events; the app needs the service to
 	// exist. Wire it after both are alive rather than pretend there is no cycle.
 	m.app = app
@@ -137,6 +152,7 @@ func main() {
 	// программы, которой это чинить, а выход поверх поднятого туннеля увёл бы
 	// весь трафик в туннель, о котором на экране не осталось ни значка.
 	trey := novyyTrey(app, okno, m.zvatFonovo, m.SnyatRezhim, m.Otklyuchit)
+	treyGotov.Store(trey)
 	// Трей узнаёт о запуске приложения отсюда. До этого события платформенной
 	// части у приложения нет, и уводить на главный поток нечего и некуда: окно
 	// падало паникой прямо в main, поймано живым прогоном 10.09.2026.

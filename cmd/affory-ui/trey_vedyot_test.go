@@ -68,6 +68,24 @@ func TestShchelchokPoVsplyvashkeIdyotCherezGlavnyyPotok(t *testing.T) {
 
 // До запуска приложения отправителя работы ещё нет, и щелчок не имеет права
 // падать на этом: показывать в этот момент всё равно некуда.
+// О1 аудита 1.6.1: просьба второго запуска приходит из горутины Wails, и показ
+// окна уезжает на главный поток.
+func TestVtoroyZapuskPokazyvaetCherezGlavnyyPotok(t *testing.T) {
+	pokazano, naGlavnom := 0, 0
+	t_ := &Trey{pokazat: func() { pokazano++ }}
+	t_.naGlavnom = func(f func()) { naGlavnom++; f() }
+	t_.PokazatIzvne()
+	if naGlavnom != 1 || pokazano != 1 {
+		t.Fatalf("на главный поток %d, показов %d", naGlavnom, pokazano)
+	}
+	// Отправителя ещё нет: показ идёт напрямую и не падает.
+	bez := &Trey{pokazat: func() { pokazano++ }}
+	bez.PokazatIzvne()
+	if pokazano != 2 {
+		t.Fatalf("без отправителя показов %d", pokazano)
+	}
+}
+
 func TestShchelchokBezOtpravitelyaNePadaet(t *testing.T) {
 	pokazano := 0
 	t_ := &Trey{pokazat: func() { pokazano++ }}
