@@ -1,0 +1,9 @@
+{
+  "uroven": "light",
+  "pravil": 44757,
+  "versiya": "2026.0928.0846.00",
+  "sobran": "2026-09-28T08:46:00Z",
+  "sha256": "a6fb7ed6c1775d01d7aaecfc9952f76eee24db1cbf01b1e3a06432500952a753",
+  "istochnik": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt",
+  "yadro": "sing-box 1.14.2-affory.2"
+}

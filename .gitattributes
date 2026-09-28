@@ -11,3 +11,6 @@ go.sum text eol=lf
 *.nsi  text eol=crlf
 *.patch text eol=lf -whitespace
 cmd/affory-ui/frontend/src/shrifty/OFL-Manrope.txt -whitespace
+# Исходник списка рекламы лежит байт-в-байт тем, что опубликовал HaGeZi (GPL).
+internal/reklama/hagezi-*.txt -text -diff
+*.srs binary

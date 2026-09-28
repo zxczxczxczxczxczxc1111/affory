@@ -23,3 +23,7 @@ Affory распространяется под GNU GPL версии 3 или н�
 Встроенный каталог сервисов содержит выбранные доменные суффиксы из
 https://github.com/rekryt/iplist (OpenCCK), лицензия MIT, текст LICENSE.opencck.
 Версия набора и ссылки на конкретную ревизию указаны в internal/katalog/servisy.json.
+Встроенный начальный список блокировки рекламы собран из HaGeZi DNS Blocklists
+(https://github.com/hagezi/dns-blocklists), лицензия GNU GPL v3, текст в
+GPL-3.0.txt. Исходник это internal/reklama/hagezi-light.txt в архиве исходного
+кода, версия указана в его заголовке и в internal/reklama/vstroennyy.json.

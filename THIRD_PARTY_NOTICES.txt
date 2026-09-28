@@ -38,6 +38,17 @@ License: MIT. See internal/katalog/LICENSE.opencck.
 The selected domain suffixes and their source revisions are recorded in
 internal/katalog/servisy.json.
 
+HaGeZi DNS Blocklists
+---------------------
+Source: https://github.com/hagezi/dns-blocklists (adblock/light.txt, adblock/multi.txt)
+License: GNU General Public License v3.0. See GPL-3.0.txt next to the program.
+Included: a sing-box rule-set compiled from the "Multi LIGHT" list, embedded into
+affory-svc.exe as the starting list (internal/reklama/vstroennyy-light.srs).
+Its exact source text is internal/reklama/hagezi-light.txt; the list version is
+recorded in internal/reklama/vstroennyy.json. At run time the service downloads
+the current Multi LIGHT or NORMAL list from raw.githubusercontent.com and
+converts it with the bundled sing-box.
+
 Other components
 ----------------
 Go dependencies are recorded in go.mod and go.sum. Frontend dependencies are

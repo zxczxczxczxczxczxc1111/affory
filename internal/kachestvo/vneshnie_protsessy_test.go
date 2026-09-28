@@ -39,6 +39,8 @@ var vneshnieProtsessy = map[string]string{
 	filepath.Join("cmd", "affory-ui", "most.go"): "перезапуск своего окна: вывод не читается",
 	filepath.Join("internal", "diagnostika", "istochniki_windows.go"): "netsh show dynamicport: из вывода " +
 		"берутся только ЧИСЛА, а цифры одинаковы в любой кодовой странице. Текст никуда не показывается",
+	filepath.Join("internal", "reklama", "obnovit", "main.go"): "инструмент разработчика, sing-box " +
+		"rule-set convert/match и version: вывод ядра уже UTF-8",
 	filepath.Join("internal", "set", "ipv6.go"): "netsh: единственное место, где он зовётся, " +
 		"и вывод переводится из кодовой страницы консоли (kodirovki.Konsoli)",
 	filepath.Join("internal", "yadra", "proverka.go"): "sing-box check: вывод ядра уже UTF-8",
