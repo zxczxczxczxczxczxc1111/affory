@@ -87,6 +87,22 @@ func TestDiagnostikaSkleivaetsyaVFayl(t *testing.T) {
 	}
 }
 
+// Без каталога диалог открывался в рабочем каталоге процесса, то есть в
+// Program Files, откуда ярлык запускает окно, и человек без прав на
+// «Сохранить» первым делом получал отказ Windows (приёмка 1.7.0, 28.09.2026).
+func TestDiagnostikaPredlagaetDokumenty(t *testing.T) {
+	kat := katalogDiagnostiki()
+	if kat == "" {
+		t.Fatal("каталог для диагностики не выбран: диалог откроется в рабочем каталоге процесса")
+	}
+	if st, err := os.Stat(kat); err != nil || !st.IsDir() {
+		t.Fatalf("каталога %q нет: %v", kat, err)
+	}
+	if pf := os.Getenv("ProgramFiles"); pf != "" && strings.HasPrefix(strings.ToLower(kat), strings.ToLower(pf)) {
+		t.Fatalf("каталог %q внутри Program Files", kat)
+	}
+}
+
 func TestDiagnostikaOtmenaDialogaNichegoNeDelaet(t *testing.T) {
 	zaprosy, _ := podstavitDiagnostiku(t, "", []string{"шапка\n"})
 	itog, err := (&most{}).SohranitDiagnostiku()
