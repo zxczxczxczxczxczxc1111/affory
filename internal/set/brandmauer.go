@@ -251,7 +251,7 @@ func VyklyuchitVesTrafik() error {
 		return err
 	}
 	if err != nil {
-		return err
+		return snyatBezOtkata(err)
 	}
 
 	var oshibki []error
@@ -416,7 +416,13 @@ func SnyatOsirotevshee() (snyato bool, zapertaNamerenno bool, err error) {
 		return podmesti()
 	}
 	if err != nil {
-		return false, false, err
+		// Намеренность записана в том же файле и прочитана быть не может.
+		// Запертая навсегда машина хуже распечатанной: из первой человеку не
+		// выйти без аварийного листа.
+		if err := snyatBezOtkata(err); err != nil {
+			return false, false, err
+		}
+		return true, false, snyatSirotuIPv6()
 	}
 	if o.Namerenno {
 		// Файлу верить нельзя, не спросив саму машину. Выход из режима руками по
@@ -455,6 +461,39 @@ func SnyatOsirotevshee() (snyato bool, zapertaNamerenno bool, err error) {
 // Прежде правило снималось только при отсутствии файла отката, потому что
 // VyklyuchitVesTrafik перебирает имена ИЗ ФАЙЛА, а IPv6 туда не вносился.
 func snyatSirotuIPv6() error { return VernutIPv6() }
+
+// PolitikaWindowsPoUmolchaniyu это политика профиля у Windows из коробки.
+const PolitikaWindowsPoUmolchaniyu = "blockinbound,allowoutbound"
+
+// snyatBezOtkata распечатывает машину, когда файл отката есть, но не
+// читается ни он, ни его прежняя версия (Н4 аудита 1.6.1).
+//
+// До 1.7.0 и выключение режима, и уборка при старте возвращали здесь ошибку
+// разбора, ничего не сняв, и машина оставалась запертой навсегда. Прежняя
+// политика неизвестна, но файл есть, значит запирали мы, и возвращается
+// умолчание Windows. Только если машина и правда заперта: открытую трогать
+// незачем, её политика может быть чужой настройкой. Выключенные нами профили
+// брандмауэра остаются включёнными, вернуть их не по чему.
+func snyatBezOtkata(prichina error) error {
+	log.Printf("файл отката не читается (%v): возвращаю политику Windows по умолчанию %s "+
+		"и снимаю правила Affory. Профили, включённые при запирании, остаются включёнными",
+		prichina, PolitikaWindowsPoUmolchaniyu)
+	zaperta, err := VesTrafikVklyuchyon()
+	if err != nil {
+		return fmt.Errorf("файл отката не читается (%v), а состояние брандмауэра не прочитано: %w", prichina, err)
+	}
+	if zaperta {
+		if _, err := vypolnit([]string{"advfirewall", "set", "allprofiles", "firewallpolicy", PolitikaWindowsPoUmolchaniyu}); err != nil {
+			return fmt.Errorf("файл отката не читается (%v), а политика не возвращена: %w", prichina, err)
+		}
+	}
+	if _, _, err := podmesti(); err != nil {
+		return err
+	}
+	// Нечитаемый файл уходит: оставленный, он повторял бы то же на каждом
+	// старте и мешал бы следующему запиранию записать свой.
+	return UdalitOtkat()
+}
 
 // podmesti снимает наши правила, ничего не зная о прошлом.
 //

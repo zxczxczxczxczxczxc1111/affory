@@ -439,6 +439,61 @@ func TestBityyOtkatChitaetsyaIzZapasa(t *testing.T) {
 	}
 }
 
+// Н4 аудита 1.6.1. Нечитаемый файл отката (испорчены и он, и прежняя версия)
+// оставлял машину запертой навсегда: и выключение режима, и уборка при старте
+// возвращали ошибку разбора, ничего не сняв. Прежняя политика неизвестна, но
+// файл есть, значит запирали мы, и возвращается умолчание Windows.
+func TestNechitaemyyOtkatNeZapiraetMashinu(t *testing.T) {
+	for _, sluchay := range []struct {
+		imya  string
+		snyat func() error
+	}{
+		{"выключение режима", VyklyuchitVesTrafik},
+		{"уборка при старте", func() error { _, _, err := SnyatOsirotevshee(); return err }},
+	} {
+		t.Run(sluchay.imya, func(t *testing.T) {
+			vremennyyKatalog(t)
+			bezReestra(t)
+			for _, p := range []string{putOtkata(), putOtkata() + sostoyanie.RasshirenieZapasa} {
+				if err := os.WriteFile(p, make([]byte, 64), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var komandy []string
+			zhivoy := otvetProfiley(vyvodProfilyaRu) // профиль включён
+			staryy := vypolnit
+			t.Cleanup(func() { vypolnit = staryy })
+			vypolnit = func(a []string) (string, error) {
+				komandy = append(komandy, strings.Join(a, " "))
+				return zhivoy(a)
+			}
+			// Машина заперта нами до сбоя.
+			if _, err := vypolnit([]string{"advfirewall", "set", "allprofiles", "firewallpolicy", "blockinbound,blockoutbound"}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := sluchay.snyat(); err != nil {
+				t.Fatalf("снятие упало на нечитаемом откате: %v", err)
+			}
+			if zaperta, err := VesTrafikVklyuchyon(); err != nil || zaperta {
+				t.Fatalf("машина осталась запертой (%v, %v)", zaperta, err)
+			}
+			snyatoPravil := 0
+			for _, k := range komandy {
+				if strings.Contains(k, "delete rule") {
+					snyatoPravil++
+				}
+			}
+			if snyatoPravil == 0 {
+				t.Fatal("правила Affory не сняты")
+			}
+			if _, err := ProchitatOtkat(); !errors.Is(err, ErrOtkataNet) {
+				t.Fatalf("нечитаемый откат остался и повторит то же на следующем старте: %v", err)
+			}
+		})
+	}
+}
+
 func TestUstarevshiyOtkatNeDelaetMashinuZapertoy(t *testing.T) {
 	// A rollback file left behind by a manual emergency exit says Namerenno, but
 	// the machine is wide open: the policy is back to AllowOutbound and no rule of
