@@ -399,6 +399,11 @@ func profili() map[string]Vhod {
 	sProksi.PortProksi = 10809
 	itog["прокси рядом с tun"] = sProksi
 
+	// Блокировка рекламы (28.09.2026): local-набор, predefined в DNS и reject
+	// с no_drop в маршруте. Имена полей и форму SOA ловит только check, а файл
+	// набора ядро читает на самом деле, поэтому тест подкладывает настоящий.
+	itog["с блокировкой рекламы"] = vhodSReklamoy([]string{"mc.yandex.ru"})
+
 	return itog
 }
 
@@ -412,7 +417,8 @@ func TestInvariant8ProfiliProhodyatCheck(t *testing.T) {
 	// Число проверяется ЯВНО. По «PASS на каждом имени» нельзя отличить
 	// сделанное от несделанного: молча потерянный профиль тоже даёт зелёный.
 	// 21 с 26.09.2026: добавлен reality поверх grpc. 22 с 28.09.2026: tls-tcp.
-	const skolkoZhdyom = 22
+	// 23 с 28.09.2026: блокировка рекламы.
+	const skolkoZhdyom = 23
 	if n := len(profili()); n != skolkoZhdyom {
 		t.Fatalf("профилей %d, а ожидалось %d: профиль потерян или добавлен молча", n, skolkoZhdyom)
 	}
@@ -421,7 +427,23 @@ func TestInvariant8ProfiliProhodyatCheck(t *testing.T) {
 		t.Skip("не задан AFFORY_SINGBOX: без живого ядра инвариант 8 непроверяем, " +
 			"и притворяться, что он проверен, хуже, чем пропустить")
 	}
+	// Local-набор без файла роняет check целиком, поэтому профилю с рекламой
+	// нужен настоящий файл. Он читается с диска, а не через пакет reklama: так
+	// генератору не нужен экспорт встроенного списка.
+	nabor, err := os.ReadFile(filepath.Join("..", "reklama", "vstroennyy-light.srs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	putNabora := filepath.Join(t.TempDir(), "reklama.srs")
+	if err := os.WriteFile(putNabora, nabor, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for imya, v := range profili() {
+		if v.Reklama != nil {
+			r := *v.Reklama
+			r.Fayl = putNabora
+			v.Reklama = &r
+		}
 		b, err := SingBox(v)
 		if err != nil {
 			t.Fatalf("%s: генератор отказал: %v", imya, err)

@@ -183,6 +183,10 @@ type Vhod struct {
 	// объявленные 440 на полке 20 Мбит дали восемь провалов и p95 3214 мс.
 	PolosaVverh int
 	PolosaVniz  int
+
+	// Reklama это блокировка рекламы; nil значит «выключена». Отдельное поле,
+	// а не признак в NaborPravil: нулевое значение признака значило бы обход.
+	Reklama *Reklama
 }
 
 // ClashApi: секрет случайный на каждый старт, порт от системы. Оба значения
@@ -206,6 +210,9 @@ var (
 
 func (v Vhod) proverit() error {
 	if err := proveritMarshruty(v); err != nil {
+		return err
+	}
+	if err := proveritReklamu(v); err != nil {
 		return err
 	}
 	switch {

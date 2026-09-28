@@ -233,6 +233,12 @@ func pravila(v Vhod) []any {
 			"action": "hijack-dns",
 		},
 	)
+	// Блокировка рекламы: НИЖЕ петлевых (наши процессы, адреса серверов,
+	// multicast) и hijack-dns, ВЫШЕ правила proksi-in и любого обхода. Не
+	// обход, поэтому остаётся и в режиме «весь трафик».
+	if pr, est := praviloReklamy(v); est {
+		p = append(p, pr)
+	}
 	// В режиме "весь трафик" отменяются УДОБНЫЕ исключения, а не петлевые.
 	if v.Trafik != nil {
 		// Explicit proxy traffic requests the VPN even in selective mode.
@@ -745,11 +751,17 @@ func putIli(v, poumolchaniyu string) string {
 // иначе российский сайт получает ответ из Нидерландов и голландский узел CDN,
 // и прямой путь оказывается медленнее, чем без VPN. Вторая пара правил это
 // удобные исключения: в режиме «весь трафик» их нет, как и самих обходов.
+//
+// Блок рекламы стоит сразу под локальными именами и до выхода в режиме «весь
+// трафик»: выше набора ru (an.yandex.ru, mc.yandex.ru, ad.mail.ru входят в
+// category-ru и иначе ушли бы местному резолверу) и выше доменных правил
+// Trafik (adeventtracker.spotify.com под суффиксом spotify.com).
 func dnsPravila(v Vhod) []any {
 	p := []any{
 		map[string]any{"domain_suffix": []string{".local", ".lan", ".home.arpa"}, "server": TegMestnyy},
 		map[string]any{"domain_regex": []string{"^[^.]+$"}, "server": TegMestnyy},
 	}
+	p = append(p, dnsPravilaReklamy(v)...)
 	if v.VesTrafik {
 		return p
 	}

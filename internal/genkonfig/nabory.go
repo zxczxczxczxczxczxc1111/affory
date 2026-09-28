@@ -31,10 +31,11 @@ const intervalObnovleniyaNaborov = "24h"
 // razdelNaborov собирает route.rule_set. Пустой вход даёт nil, а не пустой
 // список: пустой раздел в конфиге это вопрос «а что здесь было?» через год.
 func razdelNaborov(v Vhod) []any {
-	if len(v.Nabory) == 0 {
+	nr, estR := naborReklamy(v)
+	if len(v.Nabory) == 0 && !estR {
 		return nil
 	}
-	r := make([]any, 0, len(v.Nabory))
+	r := make([]any, 0, len(v.Nabory)+1)
 	for _, n := range v.Nabory {
 		r = append(r, map[string]any{
 			"type": "remote", "format": "binary", "tag": n.Teg,
@@ -47,6 +48,11 @@ func razdelNaborov(v Vhod) []any {
 			"http_client":     map[string]any{"detour": TegPryamo},
 			"update_interval": intervalObnovleniyaNaborov,
 		})
+	}
+	// Набор блокировки рекламы идёт ПОСЛЕ удалённых: у них порядок закреплён
+	// тестами, а смысл у него другой, он не обход (см. reklama.go).
+	if estR {
+		r = append(r, nr)
 	}
 	return r
 }
