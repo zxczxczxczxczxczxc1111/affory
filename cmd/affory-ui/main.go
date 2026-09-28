@@ -59,6 +59,11 @@ func prilozhenieOpcii(sluzhby ...application.Service) application.Options {
 }
 
 func main() {
+	// До создания приложения: без WebView2 окно вышло бы чёрным и без рамки.
+	if !webView2Est() {
+		soobshchitNetWebView2()
+		os.Exit(1)
+	}
 	m := &most{}
 	uvedomleniya := notifications.New()
 	// Toast-уведомления Windows: служба Wails при старте регистрирует

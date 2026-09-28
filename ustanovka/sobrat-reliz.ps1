@@ -91,6 +91,18 @@ try {
     # и панель разработчика. Выпуски 1.0.0-1.1.3 ушли людям такими.
     & go build -trimpath -tags production -ldflags "$ld -H windowsgui" -o (Join-Path $sborka 'affory-ui.exe') ./cmd/affory-ui
     if ($LASTEXITCODE -ne 0) { throw 'affory-ui не собрался' }
+    # Загрузчик WebView2 для установщика. Он уже лежит в модуле Wails той версии,
+    # что записана в go.mod, и качать его отдельно незачем. Подпись Microsoft
+    # сверяется: установщик запускает его с правами администратора.
+    $wails = & go list -m -f '{{.Dir}}' github.com/wailsapp/wails/v3
+    if ($LASTEXITCODE -ne 0 -or -not $wails) { throw 'каталог модуля Wails не найден' }
+    $zagruzchik = Join-Path $wails 'internal\commands\webview2\MicrosoftEdgeWebview2Setup.exe'
+    if (-not (Test-Path $zagruzchik)) { throw "в модуле Wails нет загрузчика WebView2: $zagruzchik" }
+    $podpis = Get-AuthenticodeSignature $zagruzchik
+    if ($podpis.Status -ne 'Valid' -or $podpis.SignerCertificate.Subject -notmatch '^CN=Microsoft Corporation,') {
+        throw "у загрузчика WebView2 нет действительной подписи Microsoft: $($podpis.Status) $($podpis.SignerCertificate.Subject)"
+    }
+    Copy-Item $zagruzchik (Join-Path $sborka 'MicrosoftEdgeWebview2Setup.exe')
 } finally { Pop-Location }
 Copy-Item $Yadro (Join-Path $sborka 'sing-box.exe')
 
