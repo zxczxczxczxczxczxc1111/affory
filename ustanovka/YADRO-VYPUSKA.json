@@ -1,7 +1,7 @@
 {
-  "vypusk": "1.6.2",
+  "vypusk": "1.7.0",
   "repozitoriy": "https://github.com/SagerNet/sing-box.git",
-  "teg": "v1.14.2",
+  "teg": "коммит запрошен напрямую, тег не при чём",
   "kommit": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709",
   "process_family": {
     "patch": "cd0f0037d193a9916b482851fe2c6dedd8e3ff1e5602d1cd0e9c295851e597f3",
@@ -15,18 +15,19 @@
     "shared_windows_test.go": "c50e6fb77fff48d8a43d098b9f0ae12f3e00a1430caa9ade099f67befc02031a",
     "shared_windows.go": "735cc98458b5a93ff581de70385ab7acc05bd6e100781a944604167648d9a5c2",
     "view_windows_test.go": "101c35e5eb8d6796b62ca638c090a98ea898bdeea85f2f2b368e166acc8b3747",
-    "view_windows.go": "501c3777d6091fefd4fd0de303b15c72b59cff0093d8d5eb4e654f8ed3fe23f5",
-    "watcher_windows_test.go": "f4c2b0cd8531ea9c858b655651b8cdcf0fd01921c68d2f7c8251d4900c32be90",
-    "watcher_windows.go": "d906aec2621a9df6c5fea6b7cada4adeb2571d824913baead886c8194bf6ffe0"
+    "view_windows.go": "065d79969497b0695385d59f10309a2bc331b192a33fbc5f0326ba288eb38f16",
+    "watcher_windows_test.go": "b115b815e1fda802c9a3782dbd0eb279bb0eb8f4d4215099ef843b659031a917",
+    "watcher_windows.go": "de20bf1929307d7764cb8aee83db65f92089bd1f25d2f5a9001ad1b129db75eb"
   },
   "quic_go": {
     "versiya": "v0.61.0-sing-box-mod.7",
-    "patch": "269c8eab84ab02c87e16d2e5ff4acbc5c99afe607c1f163e0b30e7c2a418c40f"
+    "patch": "2d26d5b39e4c42256a72b6964740d40338032d61b9df40efaa5fdb3527eedeb7"
   },
-  "versiya": "1.14.2-affory.1",
+  "versiya": "1.14.2-affory.2",
   "tegi": "with_gvisor,with_quic,with_utls,with_clash_api",
   "go": "go version go1.26.8 windows/amd64",
-  "sha256": "12d4667bea1445d6dfac269cc2bbdbbb3ef795b96246a663b270b9c9462351c7",
-  "bayt": 44509184,
-  "sobrano": "2026-09-28T10:08:37.2819326+03:00"
+  "sha256": "7a87ccc527b0b7106c03500e9dd98c4c358c5ba308738c7f80a426efd8532920",
+  "bayt": 44510720,
+  "sobrano": "2026-09-28T14:20:47.7189662+03:00",
+  "go_klienta": "go1.27.1"
 }
