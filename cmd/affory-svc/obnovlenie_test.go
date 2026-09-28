@@ -171,3 +171,57 @@ func TestStatusPokazyvaetIshodObnovleniyaIZabiraetFayl(t *testing.T) {
 		t.Fatal("файл исхода пережил показ")
 	}
 }
+
+// Б1 аудита 1.6.1. Архив ставился любой версии, и старая сборка молча
+// откатывала машину на исправленные дефекты. Номер берётся из ресурсов
+// affory-ui.exe в архиве: запускать новый exe от SYSTEM ради номера нельзя.
+func TestInstallUpdateNePonizhaetVersiyu(t *testing.T) {
+	sluchai := []struct {
+		ustanovlena, vArhive string
+		prochitana, prinyat  bool
+	}{
+		{"1.7.0", "1.6.2", true, false},
+		{"1.7.0", "1.7.0", true, true},
+		{"1.7.0", "1.7.1", true, true},
+		{"1.7.0", "", false, true},
+		{"dev", "1.0.0", true, true},
+	}
+	for _, sl := range sluchai {
+		byla := versiyaProgrammy
+		versiyaProgrammy = sl.ustanovlena
+		byloChtenie := versiyaSborki
+		versiyaSborki = func(string) (string, bool) { return sl.vArhive, sl.prochitana }
+		s := podstavnaya(t, nil)
+		zapuskov := 0
+		s.zapustitPodmenshchika = func(prog, novaya string, podnyat bool) error { zapuskov++; return nil }
+		put := arhivSborki(t, map[string]string{"affory-svc.exe": "n", "affory-ui.exe": "u"}, true)
+		telo, _ := json.Marshal(map[string]string{"path": put})
+		o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "installUpdate", Telo: telo})
+		versiyaProgrammy, versiyaSborki = byla, byloChtenie
+		if sl.prinyat && (o.Oshib != nil || zapuskov != 1) {
+			t.Errorf("%s поверх %s: ждали установку, получили %+v, запусков %d", sl.vArhive, sl.ustanovlena, o.Oshib, zapuskov)
+		}
+		if !sl.prinyat && (o.Oshib == nil || o.Oshib.Kod != protokol.KodArhivNegoden || !strings.Contains(o.Oshib.Tekst, "старее") || zapuskov != 0) {
+			t.Errorf("%s поверх %s: ждали отказ «старее», получили %+v, запусков %d", sl.vArhive, sl.ustanovlena, o.Oshib, zapuskov)
+		}
+	}
+}
+
+// Номер из ресурсов настоящего exe. notepad.exe есть на любой Windows и несёт
+// VERSIONINFO; файл без ресурсов номера не даёт.
+func TestVersiyaIzResursovExe(t *testing.T) {
+	v, ok := versiyaIzResursov(filepath.Join(os.Getenv("SystemRoot"), "System32", "notepad.exe"))
+	if !ok {
+		t.Fatal("номер notepad.exe не прочитан")
+	}
+	if _, razobrana := razobratVersiyu(v); !razobrana {
+		t.Fatalf("номер %q не в виде X.Y.Z", v)
+	}
+	ne := filepath.Join(t.TempDir(), "ne.exe")
+	if err := os.WriteFile(ne, []byte("не exe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := versiyaIzResursov(ne); ok {
+		t.Fatalf("у файла без ресурсов прочитан номер %q", v)
+	}
+}

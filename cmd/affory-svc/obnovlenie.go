@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
@@ -94,6 +95,9 @@ func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) p
 	if _, err := os.Stat(filepath.Join(novaya, "affory-svc.exe")); err != nil {
 		return s.otkazObnovleniya(k, protokol.KodArhivNegoden, "в архиве нет affory-svc.exe")
 	}
+	if err := proveritNePonizhenie(novaya); err != nil {
+		return s.otkazObnovleniya(k, protokol.KodArhivNegoden, err.Error())
+	}
 	// Был ли туннель поднят, запоминается ДО опускания (Н10 аудита 1.6.1):
 	// новая служба поднимет его сама, человек в VPN не должен после
 	// обновления оказаться без него. Защита отдельно не передаётся: её
@@ -114,6 +118,50 @@ func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) p
 		return s.otkazObnovleniya(k, protokol.KodUpdateRollback, "подменщик не запущен: "+err.Error())
 	}
 	return otvet(k.Id, k.Imya, map[string]any{"zapushchena": true, "srok_s": int(obnovlenie.SrokPodyoma.Seconds())})
+}
+
+// Шов для тестов: номер сборки из ресурсов exe.
+var versiyaSborki = versiyaIzResursov
+
+// proveritNePonizhenie отвергает архив старее установленной версии (Б1 аудита
+// 1.6.1). Та же версия ставится: так чинят испорченную установку.
+//
+// Номер берётся из ресурсов affory-ui.exe, куда его прошивает sobrat-reliz.ps1
+// (go-winres --file-version): запускать новый exe от SYSTEM ради номера нельзя,
+// а имя архива человек волен назвать как угодно. Сборка без ресурсов (стенд,
+// ручная сборка) и служба dev не судятся: по ним нечего сравнивать, и отказ
+// сломал бы приёмку обновления в госте.
+func proveritNePonizhenie(novaya string) error {
+	if versiyaProgrammy == "dev" {
+		return nil
+	}
+	vArhive, ok := versiyaSborki(filepath.Join(novaya, "affory-ui.exe"))
+	if !ok {
+		log.Printf("номер сборки в архиве не прочитан, понижение не проверено")
+		return nil
+	}
+	if novee(versiyaProgrammy, vArhive) {
+		return fmt.Errorf("архив версии %s старее установленной %s, понижение версии не ставится", vArhive, versiyaProgrammy)
+	}
+	return nil
+}
+
+// versiyaIzResursov читает X.Y.Z из VERSIONINFO файла, не запуская его.
+func versiyaIzResursov(put string) (string, bool) {
+	razmer, err := windows.GetFileVersionInfoSize(put, nil)
+	if err != nil || razmer == 0 {
+		return "", false
+	}
+	blok := make([]byte, razmer)
+	if err := windows.GetFileVersionInfo(put, 0, razmer, unsafe.Pointer(&blok[0])); err != nil {
+		return "", false
+	}
+	var info *windows.VS_FIXEDFILEINFO
+	var dlina uint32
+	if err := windows.VerQueryValue(unsafe.Pointer(&blok[0]), `\`, unsafe.Pointer(&info), &dlina); err != nil || info == nil || dlina == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%d.%d.%d", info.FileVersionMS>>16, info.FileVersionMS&0xffff, info.FileVersionLS>>16), true
 }
 
 // zapustitPodmenshchika копирует ТЕКУЩУЮ службу в свой каталог внутри каталога
