@@ -565,6 +565,22 @@ it("стрелки ходят по вкладкам правил, Tab донос
   expect(screen.getByRole("tab",{selected:true}).textContent).toMatch(/Сервисы/);
 });
 
+it("служба с рекламой даёт четвёртую вкладку: End ведёт на неё, точка и счёт видны снаружи", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={{...rules,reklama:{vkl:true,uroven:"light",razresheno:["mc.yandex.ru","ad.example"]}}} otlozheno={{}} naKomandu={vi.fn()}/>);
+  const vkladki = screen.getAllByRole("tab");
+  expect(vkladki.map(v=>v.tabIndex)).toEqual([0,-1,-1,-1]);
+  fireEvent.keyDown(vkladki[0],{key:"End"});
+  expect(screen.getByRole("tab",{selected:true}).textContent).toMatch(/^Реклама/);
+  expect(screen.getByTestId("vklyucheno-reklama")).toHaveAttribute("aria-label","Реклама и трекеры блокируются");
+  expect(screen.getByRole("tab",{name:/^Реклама/}).textContent).toContain("2");
+});
+
+it("выключенная реклама не ставит точку на вкладке", () => {
+  render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={{...rules,reklama:{vkl:false,uroven:"light",razresheno:[]}}} otlozheno={{}} naKomandu={vi.fn()}/>);
+  expect(screen.getByRole("tab",{name:/^Реклама/})).toBeInTheDocument();
+  expect(screen.queryByTestId("vklyucheno-reklama")).toBeNull();
+});
+
 it("каждая строка называет своё приложение в подписи флажка и удаления", () => {
   render(<Pravila status={{sostoyanie:"vyklyuchen"}} pravila={prilozheniya} otlozheno={{}} naKomandu={vi.fn()}/>);
   fireEvent.click(screen.getByRole("tab",{name:/Приложения/}));

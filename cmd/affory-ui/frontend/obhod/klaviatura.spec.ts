@@ -36,8 +36,9 @@ test("стрелки ходят по вкладкам правил, а Tab ув�
   await expect(vkladka("Приложения")).toHaveAttribute("aria-selected", "true");
   expect(await vFokuse(page)).toMatch(/^Приложения/);
 
+  // Последняя вкладка «Реклама»: подставная служба знает блокировку рекламы.
   await page.keyboard.press("End");
-  await expect(vkladka("Сайты")).toHaveAttribute("aria-selected", "true");
+  await expect(vkladka("Реклама")).toHaveAttribute("aria-selected", "true");
   // Круг: с последней вкладки шаг вправо возвращает к первой, а не упирается.
   await page.keyboard.press("ArrowRight");
   await expect(vkladka("Сервисы")).toHaveAttribute("aria-selected", "true");

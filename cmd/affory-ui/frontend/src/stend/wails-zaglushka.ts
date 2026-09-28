@@ -19,6 +19,8 @@
 //     ?sluchay=pusto        подписки нет, список серверов пуст
 //     ?sluchay=novyy        службы нет вовсе: экран первого запуска
 //     ?sluchay=novyy-otkaz  тот же экран, но установку отклонили
+//     ?sluchay=reklama-otkaz      туннель поднят, последнее обновление списка рекламы не удалось
+//     ?sluchay=reklama-gotovitsya туннель поднят, выбран «Расширенный», действует «Базовый»
 //
 // Три последних в госте не воспроизводятся без нарочной поломки продукта, и
 // именно поэтому экраны отказов не проверял никто.
@@ -39,6 +41,10 @@ function parametr(imya: string, poumolchaniyu: string): string {
 import type { Server } from "../protokol";
 
 const SLUCHAY = parametr("sluchay", "podnyat");
+/** Случаи рекламы живут на поднятом туннеле: строки вкладки про подключение
+ *  без него показывали бы другую ветку. */
+const REKLAMA_SLUCHAY = SLUCHAY === "reklama-otkaz" || SLUCHAY === "reklama-gotovitsya";
+const PODNYAT = SLUCHAY === "podnyat" || REKLAMA_SLUCHAY;
 
 /** Первый запуск: службы в системе нет, канал молчит, и единственное, что
  *  делает окно, это кнопка установки. Флаг живой - подставная установка его
@@ -86,7 +92,7 @@ const OTKAZ = {
 };
 
 const status: Record<string, unknown> = {
-  sostoyanie: SLUCHAY === "podnyat" ? "podnyat"
+  sostoyanie: PODNYAT ? "podnyat"
     : SLUCHAY === "molchit" ? "sluzhba-molchit"
     : SLUCHAY === "otkaz" ? "ne-neset"
     : "vyklyuchen",
@@ -95,8 +101,8 @@ const status: Record<string, unknown> = {
   // есть служба их просто НЕ ШЛЁТ, пока никто ничего не несёт. Пустая строка
   // стояла здесь до 23.09.2026 и показывала на выключенном окне «Сервер не
   // выбран» при выбранном сервере - экран, которого в жизни не бывает.
-  nesushchiy_id: SLUCHAY === "podnyat" ? "nl" : undefined,
-  nesushchiy_imya: SLUCHAY === "podnyat" ? "Нидерланды · Амстердам" : undefined,
+  nesushchiy_id: PODNYAT ? "nl" : undefined,
+  nesushchiy_imya: PODNYAT ? "Нидерланды · Амстердам" : undefined,
   rezhim_marshruta: "ruchnoy",
   trafik_po_umolchaniyu: "vpn",
   kill_switch: false,
@@ -109,6 +115,16 @@ const status: Record<string, unknown> = {
   versiya_sluzhby: VERSIYA,
   podnyat_s: new Date(Date.now() - 82 * 60 * 1000).toISOString(),
   ...(SLUCHAY === "otkaz" ? { oshibka: OTKAZ } : {}),
+  // Лежащий список: тот же паспорт, что у встроенного (internal/reklama).
+  reklama: {
+    uroven: "light",
+    pravil: 44757,
+    versiya: "2026.0928.0846.00",
+    sobran: "2026-09-28T08:46:00Z",
+    proveren: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    deystvuet: true,
+    ...(SLUCHAY === "reklama-otkaz" ? { otkaz: "список не скачан: код ответа 503" } : {}),
+  },
 };
 
 /** Переходы состояния. Подъём идёт ЧЕРЕЗ promezhutochnoe «podnimaetsya»:
@@ -149,6 +165,13 @@ const pravila = {
   trebuet_podyoma: false,
   spisok_izmenyon: false,
   bez_ru_spiska: false,
+  // Как шлёт служба: объект всегда целиком. Случаи рекламы включают её сразу,
+  // иначе вкладка показала бы только «не блокируются».
+  reklama: {
+    vkl: REKLAMA_SLUCHAY,
+    uroven: (SLUCHAY === "reklama-gotovitsya" ? "multi" : "light") as "light" | "multi",
+    razresheno: [] as string[],
+  },
   trafik: {
     po_umolchaniyu: "vpn",
     prilozheniya: [
@@ -363,6 +386,12 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
   setRules: (v) => {
     if (v.trafik && typeof v.trafik === "object") {
       pravila.trafik = { ...pravila.trafik, ...(v.trafik as Record<string, unknown>) } as typeof pravila.trafik;
+    }
+    // Оба поля служба хранит рядом с trafik. Без них стенд терял
+    // выключатель российского списка после первого же применения.
+    if (typeof v.bez_ru_spiska === "boolean") pravila.bez_ru_spiska = v.bez_ru_spiska;
+    if (v.reklama && typeof v.reklama === "object") {
+      pravila.reklama = { ...pravila.reklama, ...(v.reklama as Record<string, unknown>) } as typeof pravila.reklama;
     }
     return pravila;
   },

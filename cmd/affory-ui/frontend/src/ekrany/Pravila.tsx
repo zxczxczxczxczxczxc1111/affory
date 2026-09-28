@@ -4,6 +4,7 @@ import type { OtkazNaEkrane, StatusOtvet } from "../protokol";
 import type { Zapushchennyy } from "../most";
 import { Knopka, Neudacha } from "./ui";
 import type { ProveritSoedineniya, ProveritPrilozhenie } from "../ohvat";
+import type { ReklamaPravila } from "../reklama";
 
 // Раздел правил. Сам экран живёт в Marshruty; здесь только разбор случая,
 // когда правил на руках НЕТ, и честный вид для него.
@@ -26,6 +27,9 @@ export interface PravilaOtvet {
    *  остальным. Необязательное: служба прошлой версии этого поля не шлёт, и
    *  его отсутствие означает список на месте, а не выключенный список. */
   bez_ru_spiska?: boolean;
+  /** Блокировка рекламы. Необязательное: служба прошлой версии этого поля не
+   *  шлёт, и тогда вкладки «Реклама» нет, а setRules уходит без него. */
+  reklama?: ReklamaPravila;
 }
 
 export interface PravilaProps {

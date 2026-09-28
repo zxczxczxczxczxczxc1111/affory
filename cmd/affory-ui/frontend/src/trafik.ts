@@ -1,4 +1,5 @@
 import { slovoPosleChisla } from "./chisla";
+import { normReklama, type ReklamaPravila } from "./reklama";
 
 // Routes describe intent explicitly; changing a default must not flip every switch.
 export type Marshrut = "vpn" | "direct";
@@ -31,12 +32,16 @@ export interface PravilaTrafika {
 export interface ChernovikPravil {
   trafik: PravilaTrafika;
   bezRu: boolean;
+  /** Блокировка рекламы. Нет поля у службы прошлой версии: там её нет вовсе. */
+  reklama?: ReklamaPravila;
   baza: string;
   reviziya?: string;
 }
 
-export function snimokPravil(trafik: PravilaTrafika, bezRu: boolean): string {
-  return JSON.stringify({trafik,bezRu});
+/** Без рекламы строка прежняя: черновики, снятые до неё, не становятся
+ *  «изменёнными» от одного обновления окна. */
+export function snimokPravil(trafik: PravilaTrafika, bezRu: boolean, reklama?: ReklamaPravila): string {
+  return JSON.stringify(reklama === undefined ? {trafik,bezRu} : {trafik,bezRu,reklama:normReklama(reklama)});
 }
 export interface KatalogServisov {
   versiya: string;

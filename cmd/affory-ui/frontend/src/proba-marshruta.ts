@@ -24,8 +24,8 @@ export function opisatPraviloSoedineniya(rule:string):string {
 
 // This is a settings preview, not a network probe. Unknown launch history and
 // rule-set membership must not turn into an invented deterministic route.
-export function obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,trafik,katalog}:{
-  domen:string;put:string;proksi:boolean;bezRu:boolean;killSwitch:boolean;
+export function obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,reklamaVkl=false,trafik,katalog}:{
+  domen:string;put:string;proksi:boolean;bezRu:boolean;killSwitch:boolean;reklamaVkl?:boolean;
   trafik:PravilaTrafika;katalog?:KatalogServisov;
 }):ProbaMarshruta {
   const own=[...trafik.domeny].sort((a,b)=>b.domen.split(".").length-a.domen.split(".").length).find(d=>domenPopadaet(domen,d.domen));
@@ -42,6 +42,9 @@ export function obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,trafik,katal
   const missingCatalog=!katalog && trafik.servisy.length>0;
   const ru=!bezRu && !killSwitch;
   const primechaniya=["Расчёт для обычного веб-соединения. Служебные адреса Affory и VPN-серверов обходят пользовательские правила."];
+  // Блок рекламы стоит в ядре выше всех маршрутов, а списка на руках у окна
+  // нет: проба честно говорит, чего она не проверяет.
+  if(reklamaVkl) primechaniya.push("Если сайт есть в списке рекламы, он заблокирован раньше любого маршрута; здесь это не проверяется.");
   let dannye:ReshenieProby;
   if(proksi) dannye={marshrut:"vpn",prichina:"Приложение явно использует локальный прокси Affory. Этот выбор важнее правил приложения и сайта"};
   else if(app) dannye={marshrut:app.marshrut,prichina:`Отдельное правило приложения ${app.imya || app.put}. Оно важнее правила сайта и сервиса`};

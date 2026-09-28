@@ -11,10 +11,12 @@ import { razobratVvodDomenov } from "../domeny";
 import { naydennyePuti } from "../programmy";
 import { sleduyushchayaVkladka } from "./klavishi-vkladok";
 import { OhvatPravil } from "./OhvatPravil";
+import { Reklama } from "./Reklama";
 
-// Раздел правил: слева режим по умолчанию и счёт правил, справа три вкладки.
-// Боковая область и вкладки стоят на одном месте во всех трёх видах, поэтому
-// переключение вкладки ничего на экране не двигает.
+// Раздел правил: слева режим по умолчанию и счёт правил, справа вкладки (три,
+// и четвёртая «Реклама» у службы, которая её знает). Боковая область и вкладки
+// стоят на одном месте во всех видах, поэтому переключение вкладки ничего на
+// экране не двигает.
 
 export function VyborTrafika({
   value,
@@ -109,8 +111,11 @@ export function Marshruty({
   const setDraft = naChernovik ?? setLocalDraft;
   const trafik = draft?.trafik ?? sohranennyyTrafik;
   const bezRu = draft?.bezRu ?? (pravila?.bez_ru_spiska === true);
-  const base = snimokPravil(sohranennyyTrafik, pravila?.bez_ru_spiska === true);
-  const dirty = snimokPravil(trafik, bezRu) !== base;
+  // Реклама едет тем же черновиком. undefined значит «служба её не знает»:
+  // тогда нет ни вкладки, ни поля в setRules.
+  const reklama = draft ? draft.reklama : pravila?.reklama;
+  const base = snimokPravil(sohranennyyTrafik, pravila?.bez_ru_spiska === true, pravila?.reklama);
+  const dirty = snimokPravil(trafik, bezRu, reklama) !== base;
   const conflict = !!draft && dirty && draft.baza !== base;
   // Прямые маршруты при включённой защите больше не конфликт, а ПОЯСНЕНИЕ
   // (23.09.2026): применить их можно, они сохраняются, но пока защита включена
@@ -121,7 +126,7 @@ export function Marshruty({
   const inFlight = useRef(false);
   const [notice, setNotice] = useState("");
   const [applyError, setApplyError] = useState("");
-  const [tab, setTab] = useState<"services" | "apps" | "sites">("services");
+  const [tab, setTab] = useState<"services" | "apps" | "sites" | "reklama">("services");
   const [adding, setAdding] = useState(false);
   // Кнопки полосы вкладок и кнопка «Добавить»: первым нужен фокус при ходьбе
   // стрелками, второй принимает фокус обратно, когда исчезает та кнопка, на
@@ -175,11 +180,11 @@ export function Marshruty({
     status.sostoyanie === "sluzhba-molchit" ||
     status.sostoyanie === "podnimaetsya" ||
     status.sostoyanie === "vosstanavlivaetsya";
-  const save = (next: PravilaTrafika, nextBezRu = bezRu) => {
-    if (disabled || snimokPravil(next, nextBezRu) === snimokPravil(trafik, bezRu)) return false;
+  const save = (next: PravilaTrafika, nextBezRu = bezRu, nextReklama = reklama) => {
+    if (disabled || snimokPravil(next, nextBezRu, nextReklama) === snimokPravil(trafik, bezRu, reklama)) return false;
     setApplyError("");
     setNotice("");
-    setDraft(snimokPravil(next, nextBezRu) === base ? null : {trafik:next,bezRu:nextBezRu,baza:draft?.baza ?? base,reviziya:draft?.reviziya ?? pravila?.reviziya_pravil});
+    setDraft(snimokPravil(next, nextBezRu, nextReklama) === base ? null : {trafik:next,bezRu:nextBezRu,reklama:nextReklama,baza:draft?.baza ?? base,reviziya:draft?.reviziya ?? pravila?.reviziya_pravil});
     return true;
   };
   const apply = async () => {
@@ -188,7 +193,9 @@ export function Marshruty({
     setApplying(true); setApplyError(""); setNotice("");
     try {
       const revision = pravila?.reviziya_pravil ?? draft?.reviziya;
-      const body = {trafik,bez_ru_spiska:bezRu,...(revision ? {reviziya_pravil:revision} : {})};
+      // reklama только если служба её прислала: служба прошлой версии поля не
+      // знает, и тело для неё остаётся прежним.
+      const body = {trafik,bez_ru_spiska:bezRu,...(reklama !== undefined ? {reklama} : {}),...(revision ? {reviziya_pravil:revision} : {})};
       const ok = await naKomandu("setRules",body);
       if (ok !== true) { setApplyError("Не удалось применить правила. Черновик сохранён; причина указана в сообщении службы."); return; }
       setDraft(null); setPath(""); setDomain(""); setAdding(false); setVybrannye([]);
@@ -219,12 +226,12 @@ export function Marshruty({
     (d) => (filtrMarshruta === "vse" || d.marshrut === filtrMarshruta) &&
       (zapros === "" || d.domen.includes(zapros)),
   );
-  const vidimyeKlyuchi = tab === "apps" ? vidimyePrilozheniya.map((a) => a.put) : vidimyeDomeny.map((d) => d.domen);
+  const vidimyeKlyuchi = tab === "apps" ? vidimyePrilozheniya.map((a) => a.put) : tab === "sites" ? vidimyeDomeny.map((d) => d.domen) : [];
   // Отмеченное, но скрытое фильтром, в групповое действие НЕ идёт: человек
   // отмечает то, что видит, и «удалить выбранные» после смены фильтра иначе
   // унесло бы строки, которых на экране уже нет.
   const otmecheno = vybrannye.filter((k) => vidimyeKlyuchi.includes(k));
-  const vsegoNaVkladke = tab === "apps" ? apps.length : domains.length;
+  const vsegoNaVkladke = tab === "apps" ? apps.length : tab === "sites" ? domains.length : 0;
   const otfiltrovano = zapros !== "" || filtrMarshruta !== "vse";
   /** Групповая правка выбранных строк: один черновик, одно применение. */
   const gruppoy = (deystvie: "vpn" | "direct" | "udalit") => {
@@ -375,6 +382,15 @@ export function Marshruty({
       poyasnenie: `${domains.length} правил сайтов`,
       vklyucheno: ruSpisokVkl ? "Российские сайты идут напрямую" : undefined,
     },
+    // Только у службы, которая знает блокировку: у прошлой версии вкладка
+    // обещала бы то, чего служба не сделает.
+    ...(reklama !== undefined ? [{
+      v: "reklama" as const,
+      podpis: "Реклама",
+      schyot: reklama.razresheno.length,
+      poyasnenie: `${reklama.razresheno.length} ${slovoPosleChisla(reklama.razresheno.length, "исключение", "исключения", "исключений")}`,
+      vklyucheno: reklama.vkl ? "Реклама и трекеры блокируются" : undefined,
+    }] : []),
   ];
 
   return (
@@ -682,7 +698,18 @@ export function Marshruty({
             </div>
           )}
 
-          {tab !== "services" && (
+          {tab === "reklama" && reklama && pravila?.reklama && (
+            <Reklama
+              reklama={reklama}
+              sohranyonnoe={pravila.reklama}
+              status={status}
+              disabled={disabled}
+              naSmenu={(next) => save(trafik, bezRu, next)}
+              soobshchit={setNotice}
+            />
+          )}
+
+          {(tab === "apps" || tab === "sites") && (
             <div className="flex flex-col gap-5">
               {tab === "sites" && (
                 <div className="border-border bg-surface flex items-center gap-4 rounded-xl border px-4 py-3" aria-label="Российские сайты">
@@ -1164,7 +1191,7 @@ export function Marshruty({
               {/* Разделы идут одним сплошным списком: gap-5 родителя раздвигал
                   одинаковые полосы, и низ экрана читался как пустой. */}
               <div className="flex flex-col">
-              <OhvatPravil key={tab} vid={tab} trafik={trafik} katalog={pravila?.katalog} chernovik={dirty} ozhidayut={pravila?.trebuet_podyoma} bezRu={bezRu} killSwitch={status.kill_switch===true} disabled={disabled} proverit={proveritSoedineniya} proveritPrilozhenie={proveritPrilozhenie} vybratFayl={naVyborPrilozheniya} zamenit={(oldPath,newPath)=>{
+              <OhvatPravil key={tab} vid={tab} trafik={trafik} katalog={pravila?.katalog} chernovik={dirty} ozhidayut={pravila?.trebuet_podyoma} bezRu={bezRu} killSwitch={status.kill_switch===true} reklamaVkl={reklama?.vkl===true} disabled={disabled} proverit={proveritSoedineniya} proveritPrilozhenie={proveritPrilozhenie} vybratFayl={naVyborPrilozheniya} zamenit={(oldPath,newPath)=>{
                 const key=newPath.trim().toLowerCase();
                 if(apps.some(a=>a.put!==oldPath && a.put.toLowerCase()===key))throw new Error("Для этого файла уже есть правило. Измени его в списке приложений.");
                 return save({...trafik,prilozheniya:apps.map(a=>a.put===oldPath?{...a,put:newPath.trim(),imya:newPath.trim().split(/[/\\]/).pop() || a.imya}:a)});

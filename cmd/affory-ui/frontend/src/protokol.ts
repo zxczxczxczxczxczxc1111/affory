@@ -79,6 +79,24 @@ export interface StatusOtvet {
    *  проверка выглядела на экране здоровой (23.09.2026). */
   obnovlenie_otkaz?: string;
   oshibka?: Oshibka;
+  /** Список блокировки рекламы (28.09.2026). Нет поля значит «списка нет и
+   *  отказов не было», в том числе у службы прошлой версии. */
+  reklama?: ReklamaSostoyanie;
+}
+
+/** protokol.ReklamaSostoyanie: список, который ЛЕЖИТ В ФАЙЛЕ, а не выбранный
+ *  человеком. Пока новый уровень готовится, они расходятся. */
+export interface ReklamaSostoyanie {
+  uroven: string;
+  pravil: number;
+  versiya?: string;
+  sobran?: string;
+  proveren?: string;
+  vstroennyy?: boolean;
+  /** Всегда в кадре: false значит «конфиг живого ядра блока не несёт». */
+  deystvuet: boolean;
+  /** Голая причина последнего отказа, фразу вокруг строит окно. */
+  otkaz?: string;
 }
 
 /** Live numbers under the main object (§8.3). `null` on the screen means

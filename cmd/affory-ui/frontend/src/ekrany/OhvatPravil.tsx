@@ -5,9 +5,9 @@ import { imyaMarshruta, type KatalogServisov, type PravilaTrafika } from "../tra
 import { Flazhok, Knopka, Pole, Svorachivaemyy } from "./ui";
 import { ProverkaPrilozheniya } from "./ProverkaPrilozheniya";
 
-export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,bezRu=false,killSwitch=false,disabled,naSbros,proverit,proveritPrilozhenie,vybratFayl,zamenit}:{
+export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,bezRu=false,killSwitch=false,reklamaVkl=false,disabled,naSbros,proverit,proveritPrilozhenie,vybratFayl,zamenit}:{
   vid:"apps"|"sites"; trafik:PravilaTrafika; katalog?:KatalogServisov; chernovik:boolean;
-  ozhidayut?:boolean; bezRu?:boolean; killSwitch?:boolean; disabled:boolean; naSbros:()=>void; proverit?:ProveritSoedineniya;
+  ozhidayut?:boolean; bezRu?:boolean; killSwitch?:boolean; reklamaVkl?:boolean; disabled:boolean; naSbros:()=>void; proverit?:ProveritSoedineniya;
   proveritPrilozhenie?:ProveritPrilozhenie;vybratFayl?:()=>Promise<string>;zamenit?:(oldPath:string,newPath:string)=>boolean;
 }) {
   const [open,setOpen]=useState(false), [confirm,setConfirm]=useState(false);
@@ -20,8 +20,8 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,bezRu=
   const domainInput=sites?input:extra;
   const domen=normalizovatProbuDomena(domainInput);
   const put=(sites?extra:input).trim();
-  const preview=obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,trafik,katalog});
-  const settingsSnapshot=JSON.stringify({trafik,katalog,bezRu,killSwitch,chernovik,ozhidayut});
+  const preview=obyasnitMarshrut({domen,put,proksi,bezRu,killSwitch,reklamaVkl,trafik,katalog});
+  const settingsSnapshot=JSON.stringify({trafik,katalog,bezRu,killSwitch,reklamaVkl,chernovik,ozhidayut});
   useEffect(()=>{epoch.current++;setResult(null);setError("");setBusy(false);},[settingsSnapshot,disabled]);
   const count=sites?trafik.domeny.length:trafik.prilozheniya.length;
   const changeInput=(value:string)=>{epoch.current++;setInput(value);setResult(null);setError("");setBusy(false);};
