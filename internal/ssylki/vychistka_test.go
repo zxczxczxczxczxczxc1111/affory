@@ -27,7 +27,7 @@ func TestVychistkaZhurnalaUbiraetSekrety(t *testing.T) {
 		"кусок пути /sub/tokenAbc123 отдельно",
 		"вставлено vless://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee@198.51.100.1:443?security=reality#X",
 		"обновление https://user:pass@github.com/zxc/affory/releases/download/v1.7.0/a.zip",
-		`правило C:\Users\xd\AppData\Local\Discord\app.exe`,
+		`правило C:\Users\ivan\AppData\Local\Discord\app.exe`,
 		`{"put":"C:\\Users\\Иван Петров\\Desktop\\game.exe"}`,
 	}, "\n")
 
@@ -36,7 +36,7 @@ func TestVychistkaZhurnalaUbiraetSekrety(t *testing.T) {
 	for _, sekret := range []string{
 		"11111111-2222", "AAECAwQFBgcICQoLDA0", "01ab23cd", "sekretnyyparol", "obfsparol123",
 		"/tajnyy-put", "tokenAbc123", "panel.example/sub", "aaaaaaaa-bbbb", "user:pass",
-		"releases/download", `\xd\`, "Иван Петров",
+		"releases/download", `\ivan\`, "Иван Петров",
 	} {
 		if strings.Contains(chisto, sekret) {
 			t.Errorf("в вычищенном журнале остался %q:\n%s", sekret, chisto)

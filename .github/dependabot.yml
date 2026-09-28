@@ -1,0 +1,21 @@
+# Б8 аудита 1.6.1: обновления зависимостей приходят запросами на слияние, а не
+# узнаются при сборке выпуска. Действия GitHub закреплены по коммиту, и без
+# отдельной записи эти закрепления тихо устаревали бы.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /cmd/affory-ui/frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

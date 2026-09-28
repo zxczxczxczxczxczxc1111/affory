@@ -91,7 +91,7 @@ func TestVygruzkaDiagnostikiSobiraetZhurnalyIVychishchaet(t *testing.T) {
 	zhurnalV(t, s, "sluzhba.log", "запуск\nuuid 11111111-2222-3333-4444-555555555555 не принят\nподписка https://panel.example/sub/tokenAbc123 молчит\n")
 	zhurnalV(t, s, "yadro.log.1", "старое перед поворотом\n")
 	zhurnalV(t, s, "yadro.log", "новое после поворота\n")
-	zhurnalV(t, s, "komandy.log", `команда от C:\Users\xd\AppData\Local\Affory`+"\n")
+	zhurnalV(t, s, "komandy.log", `команда от C:\Users\ivan\AppData\Local\Affory`+"\n")
 
 	tekst, _ := vygruzitVsyo(t, s)
 
@@ -107,7 +107,7 @@ func TestVygruzkaDiagnostikiSobiraetZhurnalyIVychishchaet(t *testing.T) {
 	if !strings.Contains(tekst, "===== obnovlenie.log") || !strings.Contains(tekst, "файла нет") {
 		t.Errorf("отсутствующий журнал не назван:\n%s", tekst)
 	}
-	for _, sekret := range []string{"11111111-2222", "tokenAbc123", `\xd\`} {
+	for _, sekret := range []string{"11111111-2222", "tokenAbc123", `\ivan\`} {
 		if strings.Contains(tekst, sekret) {
 			t.Errorf("в выгрузке остался %q", sekret)
 		}
