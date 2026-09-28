@@ -132,6 +132,9 @@ func SingBox(v Vhod) ([]byte, error) {
 	if err := sveritTegi(k); err != nil {
 		return nil, err
 	}
+	if err := sveritUsloviya(k); err != nil {
+		return nil, err
+	}
 	return json.MarshalIndent(k, "", "  ")
 }
 

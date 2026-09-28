@@ -133,8 +133,9 @@ func trafikPravila(v Vhod, dns bool) []any {
 		} // Validation happens before generation; no invented domain fallback.
 		// Сервис без доменов это законная запись (D2): у Steam и Epic Games
 		// набора доменов нет вовсе, маршрут у них держится на программе. Пустой
-		// domain_suffix ядро принимает, но такое правило не совпадает ни с чем и
-		// читается в конфиге как забытая строка.
+		// domain_suffix check пропускает, а в работе такое правило совпадает со
+		// ВСЕМ (замер 28.09.2026, sing-box 1.14.2): весь трафик ушёл бы маршрутом
+		// сервиса. Сборку с пустым условием отвергает sveritUsloviya.
 		if len(domains) == 0 {
 			continue
 		}

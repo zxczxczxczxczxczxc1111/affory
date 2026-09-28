@@ -58,9 +58,7 @@ func sveritTegi(k map[string]any) error {
 			}
 		}
 		for _, v := range spisok(d["rules"]) {
-			if m, ok := v.(map[string]any); ok {
-				pomyanut(m["server"])
-			}
+			pomyanutVPravile(v, pomyanut)
 		}
 	}
 	if r, ok := k["route"].(map[string]any); ok {
@@ -94,19 +92,80 @@ func pomyanutVPravile(v any, pomyanut func(any)) {
 		return
 	}
 	pomyanut(m["outbound"])
+	// Правила маршрута и DNS обходятся одной функцией: у DNS-правила тег
+	// сервера, у правила маршрута тег исходящего.
+	pomyanut(m["server"])
 	// rule_set is a list of tags, and a dangling one passes check silently
 	// (measured on 1.14.0, see ErrVisyachiyTeg).
 	for _, t := range spisok(m["rule_set"]) {
 		pomyanut(t)
 	}
-	// rule_set is a list of tags, and a dangling one passes check silently
-	// (measured on 1.14.0, see ErrVisyachiyTeg).
+	// Вложенные логические правила обходятся рекурсивно: тег, спрятанный
+	// вглубь, ничем не лучше тега наверху.
 	for _, vl := range spisok(m["rules"]) {
 		pomyanutVPravile(vl, pomyanut)
 	}
 }
 
+var errPustoeUsloviye = errors.New("пустой список в условии правила")
+
+// sveritUsloviya ищет пустые списки в правилах маршрута и DNS. Пустой список
+// на верхнем уровне check пропускает с кодом 0, а ядро считает такое условие
+// выполненным ВСЕГДА: domain_suffix [] с reject резал весь интернет, rule_set []
+// с predefined отвечал NXDOMAIN на всё (замер 28.09.2026, sing-box 1.14.2).
+func sveritUsloviya(k map[string]any) error {
+	var obhod func(put string, v any) error
+	obhod = func(put string, v any) error {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil
+		}
+		for klyuch, zn := range m {
+			switch z := zn.(type) {
+			case []string:
+				if len(z) == 0 {
+					return fmt.Errorf("%w: %s.%s", errPustoeUsloviye, put, klyuch)
+				}
+			case []any:
+				if len(z) == 0 {
+					return fmt.Errorf("%w: %s.%s", errPustoeUsloviye, put, klyuch)
+				}
+				if klyuch == "rules" {
+					for i, vl := range z {
+						if err := obhod(fmt.Sprintf("%s.rules[%d]", put, i), vl); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+		return nil
+	}
+	for _, razdel := range []string{"route", "dns"} {
+		r, _ := k[razdel].(map[string]any)
+		for i, v := range spisok(r["rules"]) {
+			if err := obhod(fmt.Sprintf("%s.rules[%d]", razdel, i), v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func spisok(v any) []any {
-	s, _ := v.([]any)
-	return s
+	switch s := v.(type) {
+	case []any:
+		return s
+	case []string:
+		// Генератор кладёт списки тегов как []string (praviloNaborov,
+		// dnsPravila), и до 28.09.2026 проверка их не видела вовсе: висячий
+		// rule_set в настоящем конфиге проходил молча, а check 1.14.2 в
+		// правилах маршрута его тоже пропускает (exit 0).
+		r := make([]any, len(s))
+		for i, x := range s {
+			r[i] = x
+		}
+		return r
+	}
+	return nil
 }
