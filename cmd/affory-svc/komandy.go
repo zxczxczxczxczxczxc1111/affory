@@ -277,6 +277,9 @@ type Sluzhba struct {
 	// мимо туннеля, и на сервере, не несущем ничего, отвечала успехом.
 	zamerit       func(ctx context.Context, adres, sekret, teg string) (time.Duration, error)
 	zameritRezerv func(ctx context.Context, adres, sekret, teg string) (time.Duration, error)
+	// peremeritAvto просит группу авто перемерить серверы перед разрывом (С6
+	// аудита 1.6.1). Первое значение: был ли перемер, то есть стоит ли «авто».
+	peremeritAvto func(ctx context.Context, adres, sekret string) (bool, error)
 	// Несущего называет ЯДРО, а не наше намерение. Два имени групп параметрами:
 	// пакет yadra не знает про генератор конфига и знать не должен.
 	nesyot func(ctx context.Context, adres, sekret, gruppa, tegAvto string) (string, error)
@@ -500,6 +503,9 @@ func NovayaSluzhba() *Sluzhba {
 	s.zagruzitNastroyki()
 	s.zamerit = yadra.Zaderzhka
 	s.zameritRezerv = yadra.ZaderzhkaRezerv
+	s.peremeritAvto = func(ctx context.Context, adres, sekret string) (bool, error) {
+		return yadra.PeremeritAvto(ctx, adres, sekret, genkonfig.TegSelector, genkonfig.TegAvto)
+	}
 	s.nesyot = yadra.Nesyot
 	s.postavitVybor = yadra.PostavitVybor
 	s.vyborGruppy = yadra.VyborGruppy
@@ -1709,6 +1715,17 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 				continue
 			}
 			log.Printf("резервная цель исходящего %s тоже недоступна: %v", teg, rezervErr)
+			// В «авто» группа держится за мёртвый сервер до своей следующей
+			// пробы, и рвать туннель раньше неё значит бросить живые серверы
+			// рядом (С6 аудита 1.6.1). Перемер выбирает заново сразу, и рвём,
+			// только если трафик не пошёл и после него.
+			if s.pomoglaGruppa(ctx, adres, sekret, teg) {
+				podryad = 0
+				continue
+			}
+			if ctx.Err() != nil {
+				return
+			}
 			// Причина выясняется ДО остановки, пока адаптер и конфиг ещё на
 			// месте: после s.opustit() спрашивать уже нечего и не у чего (A3).
 			prichina := s.prichinaRazryva(ctx)
@@ -1732,6 +1749,24 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 		// провала за всё время работы.
 		podryad = 0
 	}
+}
+
+// pomoglaGruppa перемеряет группу авто и пробует исходящий ещё раз. Вне авто
+// отвечает false сразу: перемерять нечего.
+func (s *Sluzhba) pomoglaGruppa(ctx context.Context, adres, sekret, teg string) bool {
+	bylo, err := s.peremeritAvto(ctx, adres, sekret)
+	if err != nil {
+		log.Printf("группа авто не перемерена: %v", err)
+	}
+	if !bylo || ctx.Err() != nil {
+		return false
+	}
+	if _, err := s.zamerit(ctx, adres, sekret, teg); err != nil {
+		log.Printf("и после перемера группы исходящий %s не несёт: %v", teg, err)
+		return false
+	}
+	log.Printf("группа авто выбрала другой сервер, туннель сохраняем")
+	return true
 }
 
 // zapustitVosstanovlenie заводит фоновое восстановление туннеля.

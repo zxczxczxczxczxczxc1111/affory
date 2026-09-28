@@ -291,6 +291,44 @@ func TestNesyotVAvtoSpuskaetsyaEtazhomNizhe(t *testing.T) {
 	}
 }
 
+// С6 аудита 1.6.1. Перемер идёт запросом задержки ГРУППЫ авто и только когда
+// селектор смотрит на неё: в ручном выборе группа не несёт ничего.
+func TestPeremeritAvtoSprashivaetGruppu(t *testing.T) {
+	var mu sync.Mutex
+	var sprosheno []string
+	vybor := "avto"
+	adres := podstavnoyKlash(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		sprosheno = append(sprosheno, r.URL.Path+"?"+r.URL.RawQuery)
+		v := vybor
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/proxies/vybor":
+			fmt.Fprintf(w, `{"type":"Selector","now":%q}`, v)
+		case "/group/avto/delay":
+			fmt.Fprint(w, `{"srv-nl":120}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	bylo, err := PeremeritAvto(context.Background(), adres, "sekret", "vybor", "avto")
+	if err != nil || !bylo {
+		t.Fatalf("перемер в авто: %v, %v", bylo, err)
+	}
+	if len(sprosheno) != 2 || sprosheno[1] != "/group/avto/delay?timeout=5000" {
+		t.Fatalf("спрошено %v", sprosheno)
+	}
+	mu.Lock()
+	vybor, sprosheno = "srv-nl", nil
+	mu.Unlock()
+	if bylo, err := PeremeritAvto(context.Background(), adres, "sekret", "vybor", "avto"); bylo || err != nil {
+		t.Fatalf("в ручном выборе перемер состоялся: %v, %v", bylo, err)
+	}
+	if len(sprosheno) != 1 {
+		t.Fatalf("в ручном выборе спрошено %v", sprosheno)
+	}
+}
+
 // Третий этаж это уже не наша схема групп, а чей-то чужой конфиг или наш
 // дефект. Спуск без предела превратил бы кольцо в вечный цикл внутри команды.
 func TestNesyotNeSpuskaetsyaBeskonechno(t *testing.T) {

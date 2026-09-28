@@ -184,6 +184,38 @@ func PostavitVybor(ctx context.Context, adres, sekret, gruppa, teg string) error
 	return fmt.Errorf("ядро не переключило группу %s на %s (код %d): %s", gruppa, teg, kod, hvost)
 }
 
+// PeremeritAvto просит группу авто перемерить свои серверы и выбрать заново.
+//
+// Своя проба группы идёт по расписанию, и между двумя пробами группа держится
+// за мёртвый сервер. Запрос задержки ГРУППЫ ядро исполняет перемером всех её
+// серверов и сразу выбирает лучший (clashapi/api_meta_group.go, getGroupDelay;
+// group/urltest.go, urlTest и performUpdateCheck). Первое значение отвечает,
+// был ли перемер вообще: селектор смотрит не на авто, значит перемерять нечего.
+func PeremeritAvto(ctx context.Context, adres, sekret, selektor, avto string) (bool, error) {
+	vybor, err := VyborGruppy(ctx, adres, sekret, selektor)
+	if err != nil {
+		return false, err
+	}
+	if vybor != avto {
+		return false, nil
+	}
+	u := fmt.Sprintf("http://%s/group/%s/delay?timeout=%d", adres, url.PathEscape(avto), SrokZamera.Milliseconds())
+	_, kod, err := sprositKlash(ctx, u, sekret)
+	if err != nil {
+		return true, err
+	}
+	// 200 приходит и тогда, когда часть серверов не ответила: группа выбирает
+	// по ответившим. Идущий уже перемер ядро не повторяет и тоже отвечает 200,
+	// выбор сделает он.
+	switch kod {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return true, sekretNePrinyat(adres, kod)
+	}
+	return true, fmt.Errorf("группа %s не перемерена (код %d)", avto, kod)
+}
+
 // ErrNeVybrala отделяет «группа ещё не выбрала» от «ответ не тот».
 //
 // Разница не косметическая. У селектора выбор есть всегда, хотя бы умолчанием
