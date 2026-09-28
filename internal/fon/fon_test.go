@@ -5,18 +5,39 @@ import (
 	"context"
 	"log"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func perehvatitZhurnal(t *testing.T) *bytes.Buffer {
+// zhurnalTesta это приёмник журнала под своим замком: Zapustit пишет из своей
+// горутины, тест читает из своей, и голый bytes.Buffer здесь гонка (-race в
+// воротах).
+type zhurnalTesta struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (z *zhurnalTesta) Write(p []byte) (int, error) {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	return z.b.Write(p)
+}
+
+func (z *zhurnalTesta) String() string {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	return z.b.String()
+}
+
+func perehvatitZhurnal(t *testing.T) *zhurnalTesta {
 	t.Helper()
-	var b bytes.Buffer
+	z := &zhurnalTesta{}
 	prezhniy := log.Writer()
-	log.SetOutput(&b)
+	log.SetOutput(z)
 	t.Cleanup(func() { log.SetOutput(prezhniy) })
-	return &b
+	return z
 }
 
 func TestZapustitPerezhivaetPaniku(t *testing.T) {
