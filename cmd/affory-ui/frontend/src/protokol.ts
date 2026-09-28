@@ -131,6 +131,8 @@ export interface Server {
   /** Пропал из подписки, но ядро ещё держит его кандидатом: уйдёт сам после переподключения. */
   uderzhan?: boolean;
   nebezopasnyy_ignorirovan?: boolean;
+  /** В ссылке был отпечаток сертификата, а ядро сверяет только ключ (П4 аудита 1.6.1). */
+  otpechatok_ne_proveryaetsya?: boolean;
   /** hy2 with pinSHA256: the pin stays in the service, only the mark travels. */
   s_pinom?: boolean;
   /** Человек убрал сервер из автовыбора (A5). Выбрать его руками по-прежнему

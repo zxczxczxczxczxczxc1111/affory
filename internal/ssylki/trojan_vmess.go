@@ -71,7 +71,7 @@ func trojan(s string) (protokol.Server, error) {
 	// До 05.09.2026 его тут не брали, и самоподписанный сервер был недостижим
 	// молча: insecure мы игнорируем намеренно, а пин, законную замену доверию к
 	// цепочке, выбрасывали. Тот же разбор, что у hy2, anytls и tuic.
-	if srv.Pin, err = pinIzZaprosa(q); err != nil {
+	if err = zapisatPin(&srv, q); err != nil {
 		return protokol.Server{}, err
 	}
 	srv.Id = Id(srv.Host, srv.Port, srv.Transport)

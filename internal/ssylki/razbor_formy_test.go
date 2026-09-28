@@ -44,6 +44,42 @@ func TestVlessTlsTcpRazbiraetsya(t *testing.T) {
 	}
 }
 
+// П4. Ядро сверяет только хеш публичного ключа, отпечатка сертификата целиком
+// оно выразить не может. Сервер с таким отпечатком работает, но без проверки,
+// которую обещала ссылка, и человек обязан это видеть.
+func TestOtpechatokSertifikataPomechaetsya(t *testing.T) {
+	const hex = "ba884517c0c9d1e2f3a4b5c6d7e8f90112233445566778899aabbccddeeff001"
+	var sDvoetochiyami []string
+	for i := 0; i < len(hex); i += 2 {
+		sDvoetochiyami = append(sDvoetochiyami, strings.ToUpper(hex[i:i+2]))
+	}
+	for _, pin := range []string{hex, strings.Join(sDvoetochiyami, ":")} {
+		for _, s := range []string{
+			"hy2://parol@203.0.113.1:443?sni=a.example&pinSHA256=" + pin + "#X",
+			"trojan://parol@203.0.113.1:443?sni=a.example&pinSHA256=" + pin + "#X",
+		} {
+			srv, err := Razobrat(s)
+			if err != nil {
+				t.Errorf("%s: %v", s, err)
+				continue
+			}
+			if srv.Pin != "" || !srv.OtpechatokNeProveryaetsya {
+				t.Errorf("%s: пин %q, пометка %v", s, srv.Pin, srv.OtpechatokNeProveryaetsya)
+			}
+		}
+	}
+	// Рядом закреплён ключ: проверка есть, пометка не нужна.
+	srv, err := Razobrat("hy2://parol@203.0.113.1:443?pinSHA256=" + hex +
+		"&pinPubKeySHA256=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8%3D#X")
+	if err != nil || srv.Pin == "" || srv.OtpechatokNeProveryaetsya {
+		t.Fatalf("с пином ключа: пин %q, пометка %v, %v", srv.Pin, srv.OtpechatokNeProveryaetsya, err)
+	}
+	// Без пина вовсе пометки нет.
+	if srv, err := Razobrat("hy2://parol@203.0.113.1:443#X"); err != nil || srv.OtpechatokNeProveryaetsya {
+		t.Fatalf("без пина: пометка %v, %v", srv.OtpechatokNeProveryaetsya, err)
+	}
+}
+
 // П2. url.Parse отвергает «%» без двух шестнадцатеричных знаков, и ссылка с
 // именем «Скидка 50%» падала целиком, хотя имя серверу не нужно вовсе.
 func TestGolyyProtsentVImeniNeRonyaetSsylku(t *testing.T) {

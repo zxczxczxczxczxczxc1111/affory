@@ -345,7 +345,7 @@ func vless(s string) (protokol.Server, error) {
 	// объявленный пин не совпал бы никогда, то есть рабочий сервер перестал бы
 	// работать от лишнего параметра в ссылке.
 	if bezopasnost == "tls" {
-		if srv.Pin, err = pinIzZaprosa(q); err != nil {
+		if err = zapisatPin(&srv, q); err != nil {
 			return protokol.Server{}, err
 		}
 	}
@@ -423,7 +423,7 @@ func hysteria(s string) (protokol.Server, error) {
 	// «+» в запросе URL это ПРОБЕЛ. Догадываться, что пробел это «+», нельзя:
 	// пин это проверка подлинности сервера, и чинить её угадыванием значит
 	// проверять не то, что думаешь.
-	if srv.Pin, err = pinIzZaprosa(q); err != nil {
+	if err = zapisatPin(&srv, q); err != nil {
 		return protokol.Server{}, err
 	}
 	srv.Id = Id(srv.Host, srv.Port, srv.Transport)
@@ -510,7 +510,7 @@ func anytls(s string) (protokol.Server, error) {
 	if srv.Parol == "" {
 		return protokol.Server{}, fmt.Errorf("%w: anytls без пароля", ErrSsylkaKrivaya)
 	}
-	if srv.Pin, err = pinIzZaprosa(q); err != nil {
+	if err = zapisatPin(&srv, q); err != nil {
 		return protokol.Server{}, err
 	}
 	srv.Id = Id(srv.Host, srv.Port, srv.Transport)
@@ -557,7 +557,7 @@ func tuic(s string) (protokol.Server, error) {
 	if srv.Uuid == "" || srv.Parol == "" {
 		return protokol.Server{}, fmt.Errorf("%w: tuic без uuid или без пароля", ErrSsylkaKrivaya)
 	}
-	if srv.Pin, err = pinIzZaprosa(q); err != nil {
+	if err = zapisatPin(&srv, q); err != nil {
 		return protokol.Server{}, err
 	}
 	srv.Id = Id(srv.Host, srv.Port, srv.Transport)
@@ -599,8 +599,8 @@ func pinIzZaprosa(q url.Values) (string, error) {
 	if p == "" {
 		return "", nil
 	}
-	// Отпечаток сертификата пропускаем молча: он адресован не нам, а ссылка от
-	// его присутствия годной быть не перестаёт.
+	// Отпечаток сертификата ядро не сверяет, ссылка от него годной быть не
+	// перестаёт. Пометку о нём ставит zapisatPin.
 	if otpechatokSertifikata(p) {
 		return "", nil
 	}
@@ -617,11 +617,25 @@ func pinIzZaprosa(q url.Values) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-// otpechatokSertifikata узнаёт hex отпечатка сертификата: ровно 64 знака, все
-// шестнадцатеричные. Такая строка проходит и как base64 (алфавиты пересекаются),
-// поэтому проверять её надо ДО раскодирования, иначе она молча станет 48
-// байтами негодного пина.
+// zapisatPin кладёт в запись пин ключа, а отпечаток сертификата без пина ключа
+// превращает в пометку. Ядро сверяет только хеш ключа, и молча выброшенный
+// отпечаток означал бы проверку слабее обещанной ссылкой (П4 аудита 1.6.1).
+func zapisatPin(srv *protokol.Server, q url.Values) error {
+	pin, err := pinIzZaprosa(q)
+	if err != nil {
+		return err
+	}
+	srv.Pin = pin
+	srv.OtpechatokNeProveryaetsya = pin == "" && otpechatokSertifikata(q.Get("pinSHA256"))
+	return nil
+}
+
+// otpechatokSertifikata узнаёт hex отпечатка сертификата: 64 шестнадцатеричных
+// знака, слитно или парами через двоеточие, как пишет сам Hysteria. Слитная
+// строка проходит и как base64 (алфавиты пересекаются), поэтому проверять её
+// надо ДО раскодирования, иначе она молча станет 48 байтами негодного пина.
 func otpechatokSertifikata(s string) bool {
+	s = strings.ReplaceAll(s, ":", "")
 	if len(s) != sha256.Size*2 {
 		return false
 	}

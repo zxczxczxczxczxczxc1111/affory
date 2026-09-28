@@ -29,6 +29,10 @@ func TestDlyaEkranaPomechaetPinNeOtdavayaEgo(t *testing.T) {
 	if dlyaEkrana(protokol.Server{Id: "b"}).SPinom {
 		t.Fatal("без пина пометки быть не должно")
 	}
+	// П4 аудита 1.6.1: пометка о непроверяемом отпечатке доезжает до экрана.
+	if !dlyaEkrana(protokol.Server{Id: "c", OtpechatokNeProveryaetsya: true}).OtpechatokNeProveryaetsya {
+		t.Fatal("пометка об отпечатке сертификата потеряна по дороге к экрану")
+	}
 }
 
 func vtoroyServer() protokol.Server {

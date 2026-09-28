@@ -688,6 +688,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                   <Zaderzhka zamer={poZaderzhkam.get(s.id)} />
                   {s.s_pinom && <Teg ton="akcent">сертификат закреплён</Teg>}
                   {s.nebezopasnyy_ignorirovan && <Teg ton="preduprezhdenie">проверка сертификата включена принудительно</Teg>}
+                  {s.otpechatok_ne_proveryaetsya && <Teg ton="preduprezhdenie">отпечаток сертификата не проверяется</Teg>}
                   {neset && <Teg ton="akcent">активен</Teg>}
                   {/* Состояние, которое человек задал сам, обязано быть видно
                       без открытия меню: иначе «почему автомат его не берёт»

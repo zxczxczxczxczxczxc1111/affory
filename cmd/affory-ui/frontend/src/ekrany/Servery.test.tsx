@@ -80,6 +80,13 @@ describe("серверы: список", () => {
     expect(screen.getByTestId("server-id2")).toHaveTextContent(/проверка сертификата/);
   });
 
+  it("непроверяемый отпечаток сертификата виден в строке", () => {
+    // П4 аудита 1.6.1: ядро сверяет только ключ, и ссылка обещала больше.
+    risovat(spisok([server(1, { otpechatok_ne_proveryaetsya: true }), server(2)]));
+    expect(screen.getByTestId("server-id1")).toHaveTextContent(/отпечаток сертификата не проверяется/);
+    expect(screen.getByTestId("server-id2")).not.toHaveTextContent(/отпечаток/);
+  });
+
   it("удержанная запись лежит в полосе про переподключение, а не среди ручных", () => {
     risovat(spisok([server(1, { iz_podpiski: false, uderzhan: true }), server(2, { iz_podpiski: false })]));
     const uderzhannye = screen.getByRole("group", { name: /Пропали из подписки/ });

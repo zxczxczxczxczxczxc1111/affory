@@ -178,9 +178,10 @@ func dlyaEkrana(s protokol.Server) protokol.Server {
 	return protokol.Server{
 		Id: s.Id, Imya: s.Imya, Transport: s.Transport,
 		Host: s.Host, Port: s.Port,
-		IzPodpiski:              s.IzPodpiski,
-		Uderzhan:                s.Uderzhan,
-		NebezopasnyyIgnorirovan: s.NebezopasnyyIgnorirovan,
-		SPinom:                  s.Pin != "",
+		IzPodpiski:                s.IzPodpiski,
+		Uderzhan:                  s.Uderzhan,
+		NebezopasnyyIgnorirovan:   s.NebezopasnyyIgnorirovan,
+		OtpechatokNeProveryaetsya: s.OtpechatokNeProveryaetsya,
+		SPinom:                    s.Pin != "",
 	}
 }
