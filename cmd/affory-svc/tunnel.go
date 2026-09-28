@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
@@ -79,7 +80,7 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 		log.Printf("снимок адаптеров не снят, чужой туннель может быть принят за наш: %v", err)
 	}
 
-	go func() {
+	fon.Zapustit("стороже ядра", func() {
 		// Состояние туннеля ведёт основной путь Connect, поэтому обработчика у
 		// сторожа нет вовсе.
 		//
@@ -89,10 +90,12 @@ func (s *Sluzhba) podnyatTunSistemno(ctx context.Context) (set.Adapter, error) {
 		// адаптера в подъёме, а умершее позже ловит наблюдатель по clash_api и
 		// опускает туннель кодом tunnel-not-carrying. Ветка описывала событие,
 		// которого не бывает, и создавала вид обработки.
-		if err := s.storozhit(ctx, imyaYadraTun, putKonfigaTun(), nil); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("сторож ядра туннеля завершился: %v", err)
-		}
-	}()
+		fon.SPovtorom(ctx, "сторож ядра", pauzaPoslePaniki, func() {
+			if err := s.storozhit(ctx, imyaYadraTun, putKonfigaTun(), nil); err != nil && !errors.Is(err, context.Canceled) {
+				log.Printf("сторож ядра туннеля завершился: %v", err)
+			}
+		})
+	})
 
 	ozhid, otm := context.WithTimeout(ctx, zhdatAdaptera)
 	defer otm()

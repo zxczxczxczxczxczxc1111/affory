@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
@@ -64,10 +65,10 @@ func (s *Sluzhba) zapustitOprosStat() {
 	}
 	ctx, otmena := context.WithCancel(s.fonCtx)
 	s.statOtmena = otmena
-	go s.oprashivatStat(ctx)
+	fon.Zapustit("опросе статистики", func() { s.oprashivatStat(ctx) })
 	// Задержка своей горутиной, а не тем же тактом: замер это настоящий запрос
 	// в сеть, и в такте цифр он задерживал бы их на всё своё время.
-	go s.meryatOtklik(ctx)
+	fon.Zapustit("замере отклика", func() { s.meryatOtklik(ctx) })
 }
 
 // Под s.mu. Последний отписавшийся гасит опрос.

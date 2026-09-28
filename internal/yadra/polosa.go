@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 )
 
 // Замер полосы скачиванием. Задача 8, часть В.
@@ -149,10 +151,10 @@ func zamer(ctx context.Context, v VhodPolosy, vid vidZamera) (ItogPolosy, error)
 	var idut sync.WaitGroup
 	for i := 0; i < v.Potokov; i++ {
 		idut.Add(1)
-		go func() {
+		fon.Zapustit("потоке замера полосы", func() {
 			defer idut.Done()
 			vid.rabota(ctx, klient, v.Adres, &s)
-		}()
+		})
 	}
 
 	// Пул закрывается ПОСЛЕ потоков, и потому в стороне от замера. Транспорт
@@ -160,10 +162,10 @@ func zamer(ctx context.Context, v VhodPolosy, vid vidZamera) (ItogPolosy, error)
 	// (IdleConnTimeout у голого Transport нулевой), то есть висят до конца
 	// процесса. Закрыть их прямо здесь нельзя: поток, дописывающий последний
 	// ответ, вернёт своё соединение в уже закрытый пул, и оно переживёт замер.
-	go func() {
+	fon.Zapustit("закрытии пула замера", func() {
 		idut.Wait()
 		klient.CloseIdleConnections()
-	}()
+	})
 	nachalo := time.Now()
 	<-ctx.Done()
 	proshlo := time.Since(nachalo)

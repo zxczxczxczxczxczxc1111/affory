@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
-	"runtime/debug"
 	"sync"
+	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
@@ -21,32 +23,110 @@ import (
 // handler panic on demand, which no real command is allowed to do.
 var otdatDispetcheru = (*Sluzhba).Obrabotat
 
-// The accept loop belongs to no task in the plan: 1.3 built the listener, 1.9
-// built the commands, and nobody wrote the part that puts a frame from one into
-// the other. Written here, recorded in the plan, because a gap that compiles is
-// a gap nobody notices.
+// slushatKanal это шов: настоящий слушатель требует прав SYSTEM на владельца
+// канала, и тест на хосте его не создаст.
+var slushatKanal = kanal.Slushat
+
+// Сколько отказов приёма подряд терпит один слушатель, прежде чем его
+// откроют заново.
+const maksOtkazovPriyoma = 10
+
+// Obsluzhivat принимает клиентов канала до отмены ctx.
+//
+// Отказ открыть канал при СТАРТЕ возвращается: занятое имя значит, что кто-то
+// выдаёт себя за нас, и отдать ему наших клиентов хуже, чем не стартовать.
+// Отказ ПОСЛЕ старта службу не останавливает (Н6 аудита 1.6.1). До 1.7.0 любой
+// отказ Accept гасил службу вместе с туннелем, хотя у go-winio слушатель после
+// такого отказа жив и следующий Accept проходит: отказ приёма одного клиента
+// стоил человеку сети.
 func (s *Sluzhba) Obsluzhivat(ctx context.Context) error {
-	l, err := kanal.Slushat()
+	l, err := slushatKanal()
 	if err != nil {
-		// A taken name means somebody is pretending to be us. Dying is correct:
-		// handing our clients to a squatter is worse than not starting.
 		return err
 	}
-	go func() {
-		<-ctx.Done()
-		_ = l.Close()
-	}()
+	for {
+		err := s.prinimat(ctx, l)
+		if ctx.Err() != nil {
+			return nil
+		}
+		log.Printf("канал перестал принимать: %v; открываю заново", err)
+		if l = otkrytKanalZanovo(ctx); l == nil {
+			return nil
+		}
+	}
+}
+
+// prinimat крутит Accept одного слушателя и возвращается, когда слушатель
+// мёртв, отказы идут подряд без конца или отменён ctx. Слушатель закрыт на
+// выходе в любом случае.
+func (s *Sluzhba) prinimat(ctx context.Context, l net.Listener) error {
+	defer l.Close()
+	// AfterFunc, а не горутина с <-ctx.Done(): та жила бы до отмены службы и
+	// после смены слушателя.
+	defer context.AfterFunc(ctx, func() { _ = l.Close() })()
+	podryad := 0
 	for {
 		c, err := l.Accept()
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return nil
-			default:
-			}
-			return fmt.Errorf("канал не принимает: %w", err)
+		if err == nil {
+			podryad = 0
+			fon.Zapustit("соединении", func() { s.obsluzhitOdnogo(ctx, c) })
+			continue
 		}
-		go s.obsluzhitOdnogo(ctx, c)
+		if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+			return err
+		}
+		podryad++
+		if podryad >= maksOtkazovPriyoma {
+			return fmt.Errorf("%d отказов приёма подряд, последний: %w", podryad, err)
+		}
+		log.Printf("канал не принял клиента (%d подряд): %v", podryad, err)
+		if !podozhdat(ctx, pauzaKanala(podryad)) {
+			return ctx.Err()
+		}
+	}
+}
+
+// otkrytKanalZanovo открывает слушатель, пока не выйдет или не отменят ctx.
+//
+// Сдаваться некуда: без канала служба держит туннель, но ни окно, ни трей
+// ничего ей не скажут, и лучше пробовать с потолком паузы, чем стоять глухой.
+// Имя может быть занято нашими же живыми соединениями: экземпляры канала
+// держат имя, пока их не закроют, и слушатель откроется, когда клиент уйдёт.
+func otkrytKanalZanovo(ctx context.Context) net.Listener {
+	for popytka := 1; ; popytka++ {
+		if !podozhdat(ctx, pauzaKanala(popytka)) {
+			return nil
+		}
+		l, err := slushatKanal()
+		if err == nil {
+			log.Printf("канал открыт заново с попытки %d", popytka)
+			return l
+		}
+		log.Printf("канал не открылся заново (попытка %d): %v", popytka, err)
+	}
+}
+
+// nachaloPauzyKanala это первая пауза; тест её укорачивает.
+var nachaloPauzyKanala = 100 * time.Millisecond
+
+// pauzaKanala растёт вдвое от nachaloPauzyKanala до потолка в 30 с.
+func pauzaKanala(popytka int) time.Duration {
+	p := nachaloPauzyKanala
+	for i := 1; i < popytka && p < 30*time.Second; i++ {
+		p *= 2
+	}
+	return min(p, 30*time.Second)
+}
+
+// podozhdat ждёт d и отвечает false, если ctx отменили раньше.
+func podozhdat(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
 	}
 }
 
@@ -97,7 +177,7 @@ func (s *Sluzhba) obsluzhitOdnogo(ctx context.Context, c net.Conn) {
 	defer s.Otpisatsya(id)
 	// Команды этого соединения знают свой id: подписка на статистику живёт с ним.
 	ctx = sPodpischikom(ctx, id)
-	go rassylat(sob, otpravit)
+	fon.Zapustit("рассылке событий", func() { rassylat(sob, otpravit) })
 
 	for {
 		k, err := kanal.ChitatKadr(c)
@@ -107,7 +187,7 @@ func (s *Sluzhba) obsluzhitOdnogo(ctx context.Context, c net.Conn) {
 		// One goroutine per command on purpose: connect blocks for seconds while
 		// it waits for the first probe, and a client that cannot ask for status
 		// meanwhile is a client that draws a frozen window.
-		go s.obsluzhitKomandu(ctx, k, otpravit)
+		fon.Zapustit("команде "+k.Imya, func() { s.obsluzhitKomandu(ctx, k, otpravit) })
 	}
 }
 
@@ -173,5 +253,5 @@ func perehvatitPaniku(gde string) {
 // least says that something happened, while a swallowed one leaves a command
 // that answers "no" for a reason nobody can ever find.
 func zapisatPaniku(gde string, r any) {
-	log.Printf("паника в %s: %v\n%s", gde, r, debug.Stack())
+	fon.ZapisatPaniku(gde, r)
 }

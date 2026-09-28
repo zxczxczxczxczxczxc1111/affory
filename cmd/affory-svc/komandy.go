@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/proby"
@@ -28,6 +29,10 @@ import (
 // Константы целей больше нет: сервер берётся из списка (задача 3.8). Пока она
 // была, критерий «сервер добавляется ссылкой» был недостижим физически, потому
 // что разобранному protokol.Server было некуда лечь.
+// pauzaPoslePaniki это отступ перед единственным перезапуском долгого фонового
+// цикла, упавшего паникой (fon.SPovtorom).
+const pauzaPoslePaniki = 5 * time.Second
+
 const (
 // Ядро одно, и его имя с путём живут в tunnel.go рядом с подъёмом туннеля.
 // Прежде здесь стояли имя и путь конфига ВТОРОГО ядра (Xray), потому что волне 1
@@ -316,6 +321,12 @@ type Sluzhba struct {
 	zaslonAktiven bool
 	muZaslon      sync.Mutex
 
+	// upalaSTunnelem: файл состояния при старте говорил podnyat, то есть прошлая
+	// служба умерла, не опустив туннель (Н2 аудита 1.6.1). Штатное опускание
+	// пишет vyklyuchen, так что podnyat в файле при старте бывает только после
+	// аварии: убитый процесс, паника, пропавшее питание.
+	upalaSTunnelem bool
+
 	// Адаптер туннеля, известен только после подъёма. На его индексе держится
 	// поиск канала ПОД туннелем, на алиасе порядок правил задачи 2.5.
 	tun set.Adapter
@@ -542,7 +553,7 @@ func (s *Sluzhba) postavit(n protokol.Sostoyanie, oshib *protokol.Oshibka) {
 	s.izvestit("state", s.Status())
 	// Адрес выхода по подъёму, не по таймеру (§5).
 	if n == protokol.SostPodnyat {
-		go s.obnovitAdresVyhoda()
+		fon.Zapustit("обновлении адреса выхода", s.obnovitAdresVyhoda)
 	}
 }
 
@@ -593,6 +604,7 @@ func (s *Sluzhba) zagruzitNastroyki() {
 	if f.AdresProverki != "" {
 		s.adresProverki = f.AdresProverki
 	}
+	s.upalaSTunnelem = f.Sostoyanie == protokol.SostPodnyat
 	s.mu.Unlock()
 }
 
@@ -651,9 +663,15 @@ func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 	// Самовольный подъём на НЕЗАПЕРТОЙ машине по-прежнему запрещён: там он
 	// сюрприз, а здесь возврат отнятого.
 	zaperta := s.zaslonAktiven
+	// Туннель, который опустила авария, а не человек, возвращается так же, как
+	// при замке: человек его не выключал.
+	avariya := s.upalaSTunnelem
 	s.mu.Unlock()
-	if !vkl && !zaperta {
+	if !vkl && !zaperta && !avariya {
 		return
+	}
+	if avariya && !vkl && !zaperta {
+		log.Printf("прошлая служба завершилась, не опустив туннель: поднимаю его обратно")
 	}
 	for i := 0; i < popytokPriStarte; i++ {
 		err := s.Connect(ctx)
@@ -665,6 +683,13 @@ func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 		if i < popytokPriStarte-1 && !s.zhdat(ctx, 10*time.Second) {
 			return
 		}
+	}
+	// Запертая машина без туннеля не имеет связи вовсе, и минута неудач не
+	// повод сдаваться (Н5 аудита 1.6.1): сеть могла подняться позже. Дальше
+	// обычное восстановление с растущим отступом и без потолка попыток.
+	if zaperta && ctx.Err() == nil {
+		log.Printf("машина заперта, а туннель за %d попыток не поднялся: ухожу в восстановление", popytokPriStarte)
+		s.zapustitVosstanovlenie()
 	}
 }
 
@@ -865,7 +890,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) (itogErr error) {
 
 		// Слежение за чужим прокси живёт столько же, сколько подключение: вне его
 		// предупреждать не о чем, туннеля всё равно нет.
-		go s.slediZaProksi(vnutr)
+		fon.Zapustit("слежении за прокси", func() { s.slediZaProksi(vnutr) })
 
 		// Туннель поднимается ДО замера, и это обратный порядок к прежнему.
 		//
@@ -1100,15 +1125,17 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int) (itogErr error) {
 				// проверку живости туннеля на срок доспроса. Регистрация своя, и
 				// отказ в ней означает лишь, что нас уже отключают.
 				if dosprosNuzhen && s.zavestiNablyudatelya(moyo) {
-					go func() {
+					fon.Zapustit("доспросе несущего", func() {
 						defer s.nabl.Done()
 						s.dosprositNesushchego(vnutr, adres, sekret)
-					}()
+					})
 				}
-				go func() {
+				fon.Zapustit("наблюдателе туннеля", func() {
 					defer s.nabl.Done()
-					s.nablyudat(vnutr, adres, sekret, teg)
-				}()
+					fon.SPovtorom(vnutr, "наблюдатель туннеля", pauzaPoslePaniki, func() {
+						s.nablyudat(vnutr, adres, sekret, teg)
+					})
+				})
 				return nil
 			}
 			poslednyaya = err
@@ -1495,7 +1522,7 @@ func (s *Sluzhba) zapomnitNesushchego(id string) {
 		return
 	}
 	// Смена несущего меняет и адрес выхода (§5: при смене сервера).
-	go s.obnovitAdresVyhoda()
+	fon.Zapustit("обновлении адреса выхода", s.obnovitAdresVyhoda)
 	// И это событие: в авто ядро переключает само, без команды человека, и
 	// до сих пор экран узнавал при следующем опросе, а трей не узнавал никогда
 	// (план «шесть удобств» §4). Тот же несущий событием не является.
@@ -1654,28 +1681,35 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 			// человеком не переподключает никогда, иначе кнопка «отключить»
 			// перестаёт работать: это и есть граница между обычным режимом и
 			// постоянным, ради которой у чужих клиентов заведено два kill switch.
-			vosstCtx, otmenaV := context.WithCancel(s.fonCtx)
-			s.mu.Lock()
-			s.otmenaVosst = otmenaV
-			s.mu.Unlock()
-			// Не зарегистрировались значит службу останавливают, и
-			// возвращаться некуда: восстановление подняло бы туннель уже после
-			// того, как его опустили насовсем.
-			if !s.zavestiFonovuyu() {
-				otmenaV()
-				return
-			}
-			go func() {
-				defer s.fon.Done()
-				defer otmenaV()
-				s.vosstanavlivat(vosstCtx)
-			}()
+			s.zapustitVosstanovlenie()
 			return
 		}
 		// Счётчик сбрасывается только успехом: два провала ПОДРЯД, а не два
 		// провала за всё время работы.
 		podryad = 0
 	}
+}
+
+// zapustitVosstanovlenie заводит фоновое восстановление туннеля.
+func (s *Sluzhba) zapustitVosstanovlenie() {
+	vosstCtx, otmenaV := context.WithCancel(s.fonCtx)
+	s.mu.Lock()
+	s.otmenaVosst = otmenaV
+	s.mu.Unlock()
+	// Не зарегистрировались значит службу останавливают, и возвращаться
+	// некуда: восстановление подняло бы туннель уже после того, как его
+	// опустили насовсем.
+	if !s.zavestiFonovuyu() {
+		otmenaV()
+		return
+	}
+	fon.Zapustit("восстановлении", func() {
+		defer s.fon.Done()
+		defer otmenaV()
+		fon.SPovtorom(vosstCtx, "восстановление", pauzaPoslePaniki, func() {
+			s.vosstanavlivat(vosstCtx)
+		})
+	})
 }
 
 // vosstanavlivat поднимает туннель обратно после АВАРИИ.

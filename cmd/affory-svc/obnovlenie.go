@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kodirovki"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/obnovlenie"
@@ -273,10 +274,11 @@ func zvatHello(ctx context.Context, k *kanal.Klient) (protokol.Kadr, error) {
 	tip := make(chan struct{})
 	var kadr protokol.Kadr
 	var err error
-	go func() {
+	// Паника здесь закрыть tip не успеет, и ответ придёт сроком ctx.
+	fon.Zapustit("проверке новой службы", func() {
 		kadr, err = k.Zvat("hello", map[string]int{"protocol": protokol.Versiya})
 		close(tip)
-	}()
+	})
 	select {
 	case <-tip:
 		return kadr, err

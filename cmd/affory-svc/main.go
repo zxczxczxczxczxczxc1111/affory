@@ -5,12 +5,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 
 	"golang.org/x/sys/windows/svc"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
@@ -205,11 +207,18 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 	ubratStaryeObnovleniya()
 	yadro.pokazatItogObnovleniya()
 	if razreshenAvtopodyom(args) {
-		go yadro.PodklyuchitPriStarte(ctx)
+		fon.Zapustit("подъёме при старте", func() { yadro.PodklyuchitPriStarte(ctx) })
 	}
-	go yadro.vestiZhurnal(ctx)
+	fon.Zapustit("журнале соединений", func() { yadro.vestiZhurnal(ctx) })
 	oshibki := make(chan error, 1)
-	go func() { oshibki <- yadro.Obsluzhivat(ctx) }()
+	fon.Zapustit("приёме канала", func() {
+		// Отправка в defer: паника в приёме тоже должна дойти до цикла ниже,
+		// иначе служба осталась бы жить глухой, без единого способа до неё
+		// достучаться. Выход с кодом 1 отдаёт её восстановлению SCM.
+		err := errors.New("приём канала упал паникой")
+		defer func() { oshibki <- err }()
+		err = yadro.Obsluzhivat(ctx)
+	})
 
 	st <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
 	for {

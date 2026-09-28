@@ -15,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 )
 
 type Provider struct {
@@ -205,10 +207,10 @@ func blizhayshaya(parent context.Context, c *http.Client, tochki []Tochka) (Toch
 	var wg sync.WaitGroup
 	for i, t := range tochki {
 		wg.Add(1)
-		go func() {
+		fon.Zapustit("выборе площадки замера", func() {
 			defer wg.Done()
 			zaderzhki[i], otvetili[i] = zaderzhka(ctx, c, t.Ping)
-		}()
+		})
 	}
 	wg.Wait()
 	if parent.Err() != nil {
@@ -316,7 +318,7 @@ func (r Runner) phase(parent context.Context, c *http.Client, endpoint string, u
 	}
 	for i := 0; i < r.Threads; i++ {
 		workers.Add(1)
-		go func() {
+		fon.Zapustit("потоке замера скорости", func() {
 			defer workers.Done()
 			chunk := r.Chunk
 			if upload {
@@ -337,7 +339,7 @@ func (r Runner) phase(parent context.Context, c *http.Client, endpoint string, u
 					chunk = min(chunk*2, r.Chunk)
 				}
 			}
-		}()
+		})
 	}
 	workers.Wait()
 	razgon.Stop()

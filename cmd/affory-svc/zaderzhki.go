@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
@@ -70,13 +71,13 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 	vorota := make(chan struct{}, odnovremennyhZamerov)
 	for i, srv := range servery {
 		gruppa.Add(1)
-		go func(i int, srv protokol.Server) {
+		fon.Zapustit("замере задержки", func() {
 			defer gruppa.Done()
 			vorota <- struct{}{}
 			defer func() { <-vorota }()
 			zamery[i] = s.zamerOdnogo(ctx, srv, adresKlash, sekret)
 			zamery[i].Versiya = versii[srv.Id]
-		}(i, srv)
+		})
 	}
 	gruppa.Wait()
 

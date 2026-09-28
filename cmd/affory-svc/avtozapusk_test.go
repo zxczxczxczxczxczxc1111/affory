@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/netip"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows/registry"
 
@@ -195,6 +197,60 @@ func TestZapertayaMashinaPodnimaetTunnelDazheBezFlaga(t *testing.T) {
 	if podnimali != 1 {
 		t.Fatalf("машина заперта, флага нет, подъёмов %d: человек остался без сети и без выхода", podnimali)
 	}
+}
+
+// Н2 аудита 1.6.1. Файл состояния, оставшийся в podnyat, значит, что служба
+// умерла, не опустив туннель: штатное опускание пишет vyklyuchen. Туннель
+// возвращается и без флага: человек его не опускал, его опустила авария.
+func TestTunnelVozvrashchaetsyaPosleSmertiSluzhby(t *testing.T) {
+	for _, sluchay := range []struct {
+		imya  string
+		sost  protokol.Sostoyanie
+		zhdem int
+	}{
+		{"служба умерла с поднятым туннелем", protokol.SostPodnyat, 1},
+		{"туннель опущен штатно", protokol.SostVyklyuchen, 0},
+	} {
+		t.Run(sluchay.imya, func(t *testing.T) {
+			s := podstavnaya(t, nil)
+			podnimali := 0
+			s.podnyatTunnel = func(ctx context.Context) (set.Adapter, error) {
+				podnimali++
+				return set.Adapter{Indeks: 10, Imya: "tun0", Adresa: []netip.Addr{netip.MustParseAddr("172.19.0.1")}}, nil
+			}
+			s.prochitat = func() (sostoyanie.SostoyanieFayla, error) {
+				return sostoyanie.SostoyanieFayla{Sostoyanie: sluchay.sost}, nil
+			}
+			s.zagruzitNastroyki()
+			s.PodklyuchitPriStarte(context.Background())
+			if podnimali != sluchay.zhdem {
+				t.Fatalf("подъёмов при старте %d, ожидали %d", podnimali, sluchay.zhdem)
+			}
+		})
+	}
+}
+
+// Н5 аудита 1.6.1. Запертая машина без туннеля не имеет связи вовсе, и шесть
+// неудачных попыток при старте не повод сдаться: сеть могла подняться позже
+// минуты. Дальше работает обычное восстановление с отступом.
+func TestZapertayaMashinaNeSdayotsyaPosleShestiPopytok(t *testing.T) {
+	s := podstavnaya(t, nil)
+	var podnimali atomic.Int32
+	s.podnyatTunnel = func(ctx context.Context) (set.Adapter, error) {
+		if podnimali.Add(1) <= popytokPriStarte {
+			return set.Adapter{}, errors.New("тест: сети ещё нет")
+		}
+		return set.Adapter{Indeks: 10, Imya: "tun0", Adresa: []netip.Addr{netip.MustParseAddr("172.19.0.1")}}, nil
+	}
+	s.prochitat = func() (sostoyanie.SostoyanieFayla, error) { return sostoyanie.SostoyanieFayla{}, nil }
+	s.zagruzitNastroyki()
+	s.PomnitZapertuyu(true)
+	s.zhdat = func(context.Context, time.Duration) bool { return true }
+	s.otstupy = []time.Duration{time.Millisecond}
+	s.PodklyuchitPriStarte(context.Background())
+	dozhdatsya(t, "подъём после шести неудач", func() bool {
+		return s.Status().Sostoyanie == protokol.SostPodnyat
+	})
 }
 
 // klyuchRunTolkoChtenie отдаёт ключ, который ЧИТАЕТСЯ, но не пишется.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
@@ -166,23 +167,29 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 // красный превращался в зависание, то есть в худшую форму красного.
 func (s *Sluzhba) ZapustitRaspisanie() {
 	s.fon.Add(1)
-	go func() {
+	fon.Zapustit("расписании подписки", func() {
 		defer s.fon.Done()
-		s.raspisaniePodpiski(s.fonCtx)
-	}()
+		fon.SPovtorom(s.fonCtx, "расписание подписки", pauzaPoslePaniki, func() {
+			s.raspisaniePodpiski(s.fonCtx)
+		})
+	})
 	s.fon.Add(1)
-	go func() {
+	fon.Zapustit("расписании обновлений", func() {
 		defer s.fon.Done()
-		s.raspisanieObnovleniy(s.fonCtx)
-	}()
+		fon.SPovtorom(s.fonCtx, "расписание обновлений", pauzaPoslePaniki, func() {
+			s.raspisanieObnovleniy(s.fonCtx)
+		})
+	})
 	// Подробный журнал крутится ВСЕГДА и молчит, пока настройка выключена.
 	// Заводить и гасить горутину по щелчку настройки значит завести гонку там,
 	// где такт стоит одного сравнения.
 	s.fon.Add(1)
-	go func() {
+	fon.Zapustit("сборе диагностики", func() {
 		defer s.fon.Done()
-		s.sobiratDiagnostiku(s.fonCtx)
-	}()
+		fon.SPovtorom(s.fonCtx, "сбор диагностики", pauzaPoslePaniki, func() {
+			s.sobiratDiagnostiku(s.fonCtx)
+		})
+	})
 }
 
 // raspisaniePodpiski тянет подписку при старте и дальше раз в период.

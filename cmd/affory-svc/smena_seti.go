@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/netip"
 	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 )
 
 // Смена сети под поднятым туннелем (A4, 22.09.2026).
@@ -92,7 +94,7 @@ func (s *Sluzhba) perezapustitPodNovuyuSet(stalo netip.Addr) {
 	if !s.zavestiFonovuyu() {
 		return
 	}
-	go func() {
+	fon.Zapustit("переподъёме под новую сеть", func() {
 		defer s.fon.Done()
 		if err := s.perepodklyuchit(s.fonCtx); err != nil {
 			// Не авария: туннель либо цел (кандидат забракован до остановки),
@@ -102,7 +104,7 @@ func (s *Sluzhba) perezapustitPodNovuyuSet(stalo netip.Addr) {
 			return
 		}
 		log.Printf("конфиг пересобран под новую сеть, местный резолвер %s", stalo)
-	}()
+	})
 }
 
 // poraSmotretSet держит паузу между переподъёмами по смене сети.

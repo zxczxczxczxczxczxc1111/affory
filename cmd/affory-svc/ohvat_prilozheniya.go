@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/common/afforyprocess"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"golang.org/x/sys/windows"
@@ -202,7 +203,7 @@ func proveritFaylPravila(ctx context.Context, path string) string {
 		return "ne_proveren"
 	}
 	result := make(chan string, 1)
-	go func() {
+	fon.Zapustit("проверке файла программы", func() {
 		defer func() { <-proverkiFaylov }()
 		stat, err := os.Stat(path)
 		state := "est"
@@ -215,7 +216,7 @@ func proveritFaylPravila(ctx context.Context, path string) string {
 			state = "papka"
 		}
 		result <- state
-	}()
+	})
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	select {

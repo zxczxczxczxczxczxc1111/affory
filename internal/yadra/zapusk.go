@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 )
@@ -67,7 +68,7 @@ func Zapustit(imya string, putKonfiga string) (*Yadro, error) {
 		smert:  make(chan error, 1),
 		podnyt: time.Now(),
 	}
-	go y.zhdat()
+	fon.Zapustit("ожидании ядра "+imya, y.zhdat)
 	return y, nil
 }
 

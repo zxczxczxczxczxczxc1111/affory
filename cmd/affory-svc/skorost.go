@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/skorost"
 )
@@ -94,19 +95,26 @@ func (s *Sluzhba) startSpeedTest(k protokol.Kadr) protokol.Kadr {
 	s.fon.Add(1)
 	initial := job.snapshot
 	s.mu.Unlock()
-	go func() {
+	fon.Zapustit("замере скорости", func() {
 		defer s.fon.Done()
 		defer cancel()
-		result := run(ctx, proxy, input.Provider, func(p skorost.Progress) {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			if ctx.Err() == nil {
-				job.snapshot.Phase = p.Phase
-				job.snapshot.Provider = p.Provider
-				job.snapshot.Name = p.Name
-				job.snapshot.Attempt = p.Attempt
-			}
-		})
+		var result skorost.Result
+		// Паника замера должна закончить замер ошибкой: без этого он навсегда
+		// остался бы «идущим», и новый было бы не начать до перезапуска службы.
+		if fon.Vypolnit("замере скорости", func() {
+			result = run(ctx, proxy, input.Provider, func(p skorost.Progress) {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				if ctx.Err() == nil {
+					job.snapshot.Phase = p.Phase
+					job.snapshot.Provider = p.Provider
+					job.snapshot.Name = p.Name
+					job.snapshot.Attempt = p.Attempt
+				}
+			})
+		}) {
+			result = skorost.Result{Error: "замер прерван внутренней ошибкой службы"}
+		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		finished := time.Now()
@@ -124,7 +132,7 @@ func (s *Sluzhba) startSpeedTest(k protokol.Kadr) protokol.Kadr {
 		if result.Error != "" {
 			job.snapshot.Phase = "error"
 		}
-	}()
+	})
 	return otvet(k.Id, k.Imya, initial)
 }
 
