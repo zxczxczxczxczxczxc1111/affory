@@ -52,6 +52,14 @@ if (-not (Test-Path $Yadro)) { throw "нет ядра $Yadro" }
 if (-not (Test-Path $Makensis)) { throw "нет makensis: $Makensis" }
 
 $koren  = Split-Path $PSScriptRoot -Parent
+# Б5 аудита 1.6.1: компилятор выпуска задан строкой toolchain в go.mod, а не
+# тем, что оказалось на машине сборки. Версия уходит в паспорт выпуска.
+$tulchein = (Select-String -Path (Join-Path $koren 'go.mod') -Pattern '^toolchain\s+(\S+)').Matches.Groups[1].Value
+if (-not $tulchein) { throw 'в go.mod нет строки toolchain: компилятор выпуска не закреплён' }
+$env:GOTOOLCHAIN = $tulchein
+$versiyaGo = (& go env GOVERSION).Trim()
+if ($LASTEXITCODE -ne 0 -or $versiyaGo -ne $tulchein) { throw "компилятор $versiyaGo вместо закреплённого $tulchein" }
+Write-Host "компилятор: $versiyaGo" -ForegroundColor Cyan
 $sborka = Join-Path $PSScriptRoot 'sborka'
 $vypusk = Join-Path $PSScriptRoot 'vypusk'
 $taskBuildPath = [IO.Path]::GetFullPath($sborka)
@@ -80,6 +88,12 @@ try {
             # Успех сборки судится по коду выхода, а не по молчанию stderr.
             $prezhnee = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
+            # npm ci ставит ровно то, что записано в package-lock.json (Б5 аудита
+            # 1.6.1): голый build брал то, что случайно лежало в node_modules.
+            try { & npm ci --no-audit --no-fund 2>&1 | Select-Object -Last 2 }
+            finally { $ErrorActionPreference = $prezhnee }
+            if ($LASTEXITCODE -ne 0) { throw 'зависимости фронта не поставились' }
+            $ErrorActionPreference = 'Continue'
             try { & npm run build 2>&1 | Select-Object -Last 2 }
             finally { $ErrorActionPreference = $prezhnee }
             if ($LASTEXITCODE -ne 0) { throw 'фронт не собрался' }
@@ -95,11 +109,12 @@ try {
     # Иконка и версия в ресурсах affory-ui.exe: go build сам подхватывает
     # rsrc_windows_amd64.syso из каталога пакета. Без него у exe нет иконки
     # ни в проводнике, ни в панели задач (выпуск 0.6.0 ушёл таким).
-    $winres = Join-Path $env:USERPROFILE 'go\bin\go-winres.exe'
-    if (-not (Test-Path $winres)) { throw "нет ${winres}, поставить: go install github.com/tc-hib/go-winres@latest" }
+    # go-winres закреплённой версией, а не тем, что лежит в go\bin (Б5 аудита
+    # 1.6.1). От его работы зависит номер в ресурсах, по которому служба
+    # отвергает понижение версии.
     Push-Location (Join-Path $koren 'cmd\affory-ui')
     try {
-        & $winres make --in winres\winres.json --out rsrc --arch amd64 --file-version $Versiya --product-version $Versiya
+        & go run github.com/tc-hib/go-winres@v0.3.3 make --in winres\winres.json --out rsrc --arch amd64 --file-version $Versiya --product-version $Versiya
         if ($LASTEXITCODE -ne 0) { throw 'ресурсы affory-ui не собрались' }
     } finally { Pop-Location }
     # -tags production: без метки Wails считает сборку отладочной и включает
@@ -165,6 +180,9 @@ $zapis = [ordered]@{
     sha256      = $otpYadra.sha256
     bayt        = $otpYadra.bayt
     sobrano     = $otpYadra.sobrano
+    # Компилятор клиента, не ядра: ядро собирается своим скриптом, и его
+    # версия выше в поле go.
+    go_klienta  = $versiyaGo
 }
 $zapis | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $PSScriptRoot 'YADRO-VYPUSKA.json') -Encoding UTF8
 Write-Host "ядро выпуска: $($otpYadra.versiya), коммит $($otpYadra.kommit)" -ForegroundColor Cyan
