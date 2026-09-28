@@ -266,6 +266,11 @@ func TestPraviloNaProtsessOdnaProgrammaNaPravilo(t *testing.T) {
 	p := pravilaRazresheniya(obraztsovoeRazreshyonnoe())
 	programmy := 0
 	for _, k := range p {
+		// Правила DNS тоже с программой, но с системной службой DNS, а не с
+		// нашими процессами: их считает TestDnsRazreshyonTolkoSistemnoySluzhbeDns.
+		if !strings.HasPrefix(k[0], PravAllowProc) {
+			continue
+		}
 		for _, a := range k {
 			if strings.HasPrefix(a, "program=") {
 				programmy++
@@ -666,6 +671,22 @@ func TestDnsRazreshyonPoTCPToZhe(t *testing.T) {
 	}
 	if !tcp {
 		t.Error("DNS по TCP запрещён: усечённый ответ в запертом режиме не переспросится")
+	}
+}
+
+// С4 аудита 1.6.1. Порт 53 к резолверу был открыт любой программе: в запертом
+// режиме всякая, что шлёт запросы сама мимо туннеля, резолвила открытым текстом.
+// Нужен он одной системной службе DNS: через неё резолвит и наша служба, а ядру
+// и службе и так разрешён любой выход правилами процессов.
+func TestDnsRazreshyonTolkoSistemnoySluzhbeDns(t *testing.T) {
+	for _, k := range pravilaRazresheniya(obraztsovoeRazreshyonnoe()) {
+		if k[0] != PravAllowDns && k[0] != PravAllowDnsTcp {
+			continue
+		}
+		s := strings.Join(k, " ")
+		if !strings.Contains(strings.ToLower(s), `\svchost.exe`) || !strings.Contains(s, "service=dnscache") {
+			t.Fatalf("правило DNS открыто не только службе DNS: %s", s)
+		}
 	}
 }
 

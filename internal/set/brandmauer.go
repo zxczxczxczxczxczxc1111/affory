@@ -450,9 +450,16 @@ func pravilaRazresheniya(r Razreshyonnoe) [][]string {
 	// усечённом ответе, и в запертом режиме этот переспрос молча не доезжал:
 	// выглядит как случайно неработающие сайты, а не как правило брандмауэра.
 	// Решено 01.09.2026.
+	//
+	// Только системной службе DNS, как во встроенном правиле Windows «Core
+	// Networking - DNS» (С4 аудита 1.6.1). Прежде порт был открыт любой
+	// программе, и в запертом режиме всякая, что шлёт запросы сама мимо
+	// туннеля, резолвила открытым текстом. Наша служба резолвит через ту же
+	// системную службу, а ядру и службе любой выход и так разрешён пунктом 5.
 	if r.Resolver.IsValid() {
-		dobavit(PravAllowDns, "remoteip="+r.Resolver.String(), "remoteport=53", "protocol=udp")
-		dobavit(PravAllowDnsTcp, "remoteip="+r.Resolver.String(), "remoteport=53", "protocol=tcp")
+		sluzhbaDns := []string{"program=" + putSvchost(), "service=dnscache"}
+		dobavit(PravAllowDns, append([]string{"remoteip=" + r.Resolver.String(), "remoteport=53", "protocol=udp"}, sluzhbaDns...)...)
+		dobavit(PravAllowDnsTcp, append([]string{"remoteip=" + r.Resolver.String(), "remoteport=53", "protocol=tcp"}, sluzhbaDns...)...)
 	}
 
 	// 5. Процессы ядер и сама служба. У netsh одно правило это ОДНА программа,
