@@ -1,10 +1,12 @@
 package set
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/windows"
 
@@ -130,9 +132,24 @@ func PraviloEst(imya string) (bool, error) {
 	return strings.Contains(vyhod, imya), nil
 }
 
+// srokNetsh ограничивает один вызов netsh (Н9 аудита 1.6.1). Без срока
+// зависший netsh держал подъём туннеля и снятие защиты без конца.
+var srokNetsh = 15 * time.Second
+
+// programmaNetsh это шов: тест подставляет зависающую программу.
+var programmaNetsh = putNetsh
+
 func vypolnitNetsh(argumenty []string) (string, error) {
-	cmd := exec.Command(putNetsh(), argumenty...)
+	ctx, otmena := context.WithTimeout(context.Background(), srokNetsh)
+	defer otmena()
+	cmd := exec.CommandContext(ctx, programmaNetsh(), argumenty...)
+	// Убитый по сроку процесс мог оставить наследника с нашими трубами вывода:
+	// ждать их после убийства дольше пары секунд незачем.
+	cmd.WaitDelay = 2 * time.Second
 	syrye, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("netsh %s не ответил за %v", strings.Join(argumenty, " "), srokNetsh)
+	}
 	// netsh отвечает в кодовой странице КОНСОЛИ, а не в UTF-8. На русской
 	// Windows это 866, и прочитанные как UTF-8 байты дают «ЌЁ ®¤­® Їа ўЁ«®»
 	// вместо «Ни одно правило». Пока перевода не было, netPravil ниже не

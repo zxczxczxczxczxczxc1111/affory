@@ -1,6 +1,7 @@
 package yadra
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
@@ -57,10 +59,22 @@ func Proverit(imya string, putKonfiga string) error {
 	return proveritKonfig(put, putKonfiga)
 }
 
+// srokProverki ограничивает `sing-box check` (Н9 аудита 1.6.1). Проверка
+// идёт на каждом подъёме туннеля, и зависшая держала бы его без конца.
+var srokProverki = 15 * time.Second
+
 func proveritKonfig(putYadra string, putKonfiga string) error {
-	cmd := exec.Command(putYadra, "check", "-c", putKonfiga)
+	ctx, otmena := context.WithTimeout(context.Background(), srokProverki)
+	defer otmena()
+	cmd := exec.CommandContext(ctx, putYadra, "check", "-c", putKonfiga)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.WaitDelay = 2 * time.Second
 	vyhod, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		// Не OshibkaKonfiga: конфиг тут ни при чём, и исключать исходящий по
+		// такому отказу было бы враньём.
+		return fmt.Errorf("ядро не ответило на проверку конфига за %v", srokProverki)
+	}
 	if err == nil {
 		return nil
 	}

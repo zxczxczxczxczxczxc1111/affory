@@ -3,7 +3,9 @@
 package diagnostika
 
 import (
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -191,9 +194,17 @@ func zapustitNetsh() (string, error) {
 	if sistemnyy, err := windows.GetSystemDirectory(); err == nil {
 		netsh = sistemnyy + `\netsh.exe`
 	}
-	cmd := exec.Command(netsh, "int", "ipv4", "show", "dynamicport", "tcp")
+	// Срок как у остальных вызовов netsh (Н9 аудита 1.6.1): сбор диагностики
+	// крутится в службе всегда, и зависший netsh держал бы его без конца.
+	ctx, otmena := context.WithTimeout(context.Background(), 15*time.Second)
+	defer otmena()
+	cmd := exec.CommandContext(ctx, netsh, "int", "ipv4", "show", "dynamicport", "tcp")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.WaitDelay = 2 * time.Second
 	vyvod, err := cmd.Output()
+	if ctx.Err() != nil {
+		return "", errors.New("netsh не ответил за 15 с")
+	}
 	if err != nil {
 		return "", fmt.Errorf("netsh не ответил: %w", err)
 	}
