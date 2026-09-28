@@ -1,0 +1,68 @@
+# Проверка публичного репозитория (Б3 аудита 1.6.1).
+#
+# Главный барьер остаются ворота (affory-stend\vorota.ps1): они гоняют тесты с
+# живым ядром, сверку со спекой и обход интерфейса. Здесь то, что можно
+# проверить без частных репозиториев и без ядра: тесты, которым нужен
+# sing-box.exe или спека, пропускаются сами.
+name: proverka
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proverka-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proverka:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cmd/affory-ui/frontend/package-lock.json
+
+      # Шаги по одной команде: pwsh на раннере сверяет код выхода только у
+      # последней строки шага, и упавший npm ci посреди шага прошёл бы молча.
+      - name: зависимости фронта
+        working-directory: cmd/affory-ui/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: tsc
+        working-directory: cmd/affory-ui/frontend
+        run: npx tsc --noEmit -p .
+
+      # Фронт собирается ДО go vet: окно встраивает frontend/dist, и без сборки
+      # пакет cmd/affory-ui не компилируется.
+      - name: сборка фронта
+        working-directory: cmd/affory-ui/frontend
+        run: npm run build
+
+      - name: vitest
+        working-directory: cmd/affory-ui/frontend
+        run: npm test
+
+      - name: go vet
+        run: go vet ./...
+
+      # -race требует cgo, gcc на образе windows-latest есть.
+      - name: go test -race
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race ./...
