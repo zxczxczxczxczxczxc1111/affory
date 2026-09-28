@@ -296,10 +296,13 @@ func setiKandidatov(a []netip.Addr) []string {
 // Тег передаётся снаружи, а не берётся из константы: один тег на всех означал
 // бы, что два кандидата схлопнутся в селекторе в один, причём молча.
 func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error) {
-	sni := s.Sni
-	if sni == "" {
-		sni = s.Host
-	}
+	// Имя TLS: sni, затем заголовок Host, затем адрес. Ws+tls за CDN часто
+	// записан адресом и host= без sni, и с адресом фронт отвечал сертификатом
+	// не того сайта (С1 аудита 1.6.1). IP в последней ступени ничего не меняет:
+	// пустое имя ядро и само заменяет адресом (common/tls/std_client.go).
+	sni := putIli(s.Sni, putIli(s.HostZagolovka, s.Host))
+	// У reality имя это маска, заголовок Host к ней отношения не имеет.
+	sniReality := putIli(s.Sni, s.Host)
 	// ALPN и заголовок Host приезжают ИЗ ССЫЛКИ: разбор их вынимал с самого
 	// начала, а сюда они не доезжали.
 	//
@@ -317,7 +320,7 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 	switch s.Transport {
 	case "reality-tcp":
 		o := vless(s, teg)
-		o["tls"] = tlsReality(s, sni, otpechatok)
+		o["tls"] = tlsReality(s, sniReality, otpechatok)
 		dobavitAlpn(o, s)
 		return o, nil
 
@@ -325,7 +328,7 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 		// Тот же reality, что выше, плюс транспорт grpc. Flow здесь нет и быть
 		// не может: vision живёт только на голом TCP (см. flowVozmozhen).
 		o := vless(s, teg)
-		o["tls"] = tlsReality(s, sni, otpechatok)
+		o["tls"] = tlsReality(s, sniReality, otpechatok)
 		dobavitAlpn(o, s)
 		o["transport"] = map[string]any{"type": "grpc", "service_name": putIli(s.Put, "gun")}
 		return o, nil

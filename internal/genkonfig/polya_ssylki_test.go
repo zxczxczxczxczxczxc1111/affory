@@ -116,6 +116,37 @@ func TestZagolovokHostIzSsylkiDoezzhaetDoYadra(t *testing.T) {
 	}
 }
 
+// С1 аудита 1.6.1. Ws+tls за CDN часто записан адресом и host= без sni. Имя в
+// TLS бралось из адреса, и фронт отвечал сертификатом не того сайта.
+func TestImyaTLSBeryotZagolovokHostDoAdresa(t *testing.T) {
+	for _, transport := range []string{"ws", "httpupgrade", "trojan-ws", "vmess-ws", "grpc"} {
+		t.Run(transport, func(t *testing.T) {
+			s := protokol.Server{
+				Id: "p", Transport: transport, Host: "203.0.113.20", Port: 443,
+				Uuid: "11111111-2222-3333-4444-555555555555", Parol: "p",
+				HostZagolovka: "front.example",
+			}
+			if got := ishodyashchiyProby(t, s)["tls"].(map[string]any)["server_name"]; got != "front.example" {
+				t.Fatalf("server_name %v, в ссылке host=front.example", got)
+			}
+			s.Sni = "sni.example"
+			if got := ishodyashchiyProby(t, s)["tls"].(map[string]any)["server_name"]; got != "sni.example" {
+				t.Fatalf("server_name %v: sni из ссылки главнее заголовка", got)
+			}
+		})
+	}
+	// У reality имя это маска, и заголовок Host к ней отношения не имеет.
+	s := protokol.Server{
+		Id: "p", Transport: "reality-grpc", Host: "203.0.113.20", Port: 443,
+		Uuid:      "11111111-2222-3333-4444-555555555555",
+		PublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", ShortId: "01ab",
+		HostZagolovka: "front.example",
+	}
+	if got := ishodyashchiyProby(t, s)["tls"].(map[string]any)["server_name"]; got != "203.0.113.20" {
+		t.Fatalf("reality взял имя %v из заголовка Host", got)
+	}
+}
+
 // Без fp в ссылке utls на обычном TLS обязан появиться САМ.
 //
 // Перевёрнут 21.09.2026. До того дня проверка требовала обратного, и из-за неё
