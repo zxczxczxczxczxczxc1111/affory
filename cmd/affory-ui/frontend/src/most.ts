@@ -62,6 +62,17 @@ export async function otkrytPapkuZhurnalov(): Promise<void> {
   await Call.ByName("main.most.OtkrytPapkuZhurnalov");
 }
 
+/** Выгрузка диагностики (О6 аудита 1.6.1): оболочка спрашивает, куда сохранить,
+ *  забирает журналы у службы и пишет файл. Экран получает строку итога, пустая
+ *  значит «передумал в диалоге». */
+export async function sohranitDiagnostiku(): Promise<string> {
+  try {
+    return ((await Call.ByName("main.most.SohranitDiagnostiku")) as string | null) ?? "";
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : String(e));
+  }
+}
+
 /** Sends one command and returns the answer frame. The body travels as JSON
  *  text both ways; typing it is the caller's business. */
 export async function zvat(imya: string, telo: unknown = {}): Promise<Kadr> {

@@ -16,7 +16,6 @@ import (
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
 
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
 
@@ -69,11 +68,8 @@ func podpiskaVQr(s string) bool {
 	return strings.HasPrefix(n, "http://") || strings.HasPrefix(n, "https://")
 }
 
-// Швы для тестов: снимок экрана и вызов службы.
-var (
-	prochitatQrSEkrana = (*most).prochitatEkran
-	zvatDlyaQr         = (*most).Zvat
-)
+// Шов для тестов: снимок экрана.
+var prochitatQrSEkrana = (*most).prochitatEkran
 
 // prochitatEkran снимает экраны и отдаёт текст первого найденного QR.
 func (m *most) prochitatEkran() (string, error) {
@@ -245,7 +241,7 @@ func (m *most) DobavitNaydennoeQr() (string, error) {
 
 func (m *most) pachkaSEkrana(tekst string) (string, error) {
 	telo, _ := json.Marshal(map[string]string{"tekst": tekst})
-	k, err := m.komandaQr("addServers", telo)
+	k, err := m.komandaSluzhbe("addServers", telo)
 	if err != nil {
 		return "", err
 	}
@@ -287,7 +283,7 @@ func (i itogPachki) stroka() string {
 
 func (m *most) podpiskaSEkrana(adres string) (string, error) {
 	telo, _ := json.Marshal(map[string]string{"adres": adres})
-	k, err := m.komandaQr("addSubscription", telo)
+	k, err := m.komandaSluzhbe("addSubscription", telo)
 	if err != nil {
 		return "", err
 	}
@@ -305,22 +301,4 @@ func (m *most) podpiskaSEkrana(adres string) (string, error) {
 		return "подписка добавлена про запас", nil
 	}
 	return fmt.Sprintf("подписка добавлена, серверов: %d", dobavlena.Serverov), nil
-}
-
-// komandaQr шлёт команду службе и разворачивает её кадр. Отказ службы
-// возвращается её же текстом, чтобы окно показало его той строкой, что и всё
-// остальное.
-func (m *most) komandaQr(imya string, telo []byte) (protokol.Kadr, error) {
-	var k protokol.Kadr
-	otvet, err := zvatDlyaQr(m, imya, string(telo))
-	if err != nil {
-		return k, err
-	}
-	if err := json.Unmarshal([]byte(otvet), &k); err != nil {
-		return k, fmt.Errorf("ответ службы не разобран: %w", err)
-	}
-	if k.Oshib != nil {
-		return k, errors.New(k.Oshib.Tekst)
-	}
-	return k, nil
 }

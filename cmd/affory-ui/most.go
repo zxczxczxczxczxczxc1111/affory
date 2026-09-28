@@ -58,6 +58,8 @@ type Most interface {
 	NaytiQrNaEkrane() (svodkaQr, error)
 	DobavitNaydennoeQr() (string, error)
 	ZabytQr()
+	// Выгрузка диагностики (О6 аудита 1.6.1): диалог, порции от службы, файл.
+	SohranitDiagnostiku() (string, error)
 	// Выгрузка серверов (26.09.2026): ссылки из exportServers одним или
 	// несколькими QR, PNG в data URI. Ключи приходят сюда из окна и никуда
 	// не пишутся: картинка собирается в памяти.
@@ -327,6 +329,28 @@ func (m *most) podklyuchen() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.k != nil
+}
+
+// zvatSluzhbu это шов для тестов: команды, которые оболочка шлёт службе сама
+// (QR с экрана, выгрузка диагностики), идут через него.
+var zvatSluzhbu = (*most).Zvat
+
+// komandaSluzhbe шлёт команду службе и разворачивает её кадр. Отказ службы
+// возвращается её же текстом, чтобы окно показало его той строкой, что и всё
+// остальное.
+func (m *most) komandaSluzhbe(imya string, telo []byte) (protokol.Kadr, error) {
+	var k protokol.Kadr
+	otvet, err := zvatSluzhbu(m, imya, string(telo))
+	if err != nil {
+		return k, err
+	}
+	if err := json.Unmarshal([]byte(otvet), &k); err != nil {
+		return k, fmt.Errorf("ответ службы не разобран: %w", err)
+	}
+	if k.Oshib != nil {
+		return k, errors.New(k.Oshib.Tekst)
+	}
+	return k, nil
 }
 
 // zvatFonovo runs a command for the tray: no answer wanted, the state event

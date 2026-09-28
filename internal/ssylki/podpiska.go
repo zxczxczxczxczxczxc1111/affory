@@ -417,12 +417,19 @@ func bezSsylki(err error, stroka string) string {
 		kandidaty = append(kandidaty, bez) // хост с портом
 	}
 
+	return zamenitKuski(tekst, kandidaty, "<ссылка>")
+}
+
+// zamenitKuski заменяет каждый кусок секрета меткой. Общая для отказов
+// подписки и для журналов в выгрузке диагностики (О6 аудита 1.6.1).
+func zamenitKuski(tekst string, kuski []string, metka string) string {
 	// От длинных к коротким: иначе короткий кусок съест часть длинного и
 	// оставит от него огрызок, по которому секрет всё ещё собирается.
-	sort.Slice(kandidaty, func(i, j int) bool { return len(kandidaty[i]) > len(kandidaty[j]) })
-	for _, k := range kandidaty {
+	kuski = append([]string(nil), kuski...)
+	sort.Slice(kuski, func(i, j int) bool { return len(kuski[i]) > len(kuski[j]) })
+	for _, k := range kuski {
 		if len(k) > 3 {
-			tekst = strings.ReplaceAll(tekst, k, "<ссылка>")
+			tekst = strings.ReplaceAll(tekst, k, metka)
 		}
 	}
 	return tekst
@@ -433,7 +440,12 @@ func bezAdresa(err error, adres string) string {
 	if errors.As(err, &ue) {
 		err = ue.Err
 	}
-	tekst := err.Error()
+	return zamenitAdres(err.Error(), adres)
+}
+
+// zamenitAdres убирает адрес подписки целиком и по частям: путь и запрос
+// встречаются в текстах и без узла.
+func zamenitAdres(tekst, adres string) string {
 	tekst = strings.ReplaceAll(tekst, adres, "<адрес подписки>")
 	if u, e := url.Parse(adres); e == nil {
 		for _, chast := range []string{u.RequestURI(), u.EscapedPath(), u.RawQuery} {

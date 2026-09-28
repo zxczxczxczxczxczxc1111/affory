@@ -495,6 +495,8 @@ export const Call = {
     }
     if (imya === "main.most.DobavitNaydennoeQr") return "добавлено 1; подписка добавлена про запас";
     if (imya === "main.most.ZabytQr") return null;
+    // Диалога сохранения в браузере нет: стенду нужна строка итога.
+    if (imya === "main.most.SohranitDiagnostiku") return "сохранено: affory-diagnostika-2026-09-28-134000.txt, 1,2 МБ";
     if (imya === "main.most.Zvat") {
       // Канала нет, пока нет службы: окно ловит это исключением и спрашивает
       // диспетчер, установлена ли она вообще.

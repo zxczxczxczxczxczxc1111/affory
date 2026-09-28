@@ -145,6 +145,8 @@ type Sluzhba struct {
 	zhurnalDiag       *diagnostika.Zhurnal
 	istochnikiDiag    diagnostika.Istochniki
 	periodDiagnostiki time.Duration
+	// Снимок выгрузки диагностики, из которого режутся порции (О6).
+	vygruzkaDiag snimokVygruzki
 	// Накопленные счётчики ядра, чтобы писать в журнал прирост за такт.
 	byloVverh        uint64
 	byloVniz         uint64

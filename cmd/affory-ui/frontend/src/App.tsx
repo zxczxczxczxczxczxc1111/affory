@@ -13,7 +13,7 @@ import { KOD_OBOLOCHKI, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
-  dobavitNaydennoeQr, kodyQr, naytiQrNaEkrane, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitProfil, spisokProtsessov, startovayaVkladka,
+  dobavitNaydennoeQr, kodyQr, naytiQrNaEkrane, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitDiagnostiku, sohranitProfil, spisokProtsessov, startovayaVkladka,
   tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, zabytQr, type Zapushchennyy,
 } from "./most";
 import { Servery, svodkaQrIz, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
@@ -1089,6 +1089,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             naPravila={()=>zadatVkladku("pravila")}
             obnovitPravila={()=>void obnovitPravila()}
             naPapkuZhurnalov={otkrytPapkuZhurnalov}
+            naDiagnostiku={sohranitDiagnostiku}
             hodObnovleniya={hodObnovleniya}
             vestiKObnovleniyu={vestiKObnovleniyu}
             adresVyhoda={adresVyhoda}

@@ -179,6 +179,7 @@ vi.mock("./most", () => ({
   naytiQrNaEkrane: async () => ({ klyuchi: [], podpiski: [], negodnyh: 0 }),
   dobavitNaydennoeQr: async () => "",
   zabytQr: () => {},
+  sohranitDiagnostiku: async () => "",
   kodyQr: async (tekst: string) => { stend.s.sled.push({ chto: "kodyQr", args: [tekst] }); return ["data:image/png;base64,AAA"]; },
   skopirovatTekst: async (tekst: string) => { stend.s.sled.push({ chto: "skopirovatTekst", args: [tekst] }); },
   vybratKudaSohranit: async () => {

@@ -25,6 +25,8 @@ export interface NastroykiProps {
   naPravila?: () => void;
   obnovitPravila?: () => void;
   naPapkuZhurnalov?: () => Promise<void>;
+  /** Сохранение диагностики файлом, итог строкой, пустая при отмене. */
+  naDiagnostiku?: () => Promise<string>;
   status: StatusOtvet;
   /** Deferred commands with wave numbers, from hello. `null` until it answers. */
   otlozheno: Record<string, number> | null;
@@ -128,7 +130,7 @@ export function Nastroyki({
   status, otlozheno, svyaz, povtorit, naKomandu, naUdalenie,
   proverka = null, proverkaOtkaz = null, proverkaSeti = null, naObnovlenie, adresVyhoda = null, zamerPolosy = null,
   vyvestiProfil, vvestiProfil, itogProfilya = null, zanyatyeKomandy = {},
-  hodObnovleniya = null, vestiKObnovleniyu = 0, naPapkuZhurnalov,
+  hodObnovleniya = null, vestiKObnovleniyu = 0, naPapkuZhurnalov, naDiagnostiku,
 }: NastroykiProps) {
   // The password lives exactly as long as this screen does, goes into the body
   // of one command and nowhere else: not a file name, not an argument, not a
@@ -650,7 +652,7 @@ export function Nastroyki({
                   </Knopka>
                 </Ryad>
                 <Zhurnaly status={status} disabled={!mozhnoZvat} naKomandu={naKomandu}
-                  naPapku={naPapkuZhurnalov} zanyatyeKomandy={zanyatyeKomandy}/>
+                  naPapku={naPapkuZhurnalov} naDiagnostiku={naDiagnostiku} zanyatyeKomandy={zanyatyeKomandy}/>
               </Panel>
             }
           />

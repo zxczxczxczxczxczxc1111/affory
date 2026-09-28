@@ -21,11 +21,11 @@ type vyzovSluzhby struct {
 // обе команды и запоминает, что у неё просили.
 func podstavitQr(t *testing.T, naEkrane string) *[]vyzovSluzhby {
 	t.Helper()
-	byloChtenie, byloZvat := prochitatQrSEkrana, zvatDlyaQr
-	t.Cleanup(func() { prochitatQrSEkrana, zvatDlyaQr = byloChtenie, byloZvat })
+	byloChtenie, byloZvat := prochitatQrSEkrana, zvatSluzhbu
+	t.Cleanup(func() { prochitatQrSEkrana, zvatSluzhbu = byloChtenie, byloZvat })
 	prochitatQrSEkrana = func(*most) (string, error) { return naEkrane, nil }
 	var vyzovy []vyzovSluzhby
-	zvatDlyaQr = func(_ *most, imya, telo string) (string, error) {
+	zvatSluzhbu = func(_ *most, imya, telo string) (string, error) {
 		v := vyzovSluzhby{imya: imya}
 		if err := json.Unmarshal([]byte(telo), &v.telo); err != nil {
 			t.Fatalf("тело %s не JSON: %v", imya, err)

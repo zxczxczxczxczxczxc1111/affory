@@ -438,6 +438,9 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 	case "exportServers":
 		return s.exportServers(k)
 
+	case "exportDiagnostics":
+		return s.exportDiagnostics(k)
+
 	case "removeServer":
 		return s.removeServer(k)
 
@@ -493,7 +496,7 @@ func imenaKomand() []string {
 		"setKillSwitch", "exportProfile", "importProfile",
 		"setAutostart", "setConnectOnStart", "setBandwidth",
 		"listRules", "setRules", "listConnections", "inspectApplication", "checkNetwork",
-		"subscribeStats", "setJournal", "setDiagnostics", "clearJournal",
+		"subscribeStats", "setJournal", "setDiagnostics", "clearJournal", "exportDiagnostics",
 		"checkExitIp", "checkLeaks",
 		"installUpdate", "getServerHealth", "checkUpdate", "downloadUpdate",
 		"measureDelays", "measureBandwidth",

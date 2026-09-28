@@ -59,6 +59,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "switch-target-not-carrying": { deystvie: "otkryt-servery", tekst: "этот сервер не отвечает, выбери другой" },
   "switch-failed": { deystvie: "povtorit", tekst: "переключиться не удалось, попробуй ещё раз" },
   "journal-clear-failed": { deystvie: "povtorit", tekst: "файл журнала не стёрся, закрой программу, которая его читает" },
+  "diagnostics-stale": { deystvie: "povtorit", tekst: "выгрузка диагностики прервалась, сохрани её заново" },
   "exit-ip-unmeasured": { deystvie: "povtorit", tekst: "адрес выхода не измерен: проверочный сервер не ответил или прокси не поднят" },
   "bandwidth-unmeasured": { deystvie: "povtorit", tekst: "скорость не измерена: сервис замера не задан, не ответил или замер прерван" },
   "request-invalid": { deystvie: "povtorit", tekst: "команда не разобрана, повтори действие" },

@@ -137,6 +137,11 @@ const KodPravilaNePrinyaty = "rules-rejected-by-core"
 // Файл журнала соединений не стёрся: обычно его держит открытым просмотрщик.
 const KodZhurnalNeStyort = "journal-clear-failed"
 
+// Выгрузка диагностики идёт порциями из снимка, и снимка с таким номером у
+// службы нет: она перезапустилась посреди выгрузки или снимок пролежал дольше
+// срока. Заведён 28.09.2026 (О6 аудита 1.6.1). Лечится новой выгрузкой.
+const KodDiagnostikaUstarela = "diagnostics-stale"
+
 // Адрес выхода не измерен: эндпоинт не ответил или локальный прокси не поднят.
 const KodVyhodNeIzmeren = "exit-ip-unmeasured"
 

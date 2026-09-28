@@ -2,21 +2,34 @@ import { useState } from "react";
 import type { StatusOtvet } from "../protokol";
 import { Knopka, Tumbler } from "./ui";
 
-export function Zhurnaly({ status, disabled, naKomandu, naPapku, zanyatyeKomandy = {} }: {
+export function Zhurnaly({ status, disabled, naKomandu, naPapku, naDiagnostiku, zanyatyeKomandy = {} }: {
   status: StatusOtvet;
   disabled: boolean;
   naKomandu: (komanda: string, telo: unknown) => void;
   naPapku?: () => Promise<void>;
+  /** О6 аудита 1.6.1: папка журналов открыта только администраторам, а файл
+   *  диагностики собирает служба и пишет оболочка. */
+  naDiagnostiku?: () => Promise<string>;
   zanyatyeKomandy?: Record<string, boolean>;
 }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
+  const [sohranyayu, zadatSohranyayu] = useState(false);
+  const [itogDiag, zadatItogDiag] = useState("");
+  const [otkazDiag, zadatOtkazDiag] = useState("");
   const open = async () => {
     if (!naPapku || opening) return;
     setOpening(true); setError("");
     try { await naPapku(); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setOpening(false); }
+  };
+  const sohranit = async () => {
+    if (!naDiagnostiku || sohranyayu) return;
+    zadatSohranyayu(true); zadatOtkazDiag(""); zadatItogDiag("");
+    try { zadatItogDiag(await naDiagnostiku()); }
+    catch (e: unknown) { zadatOtkazDiag(e instanceof Error ? e.message : String(e)); }
+    finally { zadatSohranyayu(false); }
   };
   return <div className="border-border flex flex-col gap-4 border-t p-4" data-testid="zhurnaly">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -26,6 +39,19 @@ export function Zhurnaly({ status, disabled, naKomandu, naPapku, zanyatyeKomandy
       </Knopka>
     </div>
     {error && <p role="alert" className="text-danger text-[13px]">{error}</p>}
+    {naDiagnostiku && <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-4">
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="text-fg-secondary text-sm">Диагностика одним файлом</span>
+          <span className="text-fg-muted text-[13px]">Журналы службы без ключей и адресов подписок</span>
+        </span>
+        <Knopka rang="vtoraya" testId="sohranit-diagnostiku" aktiven={!disabled && !sohranyayu} zhdyot={sohranyayu} onClick={() => void sohranit()}>
+          {sohranyayu ? "Сохраняю…" : "Сохранить"}
+        </Knopka>
+      </div>
+      {itogDiag && <p role="status" data-testid="itog-diagnostiki" className="text-fg-secondary text-[13px] break-all">{itogDiag}</p>}
+      {otkazDiag && <p role="alert" className="text-danger text-[13px]">{otkazDiag}</p>}
+    </div>}
     <div className="flex items-center justify-between gap-4">
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-fg-secondary text-sm">Журнал соединений</span>
