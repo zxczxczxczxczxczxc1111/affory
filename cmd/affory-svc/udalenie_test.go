@@ -76,9 +76,7 @@ func TestKatalogProgrammyUdalyaetsyaSnaruzhi(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "affory-svc.exe"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	star := katalogDlyaUdaleniya
-	katalogDlyaUdaleniya = func() string { return dir }
-	t.Cleanup(func() { katalogDlyaUdaleniya = star })
+	naUborku(t, dir, sluzhbyNetVSisteme)
 
 	if err := udalitKatalogProgrammy(); err != nil {
 		t.Fatalf("запуск не запланирован: %v", err)
@@ -121,9 +119,7 @@ func TestKatalogProgrammyUdalyaetsyaZanyatyy(t *testing.T) {
 	}()
 	t.Cleanup(func() { f.Close() })
 
-	star := katalogDlyaUdaleniya
-	katalogDlyaUdaleniya = func() string { return dir }
-	t.Cleanup(func() { katalogDlyaUdaleniya = star })
+	naUborku(t, dir, sluzhbyNetVSisteme)
 
 	if err := udalitKatalogProgrammy(); err != nil {
 		t.Fatalf("запуск не запланирован: %v", err)
@@ -180,9 +176,7 @@ func TestKatalogProgrammyUdalyaetsyaPriZhivomOkne(t *testing.T) {
 	// не то, ради чего написан.
 	time.Sleep(500 * time.Millisecond)
 
-	star := katalogDlyaUdaleniya
-	katalogDlyaUdaleniya = func() string { return dir }
-	t.Cleanup(func() { katalogDlyaUdaleniya = star })
+	naUborku(t, dir, sluzhbyNetVSisteme)
 
 	if err := udalitKatalogProgrammy(); err != nil {
 		t.Fatalf("запуск не запланирован: %v", err)
@@ -215,9 +209,7 @@ func TestUdalenieNeTrogaetChuzhoeVKataloge(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	star := katalogDlyaUdaleniya
-	katalogDlyaUdaleniya = func() string { return dir }
-	t.Cleanup(func() { katalogDlyaUdaleniya = star })
+	naUborku(t, dir, sluzhbyNetVSisteme)
 
 	if err := udalitKatalogProgrammy(); err != nil {
 		t.Fatalf("запуск не запланирован: %v", err)
@@ -242,6 +234,53 @@ func TestUdalenieNeTrogaetChuzhoeVKataloge(t *testing.T) {
 		t.Fatal("наши файлы остались: удаление по списку не отработало")
 	}
 }
+
+// Уборка не стирает НОВУЮ установку.
+//
+// Снятие оставляет уборщика на полминуты, а `affory-svc.exe install`,
+// набранный следом из того же каталога, кладёт службу и файлы обратно. До
+// 1.7.0 уборщик об этом не знал: 28.09.2026 в госте через 18 секунд после
+// такой пары от программы остался один занятый службой affory-svc.exe, без
+// ядра, CLI, окна и аварийного листа, а служба работала и молчала.
+//
+// Роль новой установки играет BFE: служба есть на любой Windows и к удалению
+// не помечена. Первый круг уборщика наступает через три секунды, тест ждёт
+// два круга.
+func TestUborkaNeStiraetNovuyuUstanovku(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Affory")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	nashi := []string{"affory-cli.exe", "sing-box.exe", "affory-ui.exe", imyaAvariynogo}
+	for _, f := range nashi {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	naUborku(t, dir, "BFE")
+
+	if err := udalitKatalogProgrammy(); err != nil {
+		t.Fatalf("запуск не запланирован: %v", err)
+	}
+	time.Sleep(8 * time.Second)
+	for _, f := range nashi {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Fatalf("уборка стёрла %s при зарегистрированной службе: новая установка осталась без файлов", f)
+		}
+	}
+}
+
+// naUborku направляет уборку в каталог теста и на службу sluzhba.
+func naUborku(t *testing.T, dir, sluzhba string) {
+	t.Helper()
+	star, starSl := katalogDlyaUdaleniya, sluzhbaUborki
+	katalogDlyaUdaleniya = func() string { return dir }
+	sluzhbaUborki = sluzhba
+	t.Cleanup(func() { katalogDlyaUdaleniya, sluzhbaUborki = star, starSl })
+}
+
+// Служба, которой нет: уборка идёт как после настоящего снятия.
+const sluzhbyNetVSisteme = "AfforySvcTestNetTakoy"
 
 // Два удаления, один список. Каталог программы снимают и служба (uninstall,
 // в том числе из окна), и деинсталлятор NSIS. Разойдись их списки, одно из

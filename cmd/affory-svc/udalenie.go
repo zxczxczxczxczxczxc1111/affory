@@ -59,6 +59,11 @@ func snyatDannye(dir string, steret bool) error {
 // katalogDlyaUdaleniya is a seam: the test aims the launch at a scratch dir.
 var katalogDlyaUdaleniya = sostoyanie.KatalogProgrammy
 
+// sluzhbaUborki это служба, по которой уборка узнаёт новую установку. Шов:
+// на машине разработчика Affory стоит, и настоящая AfforySvc остановила бы
+// уборку в каждом тесте.
+var sluzhbaUborki = imyaSluzhby
+
 // Что считается нашим в каталоге программы. Удаление идёт ТОЛЬКО по этим
 // спискам, а сам каталог снимается последним и без рекурсии: не пуст, значит
 // там лежит чужое, и он остаётся.
@@ -124,14 +129,38 @@ func udalitKatalogProgrammy() error {
 		HideWindow:    true,
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
 		CmdLine: fmt.Sprintf(
-			`"%s" /c for /l %%i in (1,1,%d) do ("%s" -n 4 127.0.0.1 >nul & del /f /q %s 2>nul & %s & rmdir "%s" 2>nul & if not exist "%s" exit)`,
+			`"%s" /c for /l %%i in (1,1,%d) do ("%s" -n 4 127.0.0.1 >nul & (%s) & del /f /q %s 2>nul & %s & rmdir "%s" 2>nul & if not exist "%s" exit)`,
 			cmdExe, popytokUdaleniya, filepath.Join(sistemnyy, "PING.EXE"),
+			proverkaNovoyUstanovki(sistemnyy, sluzhbaUborki),
 			strings.Join(fayly, " "), strings.Join(katalogi, " & "), dir, dir),
 	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("удаление каталога программы не запланировано: %w", err)
 	}
 	return nil
+}
+
+// proverkaNovoyUstanovki это кусок команды уборщика: выйти, если служба снова
+// зарегистрирована и не помечена к удалению.
+//
+// Уборщик живёт полминуты после снятия. `affory-svc.exe install`, набранный за
+// это время из того же каталога, кладёт службу обратно, а уборщик стирал бы
+// всё, что не занято, и оставлял программу из одной работающей службы
+// (28.09.2026, гость).
+//
+// Одного «служба есть» мало. Снятие удаляет службу через DeleteService, и
+// пока на неё открыт чужой дескриптор, она остаётся в реестре с DeleteFlag=1:
+// выход по одному наличию ключа оставлял бы каталог после снятия из окна, где
+// каталог убирает только уборщик. Помеченная служба не стартует уже никогда,
+// поэтому новой установкой не считается.
+//
+// Запрос к реестру, а не sc.exe: наличие ключа и флаг читаются одной
+// утилитой одинаково.
+func proverkaNovoyUstanovki(sistemnyy, sluzhba string) string {
+	reg := filepath.Join(sistemnyy, "reg.exe")
+	klyuch := `HKLM\SYSTEM\CurrentControlSet\Services\` + sluzhba
+	return fmt.Sprintf(`"%s" query "%s" >nul 2>&1 && ("%s" query "%s" /v DeleteFlag >nul 2>&1 || exit)`,
+		reg, klyuch, reg, klyuch)
 }
 
 // osvoboditKatalog просит закрыться наши программы, запущенные ИЗ каталога
