@@ -136,7 +136,7 @@ func main() {
 	//
 	// Обратно поднимает WindowUnMinimise, а не WindowRestore. Окно, развёрнутое
 	// на весь экран, выходит из свёрнутого через SIZE_MAXIMIZED, и Wails
-	// (v3.0.0-beta.16, webview_window_windows.go) шлёт тогда UnMinimise и
+	// (v3.0.0-beta.26, webview_window_windows.go) шлёт тогда UnMinimise и
 	// Maximise, но не Restore. Подписка на статистику не возвращалась вовсе, и
 	// цифры скорости стояли прочерком до ухода в трей и обратно (26.09.2026).
 	okno.OnWindowEvent(events.Common.WindowMinimise, func(*application.WindowEvent) {

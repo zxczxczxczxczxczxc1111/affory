@@ -17,7 +17,7 @@ describe("политика безопасности страницы", () => {
   });
 
   it("мост Wails ходит только на свой адрес", () => {
-    // @wailsio/runtime beta.16: fetch на location.origin + /wails/runtime.
+    // @wailsio/runtime beta.26: fetch на location.origin + /wails/runtime.
     expect(pravila.get("connect-src")).toEqual(["'self'"]);
   });
 

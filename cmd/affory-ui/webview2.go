@@ -18,7 +18,7 @@ import (
 // и урезанных сборках его может не быть.
 //
 // Рантайм ищется ТЕМ ЖЕ способом, каким его потом ищет сам Wails
-// (v3.0.0-beta.16, internal/webview2/webviewloader/find_dll_installed.go):
+// (v3.0.0-beta.26, internal/webview2/webviewloader/find_dll_installed.go):
 // папка из значения EBWebView в ClientState канала, версия из имени папки не
 // ниже 86.0.616.0 и библиотека под свою разрядность внутри. Документированный
 // Microsoft способ через Clients и pv живёт в установщике. Здесь он не годится:

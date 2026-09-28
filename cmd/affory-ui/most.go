@@ -138,9 +138,10 @@ func otvetDialoga(put string, err error) (string, error) {
 // VybratKudaSohranit это диалог сохранения для файла профиля. Пустая строка
 // означает, что человек передумал.
 func (m *most) VybratKudaSohranit() (string, error) {
-	// Заголовка у диалога сохранения в Wails v3 beta.16 нет: SetTitle есть
-	// только у OpenFile, а SaveFileDialogStruct его не отдаёт. Роль подписи
-	// берёт на себя SetMessage.
+	// Заголовка у диалога сохранения в Wails v3 beta.26 нет: SetTitle есть
+	// только у OpenFile. SetMessage на Windows ничего не показывает, в диалог
+	// уходят только заголовок, фильтры, имя и каталог (dialogs_windows.go).
+	// Заголовок ставит лишь SetOptions, а он переписывает все поля разом.
 	put, err := otvetDialoga(m.app.Dialog.SaveFile().
 		SetMessage("Куда вынести профиль Affory").
 		SetFilename("profil.affory").

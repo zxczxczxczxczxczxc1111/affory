@@ -401,7 +401,7 @@ func (t *Trey) PokazatIzvne() {
 
 func (t *Trey) Pokazat() {
 	t.okno.Show()
-	// Wails v3.0.0-beta.16: Show() on a window created Hidden and never run
+	// Wails v3.0.0-beta.26: Show() on a window created Hidden and never run
 	// only RUNS it (still hidden) and returns; the actual show is the second
 	// call. Seen live on 02.09.2026: tray click, menu item, nothing on screen.
 	// IsVisible is false in exactly that case, and a second Show is harmless
@@ -419,7 +419,7 @@ func (t *Trey) Pokazat() {
 // Obnovit перерисовывает трей под состояние. Зовётся из любой горутины.
 //
 // Само рисование уезжает на главный поток целиком, а не по вызову: SetLabel и
-// SetEnabled в Wails v3.0.0-beta.16 идут БЕЗ InvokeSync, то есть правят живой
+// SetEnabled в Wails v3.0.0-beta.26 идут БЕЗ InvokeSync, то есть правят живой
 // HMENU из вызвавшей горутины. Раньше это сходило с рук, потому что рядом стоял
 // вызов пострашнее.
 func (t *Trey) Obnovit(st protokol.StatusOtvet) {

@@ -42,7 +42,7 @@ func odinEkzemplyar(pokazat func()) *application.SingleInstanceOptions {
 	}
 }
 
-// imyaMyuteksa повторяет имя, которое Wails (v3.0.0-beta.16,
+// imyaMyuteksa повторяет имя, которое Wails (v3.0.0-beta.26,
 // single_instance_windows.go) даёт мьютексу одиночного запуска. Сверяется
 // тестом, а при обновлении Wails (Б9) перепроверяется по исходникам.
 func imyaMyuteksa() string { return "wails-app-" + idOkna + "-sim" }
