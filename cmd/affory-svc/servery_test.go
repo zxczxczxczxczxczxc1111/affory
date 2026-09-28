@@ -155,12 +155,25 @@ func TestSpisokServerovNeOtdayotKlyuchi(t *testing.T) {
 		t.Fatal(o.Oshib)
 	}
 	o := vypolnit(t, s, "listServers", nil)
+	// Версии это HMAC со случайным ключом службы, 64 случайных hex-знака на
+	// сервер: короткий «01ab» находится в них примерно раз на тысячу прогонов
+	// (ворота 28.09.2026), а ключа в них нет по построению. Секреты ищутся во
+	// всём остальном ответе.
+	var polya map[string]json.RawMessage
+	if err := json.Unmarshal(o.Telo, &polya); err != nil {
+		t.Fatal(err)
+	}
+	delete(polya, "versii")
+	bezVersiy, err := json.Marshal(polya)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tayna := range []string{
 		"11111111-2222-3333-4444-555555555555",
 		"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
 		"01ab",
 	} {
-		if strings.Contains(string(o.Telo), tayna) {
+		if strings.Contains(string(bezVersiy), tayna) {
 			t.Fatalf("ключ уехал в канал: %s", tayna)
 		}
 	}
