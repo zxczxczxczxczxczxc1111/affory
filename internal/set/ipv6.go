@@ -3,7 +3,10 @@ package set
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kodirovki"
 )
@@ -128,7 +131,7 @@ func PraviloEst(imya string) (bool, error) {
 }
 
 func vypolnitNetsh(argumenty []string) (string, error) {
-	cmd := exec.Command("netsh", argumenty...)
+	cmd := exec.Command(putNetsh(), argumenty...)
 	syrye, err := cmd.CombinedOutput()
 	// netsh отвечает в кодовой странице КОНСОЛИ, а не в UTF-8. На русской
 	// Windows это 866, и прочитанные как UTF-8 байты дают «ЌЁ ®¤­® Їа ўЁ«®»
@@ -142,4 +145,16 @@ func vypolnitNetsh(argumenty []string) (string, error) {
 			strings.Join(argumenty, " "), err, strings.TrimSpace(vyhod))
 	}
 	return vyhod, nil
+}
+
+// putNetsh отдаёт netsh из System32. Служба зовёт его от SYSTEM, и поиск по
+// PATH нашёл бы первый попавшийся `netsh.exe` из каталога, стоящего в PATH
+// раньше системного. Голое имя остаётся только на случай, когда системный
+// каталог не назван.
+func putNetsh() string {
+	sistemnyy, err := windows.GetSystemDirectory()
+	if err != nil {
+		return "netsh"
+	}
+	return filepath.Join(sistemnyy, "netsh.exe")
 }

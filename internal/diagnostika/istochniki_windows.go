@@ -183,8 +183,15 @@ func tablicaTcp() ([]strokaTcp, error) {
 
 // netsh зовётся с погашенным окном: служба живёт в сеансе 0, но консоль всё
 // равно мелькнёт, если однажды окажется в сеансе человека.
+//
+// Путь полный, из System32: поиск по PATH от SYSTEM нашёл бы первый попавшийся
+// netsh.exe.
 func zapustitNetsh() (string, error) {
-	cmd := exec.Command("netsh", "int", "ipv4", "show", "dynamicport", "tcp")
+	netsh := "netsh"
+	if sistemnyy, err := windows.GetSystemDirectory(); err == nil {
+		netsh = sistemnyy + `\netsh.exe`
+	}
+	cmd := exec.Command(netsh, "int", "ipv4", "show", "dynamicport", "tcp")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	vyvod, err := cmd.Output()
 	if err != nil {
