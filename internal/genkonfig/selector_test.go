@@ -189,6 +189,28 @@ func TestDnsIdyotCherezSelektorANeCherezKandidata(t *testing.T) {
 	}
 }
 
+func TestDnsTunnelyaIdyotPoHttps(t *testing.T) {
+	// С7 аудита 1.6.1, замер 28.09.2026 в госте: 15 имён в три круга через
+	// hy2 и reality-grpc. udp на hy2 потерял 2 запроса из 45 и открывал
+	// страницу медленнее всех (p90 921 мс на reality-grpc); tcp и https по
+	// медиане вровень, по p90 https лучше на обоих серверах.
+	k := mnogoKandidatov(t)
+	nashli := false
+	for _, srv := range spisok(k["dns"].(map[string]any)["servers"]) {
+		m := srv.(map[string]any)
+		if m["tag"] != TegTunnel {
+			continue
+		}
+		nashli = true
+		if m["type"] != "https" {
+			t.Fatalf("туннельный DNS идёт по %v, а не по https", m["type"])
+		}
+	}
+	if !nashli {
+		t.Fatal("туннельного DNS в конфиге нет")
+	}
+}
+
 func TestKandidatBezAdresaVPetleOtvergaetsya(t *testing.T) {
 	// urltest пробит ВСЕХ кандидатов, включая тех, куда селектор сейчас не
 	// смотрит, и проба уходит до того, как выбран выход. Адрес, не попавший в

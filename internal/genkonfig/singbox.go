@@ -111,8 +111,12 @@ func SingBox(v Vhod) ([]byte, error) {
 			// Резолвер туннеля намеренно публичный: запрос к нему уходит внутрь
 			// туннеля и потому не выдаёт нас домашнему провайдеру. Местный нужен
 			// только для имён, которых в интернете нет.
+			//
+			// Через туннель DNS идёт по https (С7 аудита 1.6.1): замером в
+			// госте udp на hy2 терял запросы и дольше всех открывал страницу,
+			// https по p90 лучше tcp на обоих проверенных протоколах.
 			"servers": []any{
-				map[string]any{"type": "udp", "tag": TegTunnel, "server": "1.1.1.1", "detour": TegSelector},
+				map[string]any{"type": "https", "tag": TegTunnel, "server": "1.1.1.1", "detour": TegSelector},
 				map[string]any{"type": "udp", "tag": TegMestnyy, "server": v.Resolver.String()},
 			},
 			"rules":    dnsPravila(v),
