@@ -336,6 +336,10 @@ type Sluzhba struct {
 	// нового. Порядок замков: muFayl, потом mu, никогда наоборот.
 	muFayl sync.Mutex
 
+	// vneocherednaya будит наблюдателя туннеля на пробу вне очереди: после
+	// сна туннель проверяется сразу, а не на следующем тике (Н11 аудита 1.6.1).
+	vneocherednaya chan struct{}
+
 	// Адаптер туннеля, известен только после подъёма. На его индексе держится
 	// поиск канала ПОД туннелем, на алиасе порядок правил задачи 2.5.
 	tun set.Adapter
@@ -398,6 +402,8 @@ func NovayaSluzhba() *Sluzhba {
 		statPodp:  map[uint64]bool{},
 		storozhit: yadra.Storozhit,
 		zapisat:   sostoyanie.Zapisat,
+		// На одну просьбу: две подряд значат ровно то же, что одна.
+		vneocherednaya: make(chan struct{}, 1),
 	}
 	s.period = periodNablyudeniyaPoUmolchaniyu
 	s.periodNesushchego = periodNesushchegoPoUmolchaniyu
@@ -703,6 +709,17 @@ func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 	if zaperta && ctx.Err() == nil {
 		log.Printf("машина заперта, а туннель за %d попыток не поднялся: ухожу в восстановление", popytokPriStarte)
 		s.zapustitVosstanovlenie()
+	}
+}
+
+// ProbaPosleSna просит наблюдателя проверить туннель вне очереди. Без
+// поднятого туннеля просьбу никто не заберёт, и следующий подъём проверит
+// туннель сам.
+func (s *Sluzhba) ProbaPosleSna() {
+	log.Printf("машина проснулась: проверяю туннель вне очереди")
+	select {
+	case s.vneocherednaya <- struct{}{}:
+	default:
 	}
 }
 
@@ -1622,6 +1639,8 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 		case <-ctx.Done():
 			return
 		case <-time.After(shag):
+		case <-s.vneocherednaya:
+			sledZamer = time.Time{}
 		}
 		// В авто ядро меняет выбор САМО, без единой нашей команды. Без
 		// периодического опроса экран показывал бы выбор, сделанный при подъёме,

@@ -486,6 +486,11 @@ func nastroykiSluzhby() mgr.Config {
 		// LocalSystem and nothing else: machine DPAPI requires it, and so does
 		// writing into Program Files during an update.
 		ServiceStartName: "LocalSystem",
+		// BFE, и только он (Н11 аудита 1.6.1): без него брандмауэр не
+		// принимает правил, а служба на старте первым делом убирает
+		// осиротевшую защиту. Лишняя зависимость хуже нехватки: служба не
+		// стартует, пока не поднимется всё перечисленное.
+		Dependencies: []string{"BFE"},
 	}
 }
 
@@ -501,6 +506,7 @@ func obnovitNastroyki(k mgr.Config, putBinarya string) mgr.Config {
 	k.Description = n.Description
 	k.StartType = n.StartType
 	k.ServiceStartName = n.ServiceStartName
+	k.Dependencies = n.Dependencies
 	k.BinaryPathName = syscall.EscapeArg(putBinarya)
 	k.Password = ""
 	return k

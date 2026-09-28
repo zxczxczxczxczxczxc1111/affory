@@ -223,7 +223,7 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 		err = yadro.Obsluzhivat(ctx)
 	})
 
-	st <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
+	st <- svc.Status{State: svc.Running, Accepts: priemlet}
 	for {
 		select {
 		case err := <-oshibki:
@@ -236,10 +236,12 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 			st <- svc.Status{State: svc.StopPending}
 			return false, 1
 		case c := <-r:
-			switch c.Cmd {
-			case svc.Interrogate:
+			switch {
+			case c.Cmd == svc.Interrogate:
 				st <- c.CurrentStatus
-			case svc.Stop, svc.Shutdown:
+			case sonZakonchen(c):
+				yadro.ProbaPosleSna()
+			case ostanovka(c):
 				st <- svc.Status{State: svc.StopPending}
 				// Zavershit, а не Disconnect: у службы две фоновые горутины,
 				// наблюдатель и восстановление, и вторая переживала остановку.
@@ -249,4 +251,25 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 			}
 		}
 	}
+}
+
+// priemlet это команды SCM, которые служба принимает (Н11 аудита 1.6.1).
+//
+// Предвыключение, а не только выключение: на обычное выключение Windows
+// даёт службе секунды, и снятие защиты с записью файла состояния могло не
+// успеть. Предвыключение ждёт, пока служба не закончит. События питания
+// нужны ради пробуждения: после сна туннель проверяется сразу.
+const priemlet = svc.AcceptStop | svc.AcceptShutdown | svc.AcceptPreShutdown | svc.AcceptPowerEvent
+
+// pbtApmResumeAutomatic это PBT_APMRESUMEAUTOMATIC: машина проснулась. Оно
+// приходит на любое пробуждение, в отличие от PBT_APMRESUMESUSPEND, которое
+// приходит только при человеке у машины, и после первого.
+const pbtApmResumeAutomatic = 0x12
+
+func sonZakonchen(c svc.ChangeRequest) bool {
+	return c.Cmd == svc.PowerEvent && c.EventType == pbtApmResumeAutomatic
+}
+
+func ostanovka(c svc.ChangeRequest) bool {
+	return c.Cmd == svc.Stop || c.Cmd == svc.Shutdown || c.Cmd == svc.PreShutdown
 }
