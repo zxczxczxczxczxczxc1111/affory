@@ -176,7 +176,9 @@ vi.mock("./most", () => ({
     if (stend.s.buferLomaetsya) throw new Error("буфер обмена не прочитался");
     return stend.s.bufer ?? "";
   },
-  dobavitSEkrana: async () => "",
+  naytiQrNaEkrane: async () => ({ klyuchi: [], podpiski: [], negodnyh: 0 }),
+  dobavitNaydennoeQr: async () => "",
+  zabytQr: () => {},
   kodyQr: async (tekst: string) => { stend.s.sled.push({ chto: "kodyQr", args: [tekst] }); return ["data:image/png;base64,AAA"]; },
   skopirovatTekst: async (tekst: string) => { stend.s.sled.push({ chto: "skopirovatTekst", args: [tekst] }); },
   vybratKudaSohranit: async () => {

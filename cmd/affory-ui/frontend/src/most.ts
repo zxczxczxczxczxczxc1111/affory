@@ -211,15 +211,33 @@ export async function tekstBufera(): Promise<string> {
   }
 }
 
-/** Screen QR: the shell hides the window, shoots every display and decodes.
- *  The link stays in the shell and goes to addServers from there; the screen
- *  only learns the outcome line, or why nothing was added. */
-export async function dobavitSEkrana(): Promise<string> {
+/** QR с экрана, шаг первый: оболочка прячет окно, снимает экраны и отдаёт
+ *  сводку найденного без секретов. Ссылка остаётся в оболочке. Форму сводки
+ *  проверяет экран (svodkaQrIz в Servery.tsx). */
+export async function naytiQrNaEkrane(): Promise<unknown> {
   try {
-    return ((await Call.ByName("main.most.DobavitSEkrana")) as string | null) ?? "";
+    return await Call.ByName("main.most.NaytiQrNaEkrane");
   } catch (e) {
     throw new Error(e instanceof Error ? e.message : String(e));
   }
+}
+
+/** Шаг второй, по нажатию: оболочка отправляет найденное в службу и отдаёт
+ *  готовую строку итога. */
+export async function dobavitNaydennoeQr(): Promise<string> {
+  try {
+    return ((await Call.ByName("main.most.DobavitNaydennoeQr")) as string | null) ?? "";
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Отмена: оболочка забывает найденное. Отказ здесь не важен человеку, но
+ *  молча его не глотаем. */
+export function zabytQr(): void {
+  Call.ByName("main.most.ZabytQr").catch((e: unknown) => {
+    console.warn("QR не забыт:", e instanceof Error ? e.message : String(e));
+  });
 }
 
 /** Выгрузка серверов: оболочка рисует QR в памяти и отдаёт PNG data URI, по

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Servery, itogVstavkiIz, pohozheNaAdres, razlozhitVstavku, strokaItoga, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
+import { Servery, itogVstavkiIz, pohozheNaAdres, razlozhitVstavku, strokaItoga, svodkaQrIz, type PodpiskaNaEkrane, type QrSEkrana, type SpisokServerov, type SvodkaQr, type ZamerZaderzhki } from "./Servery";
 import type { Server, StatusOtvet } from "../protokol";
 
 afterEach(cleanup);
@@ -338,40 +338,80 @@ describe("серверы: из буфера и с экрана", () => {
     expect(screen.getByTestId("ishod-vvoda")).toHaveTextContent("это файл настроек, а не ссылки");
   });
 
-  it("QR с экрана: исход оболочки показан как есть", async () => {
-    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} naQrSEkrana={async () => "добавлен vpn-pc-hy2"} />);
+  // О8 аудита 1.6.1. QR с экрана добавлялся без вопроса, и любая страница с
+  // кодом на экране подсовывала свой сервер или свою подписку. Теперь окно
+  // сначала показывает, что нашлось, и добавляет только по нажатию.
+  const SVODKA: SvodkaQr = {
+    klyuchi: [{ imya: "Германия", transport: "reality-tcp", adres: "203.0.113.9:8443" }],
+    podpiski: ["panel.example"],
+    negodnyh: 1,
+  };
+  function qrIz(pere: Partial<QrSEkrana> = {}): QrSEkrana {
+    return { nayti: vi.fn(async () => SVODKA), dobavit: vi.fn(async () => "добавлено 1"), zabyt: vi.fn(), ...pere };
+  }
+
+  it("QR с экрана: сначала показывает найденное и ничего не добавляет", async () => {
+    const qr = qrIz();
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} qr={qr} />);
     fireEvent.click(screen.getByTestId("qr-s-ekrana"));
-    expect(await screen.findByTestId("ishod-vvoda")).toHaveTextContent(/добавлен vpn-pc-hy2/);
+    const naydeno = await screen.findByTestId("naydeno-qr");
+    expect(naydeno).toHaveTextContent("Германия");
+    expect(naydeno).toHaveTextContent("reality");
+    expect(naydeno).toHaveTextContent("203.0.113.9:8443");
+    expect(naydeno).toHaveTextContent("panel.example");
+    expect(naydeno).toHaveTextContent(/не разобралась 1 строка/);
+    expect(qr.dobavit).not.toHaveBeenCalled();
   });
 
-  // Панель выдаёт подписку КАРТИНКОЙ, и до 21.09.2026 прочитать её было нечем:
-  // кнопка стояла только у вкладки ссылки. Исход подписки печатается своими
-  // словами.
-  it("QR с подпиской: исход подписки своими словами", async () => {
-    render(
-      <Servery
-        status={VYKL}
-        spisok={spisok([])}
-        naKomandu={vi.fn()}
-        naQrSEkrana={async () => "подписка добавлена, серверов: 6"}
-      />,
-    );
+  it("«Добавить» отправляет найденное и показывает итог оболочки", async () => {
+    const qr = qrIz({ dobavit: vi.fn(async () => "добавлено 1; подписка добавлена, серверов: 6") });
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} qr={qr} />);
     fireEvent.click(screen.getByTestId("qr-s-ekrana"));
+    fireEvent.click(await screen.findByTestId("qr-dobavit"));
     expect(await screen.findByTestId("ishod-vvoda")).toHaveTextContent(/подписка добавлена, серверов: 6/);
+    expect(qr.dobavit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("naydeno-qr")).toBeNull();
+  });
+
+  it("«Отмена» забывает найденное и ничего не добавляет", async () => {
+    const qr = qrIz();
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} qr={qr} />);
+    fireEvent.click(screen.getByTestId("qr-s-ekrana"));
+    fireEvent.click(await screen.findByTestId("qr-otmena"));
+    expect(qr.zabyt).toHaveBeenCalledTimes(1);
+    expect(qr.dobavit).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("naydeno-qr")).toBeNull();
+  });
+
+  it("отказ добавления показан экраном отказа своими словами", async () => {
+    const qr = qrIz({ dobavit: vi.fn(async () => { throw new Error("служба не ответила"); }) });
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} qr={qr} />);
+    fireEvent.click(screen.getByTestId("qr-s-ekrana"));
+    fireEvent.click(await screen.findByTestId("qr-dobavit"));
+    const otkaz = await screen.findByTestId("otkaz-qr");
+    expect(otkaz).toHaveTextContent(/QR не добавился/);
+    expect(otkaz).toHaveTextContent(/служба не ответила/);
+    expect(screen.queryByTestId("naydeno-qr")).toBeNull();
+  });
+
+  it("мусор в сводке не роняет экран", () => {
+    expect(svodkaQrIz(null)).toEqual({ klyuchi: [], podpiski: [], negodnyh: 0 });
+    expect(svodkaQrIz({ klyuchi: [{ imya: 5 }, null, SVODKA.klyuchi[0]], podpiski: ["a", 7], negodnyh: "2" }))
+      .toEqual({ klyuchi: [SVODKA.klyuchi[0]], podpiski: ["a"], negodnyh: 0 });
   });
 
   // Разбор 03.09.2026: отказ службы на «QR с экрана» показывался серым мелким
   // шрифтом под полем, мимо §9.1 и без кнопки.
   it("отказ QR с экрана показывается экраном отказа, а не мелким серым текстом", async () => {
-    const naQr = vi.fn(async () => { throw new Error("QR на экране не найден"); });
-    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} naQrSEkrana={naQr} />);
+    const nayti = vi.fn(async (): Promise<SvodkaQr> => { throw new Error("QR на экране не найден"); });
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} qr={qrIz({ nayti })} />);
     fireEvent.click(screen.getByTestId("qr-s-ekrana"));
     const otkaz = await screen.findByTestId("otkaz-qr");
     expect(otkaz.getAttribute("role")).toBe("alert");
     expect(otkaz).toHaveTextContent(/не найден/);
     expect(screen.queryByTestId("ishod-vvoda")).toBeNull();
     fireEvent.click(screen.getByTestId("otkaz-qr-deystvie"));
-    expect(naQr).toHaveBeenCalledTimes(2);
+    expect(nayti).toHaveBeenCalledTimes(2);
   });
 
   // Экран показывал этому отказу код `qr-s-ekrana`, которого нет ни в словаре
@@ -380,8 +420,8 @@ describe("серверы: из буфера и с экрана", () => {
   // службы: своя фраза и своё действие у отказа есть, а кода на проводе быть
   // не должно.
   it("отказ QR не показывает кода, которого нет в словаре", async () => {
-    const naQr = vi.fn(async () => { throw new Error("QR на экране не найден"); });
-    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} naQrSEkrana={naQr} />);
+    const nayti = vi.fn(async (): Promise<SvodkaQr> => { throw new Error("QR на экране не найден"); });
+    render(<Servery status={VYKL} spisok={spisok([])} naKomandu={vi.fn()} qr={qrIz({ nayti })} />);
     fireEvent.click(screen.getByTestId("qr-s-ekrana"));
     const otkaz = await screen.findByTestId("otkaz-qr");
     expect(otkaz.getAttribute("data-kod")).toBeNull();

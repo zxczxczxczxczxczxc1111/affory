@@ -149,11 +149,8 @@ export interface ServeryProps {
   otkazyPodpiski?: OtkazStroki[];
   /** Reads the clipboard through the shell; absent in tests that do not care. */
   chitatBufer?: () => Promise<string>;
-  /** Shell-side screen QR: resolves with the ready outcome line ("добавлен
-   *  Германия", "подписка добавлена про запас"), rejects with the reason. The
-   *  line is ready because the code may hold either a key or a subscription
-   *  address, and only the shell knows which one went through. */
-  naQrSEkrana?: () => Promise<string>;
+  /** QR с экрана, делает оболочка. Нет пропа - нет кнопки. */
+  qr?: QrSEkrana;
   /** Подписки списком: активная одна, остальные про запас. Пустой список это
    *  «подписок нет», и тогда раздела нет вовсе. */
   podpiski?: PodpiskaNaEkrane[];
@@ -185,6 +182,41 @@ const TRANSPORT: Record<string, string> = {
   "tls-tcp": "vless + tls",
 };
 
+/** Что нашлось в QR, без секретов: ключ именем, протоколом и адресом узла,
+ *  подписка только узлом. См. svodkaQr в cmd/affory-ui/qr.go. */
+export interface SvodkaQr {
+  klyuchi: { imya: string; transport: string; adres: string }[];
+  podpiski: string[];
+  negodnyh: number;
+}
+
+/** QR с экрана в два шага (О8 аудита 1.6.1). Раньше найденное сразу уходило
+ *  в службу, и любая страница с кодом на экране подсовывала свой сервер.
+ *  nayti снимает экран и отдаёт сводку, dobavit отправляет ровно её и
+ *  возвращает готовую строку итога, zabyt отменяет находку. */
+export interface QrSEkrana {
+  nayti: () => Promise<SvodkaQr>;
+  dobavit: () => Promise<string>;
+  zabyt: () => void;
+}
+
+export function svodkaQrIz(x: unknown): SvodkaQr {
+  const o = (typeof x === "object" && x !== null ? x : {}) as Record<string, unknown>;
+  const stroka = (v: unknown): v is string => typeof v === "string";
+  const klyuchi = Array.isArray(o.klyuchi)
+    ? o.klyuchi.flatMap((k: unknown) => {
+      if (typeof k !== "object" || k === null) return [];
+      const { imya, transport, adres } = k as Record<string, unknown>;
+      return stroka(imya) && stroka(transport) && stroka(adres) ? [{ imya, transport, adres }] : [];
+    })
+    : [];
+  return {
+    klyuchi,
+    podpiski: Array.isArray(o.podpiski) ? o.podpiski.filter(stroka) : [],
+    negodnyh: typeof o.negodnyh === "number" ? o.negodnyh : 0,
+  };
+}
+
 /** "3 ч назад" for the subscription row; `undefined` when unknown. */
 export function vozrast(iso: string | undefined, seychas: number = Date.now()): string | undefined {
   if (!iso) return undefined;
@@ -204,7 +236,7 @@ function sovpadaet(s: Server, zapros: string): boolean {
   return s.imya.toLowerCase().includes(z) || s.host.toLowerCase().includes(z);
 }
 
-export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, skopirovat, kodyQr, zanyatyeKomandy = {}, otkazyPodpiski = [], chitatBufer, naQrSEkrana, zaderzhki = [], podpiski = [] }: ServeryProps) {
+export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naKomandu, skopirovat, kodyQr, zanyatyeKomandy = {}, otkazyPodpiski = [], chitatBufer, qr, zaderzhki = [], podpiski = [] }: ServeryProps) {
   const aktiven = status.sostoyanie !== "sluzhba-molchit";
   const zhdyot = (k: string) => zanyatyeKomandy[k] === true;
   const [poisk, zadatPoisk] = useState("");
@@ -228,7 +260,10 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // Своя фраза, а не OtkazNaEkrane: чтение QR делает окно, и кода на проводе у
   // этого отказа нет. Прежде здесь стоял выдуманный `qr-s-ekrana`, которого нет
   // ни в словаре протокола, ни в §9.1, ни в otkazy.ts.
-  const [otkazQr, zadatOtkazQr] = useState<string | null>(null);
+  const [otkazQr, zadatOtkazQr] = useState<{ zagolovok: string; tekst: string } | null>(null);
+  // Найденное в QR ждёт ответа человека: добавить или забыть (О8).
+  const [naydenoQr, zadatNaydenoQr] = useState<SvodkaQr | null>(null);
+  const [dobavlyayuQr, zadatDobavlyayuQr] = useState(false);
   // Caret goes where the human is about to type. Without it the focus stayed
   // on the segment button, and its :focus-visible ring hung around the form
   // like a selection nobody made (живой отзыв 13.09.2026).
@@ -352,38 +387,85 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
     if (!chitatBufer) return;
     otpravit(await chitatBufer(), "bufer");
   };
+  const tekstOshibki = (e: unknown) => (e instanceof Error ? e.message : String(e));
   const sEkrana = async () => {
-    if (!naQrSEkrana) return;
+    if (!qr) return;
     zadatOtkazQr(null);
+    zadatIshodVvoda(null);
+    zadatNaydenoQr(null);
+    try {
+      zadatNaydenoQr(await qr.nayti());
+    } catch (e: unknown) {
+      zadatOtkazQr({ zagolovok: "QR с экрана не прочитался", tekst: tekstOshibki(e) });
+    }
+  };
+  const dobavitQr = async () => {
+    if (!qr) return;
+    zadatDobavlyayuQr(true);
     try {
       // Строка исхода приходит готовой: в коде может лежать и ключ, и адрес
       // подписки, и собрать фразу здесь значило бы гадать, что из двух
       // добавилось.
-      const itog = await naQrSEkrana();
+      const itog = await qr.dobavit();
       zadatIshodVvoda(itog || null);
     } catch (e: unknown) {
-      zadatIshodVvoda(null);
-      zadatOtkazQr(e instanceof Error ? e.message : String(e));
+      zadatOtkazQr({ zagolovok: "QR не добавился", tekst: tekstOshibki(e) });
+    } finally {
+      zadatNaydenoQr(null);
+      zadatDobavlyayuQr(false);
     }
+  };
+  const zabytQr = () => {
+    if (naydenoQr) qr?.zabyt();
+    zadatNaydenoQr(null);
   };
   const otpravitPole = () => {
     if (otpravit(ssylka, "pole")) zadatSsylku("");
   };
-  const zakrytFormu = () => { zadatDobavlyayu(false); zadatSsylku(""); zadatItog(null); zadatIshodVvoda(null); };
+  const zakrytFormu = () => { zabytQr(); zadatDobavlyayu(false); zadatSsylku(""); zadatItog(null); zadatIshodVvoda(null); };
 
   const otmena = !pervyyZapusk && <Knopka rang="tekst" onClick={zakrytFormu}>{itog ? "Готово" : "Отмена"}</Knopka>;
   // Служба ходит за подпиской по сети прямо в команде, и ответа ждать секунды.
   const zhdyomDobavleniya = zhdyot("addServers") || zhdyot("addSubscription");
-  const knopkaQr = naQrSEkrana && (
+  const knopkaQr = qr && (
     <Knopka
       rang="vtoraya"
       testId="qr-s-ekrana"
-      aktiven={aktiven}
+      aktiven={aktiven && !dobavlyayuQr}
       onClick={() => void sEkrana()}
-      title="Окно спрячется, снимет экраны и найдёт на них QR. Годится ключ, пачка ключей и адрес подписки: что в коде, то и добавится. В окно ссылка не попадает, она уходит прямо в службу."
+      title="Окно спрячется, снимет экраны и найдёт на них QR. Годится ключ, пачка ключей и адрес подписки. Перед добавлением окно покажет найденное."
     >
       QR с экрана
     </Knopka>
+  );
+  const blokNaydenogo = naydenoQr && (
+    <div className="flex flex-col gap-2 text-xs" data-testid="naydeno-qr">
+      <span className="text-fg-secondary">Найдено в QR</span>
+      <ul className="flex flex-col gap-0.5">
+        {naydenoQr.klyuchi.map((k, i) => (
+          <li key={`k${i}`} className="break-all">
+            {`${k.imya} · ${TRANSPORT[k.transport] ?? k.transport} · ${k.adres}`}
+          </li>
+        ))}
+        {naydenoQr.podpiski.map((uzel, i) => (
+          <li key={`p${i}`} className="break-all">{`подписка с ${uzel}`}</li>
+        ))}
+      </ul>
+      {naydenoQr.negodnyh > 0 && (
+        <span className="text-fg-muted">
+          {`${slovoPosleChisla(naydenoQr.negodnyh, "не разобралась", "не разобрались", "не разобрались")} ${naydenoQr.negodnyh} ${slovoPosleChisla(naydenoQr.negodnyh, "строка", "строки", "строк")}, добавится остальное`}
+        </span>
+      )}
+      <div className="flex items-center gap-2">
+        <Knopka rang="glavnaya" testId="qr-dobavit" zhdyot={dobavlyayuQr} aktiven={aktiven && !dobavlyayuQr} onClick={() => void dobavitQr()}>
+          {dobavlyayuQr ? "Добавляю" : "Добавить"}
+        </Knopka>
+        {/* Не «Отмена»: та уже стоит у формы и закрывает её целиком. */}
+        <Knopka rang="tekst" testId="qr-otmena" aktiven={!dobavlyayuQr} onClick={zabytQr}>
+          Не добавлять
+        </Knopka>
+      </div>
+    </div>
   );
   const forma = (
     <Karta testId="forma">
@@ -426,11 +508,12 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
         {ishodVvoda && (
           <p className="text-fg-secondary text-xs" data-testid="ishod-vvoda">{ishodVvoda}</p>
         )}
+        {blokNaydenogo}
         {otkazQr && (
           <Neudacha
             testId="otkaz-qr"
-            zagolovok="QR с экрана не прочитался"
-            tekst={otkazQr}
+            zagolovok={otkazQr.zagolovok}
+            tekst={otkazQr.tekst}
             deystvie={() => void sEkrana()}
             podpisDeystviya="Повторить"
           />

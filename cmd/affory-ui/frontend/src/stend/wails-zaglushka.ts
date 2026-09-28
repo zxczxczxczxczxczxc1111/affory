@@ -484,6 +484,17 @@ export const Call = {
       const uzor = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 29 29'><rect width='29' height='29' fill='white'/><path d='M4 4h7v7H4zM18 4h7v7h-7zM4 18h7v7H4zM13 13h3v3h-3zM18 18h2v2h-2zM22 20h3v3h-3z' fill='black'/></svg>";
       return ["data:image/svg+xml;utf8," + encodeURIComponent(uzor)];
     }
+    // QR с экрана: снимать в браузере нечего, стенду нужен блок подтверждения
+    // с тем, что показала бы оболочка.
+    if (imya === "main.most.NaytiQrNaEkrane") {
+      return {
+        klyuchi: [{ imya: "Германия · Франкфурт", transport: "reality-grpc", adres: "203.0.113.31:110" }],
+        podpiski: ["panel.example.net"],
+        negodnyh: 1,
+      };
+    }
+    if (imya === "main.most.DobavitNaydennoeQr") return "добавлено 1; подписка добавлена про запас";
+    if (imya === "main.most.ZabytQr") return null;
     if (imya === "main.most.Zvat") {
       // Канала нет, пока нет службы: окно ловит это исключением и спрашивает
       // диспетчер, установлена ли она вообще.

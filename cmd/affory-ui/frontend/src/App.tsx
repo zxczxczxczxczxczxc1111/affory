@@ -13,10 +13,10 @@ import { KOD_OBOLOCHKI, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
-  dobavitSEkrana, kodyQr, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitProfil, spisokProtsessov, startovayaVkladka,
-  tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, type Zapushchennyy,
+  dobavitNaydennoeQr, kodyQr, naytiQrNaEkrane, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitProfil, spisokProtsessov, startovayaVkladka,
+  tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, zabytQr, type Zapushchennyy,
 } from "./most";
-import { Servery, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
+import { Servery, svodkaQrIz, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
 import { VKLADKI, type Vkladka } from "./ekrany/vkladki";
 import {
   KanalNedostupen, otkrytGitHub, naSobytie, naVidimostOkna, naVkladku, oknoRazvernut, oknoSvernut, oknoZakryt, sluzhbaUstanovlena,
@@ -1050,11 +1050,15 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             chitatBufer={chitatBufer}
             // The shell adds the server or the subscription itself, so both
             // lists are reloaded here: vypolnit never saw that command.
-            naQrSEkrana={async () => {
-              const itog = await dobavitSEkrana();
-              void obnovitSpisok();
-              void obnovitPodpiski();
-              return itog;
+            qr={{
+              nayti: async () => svodkaQrIz(await naytiQrNaEkrane()),
+              dobavit: async () => {
+                const itog = await dobavitNaydennoeQr();
+                void obnovitSpisok();
+                void obnovitPodpiski();
+                return itog;
+              },
+              zabyt: zabytQr,
             }}
           />
         ) : vkladka === "pravila" ? (

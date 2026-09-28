@@ -52,9 +52,12 @@ type Most interface {
 	SpisokProtsessov() ([]Protsess, error)
 	VybratPrilozhenie() (string, error)
 	OtkrytPapkuZhurnalov() error
-	// Screen QR (six comforts §3): shoot every display, decode, addServers.
-	// Returns the outcome line; the link never reaches the screen.
-	DobavitSEkrana() (string, error)
+	// QR с экрана (шесть удобств §3, О8 аудита 1.6.1): сначала снимок и
+	// сводка без секретов, потом добавление по подтверждению либо отмена.
+	// Ссылка в окно не попадает, окно получает сводку и строку итога.
+	NaytiQrNaEkrane() (svodkaQr, error)
+	DobavitNaydennoeQr() (string, error)
+	ZabytQr()
 	// Выгрузка серверов (26.09.2026): ссылки из exportServers одним или
 	// несколькими QR, PNG в data URI. Ключи приходят сюда из окна и никуда
 	// не пишутся: картинка собирается в памяти.
@@ -316,6 +319,7 @@ type most struct {
 	k  *kanal.Klient
 
 	puti vybrannyePuti
+	qr   qrNaPodtverzhdenii
 }
 
 // podklyuchen reports whether the pipe is currently dialled.

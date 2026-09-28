@@ -5,7 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"net"
+	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kbinani/screenshot"
@@ -13,12 +17,13 @@ import (
 	"github.com/makiuchi-d/gozxing/qrcode"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
 
 // QR с экрана (план «шесть удобств» §3). Окно прячется, каждый экран
 // снимается целиком, в снимке ищется QR. Найденная ссылка НЕ возвращается в
-// окно: она уходит в службу командой addServers, а окно узнаёт только итог
-// либо причину отказа. Ключ по экрану не гуляет.
+// окно: окно получает сводку без секретов, а после подтверждения ссылка уходит
+// в службу командой addServers. Ключ по экрану не гуляет.
 
 var errQrNeNayden = errors.New("QR на экране не найден")
 
@@ -64,16 +69,14 @@ func podpiskaVQr(s string) bool {
 	return strings.HasPrefix(n, "http://") || strings.HasPrefix(n, "https://")
 }
 
-// DobavitSEkrana: снимок, разбор и та команда, которой соответствует код.
-//
-// В QR может лежать и то и другое: панель выдаёт подписку картинкой, чужие
-// клиенты раздают отдельные ключи. Раньше сюда жёстко уходил addServer, и QR
-// подписки отвергался словами про неизвестную схему, хотя человек всё сделал
-// правильно.
-//
-// Возвращает ГОТОВУЮ строку исхода, а не имя: у подписки имени нет, а её адрес
-// это секрет того же разряда, что ключ, и в окно он не попадает.
-func (m *most) DobavitSEkrana() (string, error) {
+// Швы для тестов: снимок экрана и вызов службы.
+var (
+	prochitatQrSEkrana = (*most).prochitatEkran
+	zvatDlyaQr         = (*most).Zvat
+)
+
+// prochitatEkran снимает экраны и отдаёт текст первого найденного QR.
+func (m *most) prochitatEkran() (string, error) {
 	// Окно уходит с экрана на время снимка: иначе в кадре его собственная
 	// форма, а не чужое окно с QR. Возврат через defer при любом исходе.
 	if m.okno != nil {
@@ -81,32 +84,145 @@ func (m *most) DobavitSEkrana() (string, error) {
 		defer m.okno.Show()
 		time.Sleep(250 * time.Millisecond)
 	}
-	var ssylka string
 	for _, kadr := range snyatEkrany() {
 		if t, err := raspoznatQr(kadr); err == nil {
-			ssylka = t
-			break
+			return t, nil
 		}
 	}
-	if ssylka == "" {
-		return "", errQrNeNayden
+	return "", errQrNeNayden
+}
+
+// naydennoeQr это то, что уйдёт в службу после подтверждения. Ровно то, что
+// описано в сводке: негодные строки подписок сюда не попадают.
+type naydennoeQr struct {
+	klyuchi string
+	adresa  []string
+}
+
+// qrNaPodtverzhdenii держит находку между двумя шагами. В окно она не
+// уходит: там только сводка.
+type qrNaPodtverzhdenii struct {
+	mu      sync.Mutex
+	naydeno *naydennoeQr
+}
+
+func (q *qrNaPodtverzhdenii) polozhit(n naydennoeQr) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.naydeno = &n
+}
+
+// vzyat отдаёт находку и забывает её: одна находка на одно подтверждение.
+func (q *qrNaPodtverzhdenii) vzyat() *naydennoeQr {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	n := q.naydeno
+	q.naydeno = nil
+	return n
+}
+
+// svodkaQr это всё, что окно узнаёт о находке. Ключи без паролей и UUID,
+// подписки только узлом: путь адреса и есть её секрет.
+type svodkaQr struct {
+	Klyuchi  []klyuchVQr `json:"klyuchi"`
+	Podpiski []string    `json:"podpiski"`
+	Negodnyh int         `json:"negodnyh"`
+}
+
+type klyuchVQr struct {
+	Imya      string `json:"imya"`
+	Transport string `json:"transport"`
+	Adres     string `json:"adres"`
+}
+
+var errQrNeChego = errors.New("в QR нет ни ключей, ни адреса подписки")
+
+// NaytiQrNaEkrane: снимок и разбор, но НЕ добавление (О8 аудита 1.6.1).
+//
+// Раньше найденное сразу уходило в службу, и любая страница с QR на экране
+// подсовывала человеку свой сервер или свою подписку. Теперь окно показывает
+// сводку, а добавляет DobavitNaydennoeQr по нажатию.
+//
+// В QR может лежать и то и другое: панель выдаёт подписку картинкой, чужие
+// клиенты раздают отдельные ключи, выгрузка Affory кладёт ключи по строке, и
+// адрес подписки может стоять среди них.
+func (m *most) NaytiQrNaEkrane() (svodkaQr, error) {
+	// Прежняя находка не доживает до новой попытки, чем бы та ни кончилась.
+	m.qr.vzyat()
+	tekst, err := prochitatQrSEkrana(m)
+	if err != nil {
+		return svodkaQr{}, err
 	}
-	// С 26.09.2026 в одном коде бывает пачка: выгрузка Affory и чужих клиентов
-	// кладёт ключи по строке, и адрес подписки может стоять среди них.
-	var adresa, klyuchi []string
-	for _, stroka := range strings.Split(ssylka, "\n") {
+	svodka := svodkaQr{Klyuchi: []klyuchVQr{}, Podpiski: []string{}}
+	var naydeno naydennoeQr
+	var klyuchi []string
+	for _, stroka := range strings.Split(tekst, "\n") {
 		stroka = strings.TrimSpace(stroka)
 		switch {
 		case stroka == "":
 		case podpiskaVQr(stroka):
-			adresa = append(adresa, stroka)
+			if u, err := url.Parse(stroka); err == nil && u.Hostname() != "" {
+				naydeno.adresa = append(naydeno.adresa, stroka)
+				svodka.Podpiski = append(svodka.Podpiski, u.Hostname())
+			} else {
+				svodka.Negodnyh++
+			}
 		default:
 			klyuchi = append(klyuchi, stroka)
 		}
 	}
-	var itogi []string
 	if len(klyuchi) > 0 {
-		itog, err := m.pachkaSEkrana(strings.Join(klyuchi, "\n"))
+		naydeno.klyuchi = strings.Join(klyuchi, "\n")
+		r, err := ssylki.RazobratPachku(naydeno.klyuchi)
+		if err == nil && len(r.Servery) == 0 && len(r.Otkazy) > 0 {
+			err = fmt.Errorf("ключ в QR не разобрался: %s", r.Otkazy[0].Prichina)
+			if !strings.Contains(naydeno.klyuchi, "://") {
+				err = errQrNeChego
+			}
+		}
+		if errors.Is(err, ssylki.ErrPachkaPusta) {
+			err = errQrNeChego
+		}
+		if err != nil {
+			if len(naydeno.adresa) == 0 {
+				return svodkaQr{}, err
+			}
+			// Подписка рядом годная: ключи не добавятся, но сводка их считает.
+			naydeno.klyuchi = ""
+			svodka.Negodnyh += len(klyuchi)
+		} else {
+			for _, s := range r.Servery {
+				svodka.Klyuchi = append(svodka.Klyuchi, klyuchVQr{
+					Imya: s.Imya, Transport: s.Transport,
+					Adres: net.JoinHostPort(s.Host, strconv.Itoa(s.Port)),
+				})
+			}
+			svodka.Negodnyh += len(r.Otkazy)
+		}
+	}
+	if len(svodka.Klyuchi) == 0 && len(naydeno.adresa) == 0 {
+		return svodkaQr{}, errQrNeChego
+	}
+	m.qr.polozhit(naydeno)
+	return svodka, nil
+}
+
+// ZabytQr: человек нажал «Отмена», находка не добавляется.
+func (m *most) ZabytQr() { m.qr.vzyat() }
+
+// DobavitNaydennoeQr отправляет в службу ровно то, что было в сводке.
+//
+// Возвращает ГОТОВУЮ строку исхода, а не имя: у подписки имени нет, а её адрес
+// это секрет того же разряда, что ключ, и в окно он не попадает.
+func (m *most) DobavitNaydennoeQr() (string, error) {
+	naydeno := m.qr.vzyat()
+	if naydeno == nil {
+		return "", errors.New("найденного QR больше нет, сними экран заново")
+	}
+	adresa := naydeno.adresa
+	var itogi []string
+	if naydeno.klyuchi != "" {
+		itog, err := m.pachkaSEkrana(naydeno.klyuchi)
 		if err != nil {
 			return "", err
 		}
@@ -196,7 +312,7 @@ func (m *most) podpiskaSEkrana(adres string) (string, error) {
 // остальное.
 func (m *most) komandaQr(imya string, telo []byte) (protokol.Kadr, error) {
 	var k protokol.Kadr
-	otvet, err := m.Zvat(imya, string(telo))
+	otvet, err := zvatDlyaQr(m, imya, string(telo))
 	if err != nil {
 		return k, err
 	}
