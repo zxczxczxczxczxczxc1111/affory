@@ -279,6 +279,9 @@ try {
             # весь файл на CRLF, и копия расходится с проверенной побайтно.
             Nativno { & git -c core.autocrlf=false apply --check $quicPatch } 'патч quic-go не накладывается'
             Nativno { & git -c core.autocrlf=false apply $quicPatch } 'патч quic-go не наложился'
+            # Б6 аудита 1.6.1: патч несёт свой тест, и ядро без зелёного теста не
+            # собирается. Наложившийся патч ещё не значит работающий.
+            Nativno { & go test ./internal/ackhandler/ -run TestAffory -count=1 } 'тест правки quic-go не прошёл'
         } finally { Pop-Location }
         Nativno { & go mod edit '-replace=github.com/sagernet/quic-go=../affory-quic-go' } 'replace quic-go не записался'
         $quicOtpechatok = [ordered]@{

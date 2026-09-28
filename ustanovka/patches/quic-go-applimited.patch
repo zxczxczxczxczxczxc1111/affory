@@ -1,3 +1,84 @@
+diff --git a/internal/ackhandler/affory_applimited_test.go b/internal/ackhandler/affory_applimited_test.go
+new file mode 100644
+index 0000000..6da87e9
+--- /dev/null
++++ b/internal/ackhandler/affory_applimited_test.go
+@@ -0,0 +1,75 @@
++package ackhandler
++
++import (
++	"testing"
++
++	congestionExt "github.com/sagernet/quic-go/congestion"
++	"github.com/sagernet/quic-go/internal/monotime"
++	"github.com/sagernet/quic-go/internal/protocol"
++	"github.com/sagernet/quic-go/internal/utils"
++	"github.com/sagernet/quic-go/internal/wire"
++)
++
++// Affory: a packet carrying only acknowledgments must not end an idle period.
++// While the peer sends in bulk, acknowledgments leave more often than
++// appLimitedThreshold, and before the fix each of them cleared packerEmptyTime:
++// OnAppLimited never fired, and BBR's bandwidth estimate collapsed until the
++// direction of traffic changed (affory audit 1.6.1, item B6).
++
++type afforyCountingCC struct{ appLimited int }
++
++func (*afforyCountingCC) SetRTTStatsProvider(congestionExt.RTTStatsProvider) {}
++func (*afforyCountingCC) TimeUntilSend(congestionExt.ByteCount) monotime.Time {
++	return 0
++}
++func (*afforyCountingCC) HasPacingBudget(monotime.Time) bool { return true }
++func (*afforyCountingCC) OnPacketSent(monotime.Time, congestionExt.ByteCount, congestionExt.PacketNumber, congestionExt.ByteCount, bool) {
++}
++func (*afforyCountingCC) CanSend(congestionExt.ByteCount) bool { return true }
++func (*afforyCountingCC) MaybeExitSlowStart()                  {}
++func (*afforyCountingCC) OnPacketAcked(congestionExt.PacketNumber, congestionExt.ByteCount, congestionExt.ByteCount, monotime.Time) {
++}
++func (*afforyCountingCC) OnCongestionEvent(congestionExt.PacketNumber, congestionExt.ByteCount, congestionExt.ByteCount) {
++}
++func (*afforyCountingCC) OnRetransmissionTimeout(bool)               {}
++func (*afforyCountingCC) SetMaxDatagramSize(congestionExt.ByteCount) {}
++func (*afforyCountingCC) InSlowStart() bool                          { return false }
++func (*afforyCountingCC) InRecovery() bool                           { return false }
++func (*afforyCountingCC) GetCongestionWindow() congestionExt.ByteCount {
++	return 1 << 20
++}
++func (*afforyCountingCC) OnCongestionEventEx(congestionExt.ByteCount, monotime.Time, []congestionExt.AckedPacketInfo, []congestionExt.LostPacketInfo) {
++}
++func (*afforyCountingCC) OnPacketNeutered(congestionExt.PacketNumber) {}
++func (*afforyCountingCC) OnPacketsLost(congestionExt.PacketNumber)    {}
++func (c *afforyCountingCC) OnAppLimited(congestionExt.ByteCount)      { c.appLimited++ }
++
++func TestAfforyAckOnlyPacketKeepsIdlePeriod(t *testing.T) {
++	h := NewSentPacketHandler(0, 1200, utils.NewRTTStats(), &utils.ConnectionStats{}, false, false, nil,
++		protocol.PerspectiveClient, false, nil, utils.DefaultLogger).(*sentPacketHandler)
++	cc := &afforyCountingCC{}
++	h.SetCongestionControl(cc)
++
++	h.MaybeNotifyAppLimited()
++	start := h.packerEmptyTime
++	if start.IsZero() {
++		t.Fatal("the packer ran empty, but no idle period started")
++	}
++
++	// An acknowledgment leaves before the idle period is long enough to count.
++	h.SentPacket(start.Add(appLimitedThreshold/2), 1, protocol.InvalidPacketNumber, nil, nil,
++		protocol.Encryption1RTT, protocol.ECNNon, 50, false, false)
++	if h.packerEmptyTime != start {
++		t.Fatal("an ACK-only packet ended the idle period")
++	}
++
++	// Data after a long enough pause reports the application-limited period.
++	h.SentPacket(start.Add(2*appLimitedThreshold), 2, protocol.InvalidPacketNumber, nil,
++		[]Frame{{Frame: &wire.PingFrame{}}}, protocol.Encryption1RTT, protocol.ECNNon, 1200, false, false)
++	if cc.appLimited != 1 {
++		t.Fatalf("OnAppLimited called %d times, want 1", cc.appLimited)
++	}
++	if !h.packerEmptyTime.IsZero() {
++		t.Fatal("the idle period did not end with the data packet")
++	}
++}
 diff --git a/internal/ackhandler/sent_packet_handler.go b/internal/ackhandler/sent_packet_handler.go
 index 852ed76..6d429bd 100644
 --- a/internal/ackhandler/sent_packet_handler.go
