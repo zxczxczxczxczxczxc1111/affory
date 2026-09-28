@@ -87,7 +87,7 @@ func TestKatalogProgrammyUdalyaetsyaSnaruzhi(t *testing.T) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatal("каталог программы не удалён за 10 с: отложенное удаление не работает")
+	t.Fatalf("каталог программы не удалён за 10 с: отложенное удаление не работает; осталось %v", ostalos(dir))
 }
 
 // Одной попытки rmdir мало, и это не теория. Каталог программы держит не только
@@ -131,7 +131,7 @@ func TestKatalogProgrammyUdalyaetsyaZanyatyy(t *testing.T) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatal("каталог программы остался: одной попытки удаления не хватило, а другой не было")
+	t.Fatalf("каталог программы остался: одной попытки удаления не хватило, а другой не было; осталось %v", ostalos(dir))
 }
 
 // Снятие из КОМАНДНОЙ СТРОКИ обязано освобождать каталог само.
@@ -187,7 +187,7 @@ func TestKatalogProgrammyUdalyaetsyaPriZhivomOkne(t *testing.T) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatal("каталог программы остался: живое окно держит его, а снятие отчиталось успехом")
+	t.Fatalf("каталог программы остался: живое окно держит его, а снятие отчиталось успехом; осталось %v", ostalos(dir))
 }
 
 // Удаление снимает ТОЛЬКО наше, даже если программа стоит в общем каталоге.
@@ -281,6 +281,20 @@ func naUborku(t *testing.T, dir, sluzhba string) {
 
 // Служба, которой нет: уборка идёт как после настоящего снятия.
 const sluzhbyNetVSisteme = "AfforySvcTestNetTakoy"
+
+// ostalos перечисляет, что лежит в каталоге: по списку видно, дошёл ли
+// уборщик до удаления вообще или споткнулся о занятый файл.
+func ostalos(dir string) []string {
+	zapisi, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{"(каталог не читается: " + err.Error() + ")"}
+	}
+	var imena []string
+	for _, z := range zapisi {
+		imena = append(imena, z.Name())
+	}
+	return imena
+}
 
 // Два удаления, один список. Каталог программы снимают и служба (uninstall,
 // в том числе из окна), и деинсталлятор NSIS. Разойдись их списки, одно из
