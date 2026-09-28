@@ -85,13 +85,34 @@ const (
 	ShagUDP    = 100 * time.Millisecond
 )
 
-// UDP проверяет, ходит ли UDP тем путём, которым идёт голос и QUIC.
+// UDP проверяет, ходит ли UDP тем путём, которым идут голос и видео.
 //
-// Запросами к публичному резолверу, а не своим протоколом: DNS по UDP это
-// ровно то, что пропускает или режет чужая сеть, и отвечает он быстро. Потери
-// здесь это потери НАШЕГО пути до него, а не качество самого резолвера.
-func UDP(ctx context.Context, adres string) ItogUDP {
+// Запросами STUN, с которых начинается любой звонок в браузере: пакет в 20
+// байт, и публичный сервер отвечает сразу. Потери здесь это потери НАШЕГО пути
+// до него, а не качество самого сервера.
+//
+// portProksi больше нуля значит «через VPN»: пакеты идут через прокси-вход
+// ядра (SOCKS5 UDP ASSOCIATE). Прямо из службы их нести нельзя: свои процессы
+// службы правило процессов ведёт мимо туннеля, и проба мерила бы путь без VPN
+// (С5 аудита 1.6.1). DNS для пробы не годится по той же линии: пакет на порт 53
+// через вход ядра забирает DNS самого ядра, и мерился бы он, а не UDP.
+func UDP(ctx context.Context, cel string, portProksi int) ItogUDP {
 	nach := time.Now()
+	itog := ItogUDP{Otpravleno: PaketovUDP}
+	var put putUDP
+	var err error
+	if portProksi > 0 {
+		put, err = otkrytSocksUDP(ctx, portProksi, cel)
+	} else {
+		put, err = otkrytPryamoyUDP(ctx, cel)
+	}
+	if err != nil {
+		itog.Poter = PaketovUDP
+		itog.Itog = nePoluchilos(nach, "путь для UDP не открылся: "+korotko(err))
+		return itog
+	}
+	defer put.Close()
+
 	zamery := make([]time.Duration, 0, PaketovUDP)
 	var posledniy error
 	for i := 0; i < PaketovUDP; i++ {
@@ -104,14 +125,14 @@ func UDP(ctx context.Context, adres string) ItogUDP {
 			case <-time.After(ShagUDP):
 			}
 		}
-		t, err := odinUDP(ctx, adres)
+		t, err := odinSTUN(ctx, put)
 		if err != nil {
 			posledniy = err
 			continue
 		}
 		zamery = append(zamery, t)
 	}
-	itog := ItogUDP{Otpravleno: PaketovUDP, Poluchheno: len(zamery)}
+	itog.Poluchheno = len(zamery)
 	itog.Poter = itog.Otpravleno - itog.Poluchheno
 	if len(zamery) == 0 {
 		itog.Itog = nePoluchilos(nach, fmt.Sprintf("ни один пакет не вернулся: %v", korotko(posledniy)))
@@ -126,30 +147,30 @@ func UDP(ctx context.Context, adres string) ItogUDP {
 	return itog
 }
 
-func odinUDP(ctx context.Context, adres string) (time.Duration, error) {
-	ctx, otmena := context.WithTimeout(ctx, SrokProby)
-	defer otmena()
-	r := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "udp", adres)
-		},
+// odinSTUN шлёт один запрос и ждёт ответ с ТЕМ ЖЕ номером: опоздавший ответ
+// на прошлый пакет уже посчитан потерей и в замер не идёт.
+func odinSTUN(ctx context.Context, put putUDP) (time.Duration, error) {
+	srok := time.Now().Add(SrokProby)
+	if d, est := ctx.Deadline(); est && d.Before(srok) {
+		srok = d
 	}
-	nach := time.Now()
-	// Имя своё на каждый заход: одинаковое резолвер отдаст из кэша, и замер
-	// показал бы скорость его памяти, а не наш путь до него.
-	imya := fmt.Sprintf("proba-%d.cloudflare.com", time.Now().UnixNano())
-	if _, err := r.LookupHost(ctx, imya); err != nil {
-		// Отсутствие имени это ОТВЕТ: пакет дошёл и вернулся. Молчание пути
-		// выглядит иначе - таймаутом.
-		var dnsErr *net.DNSError
-		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-			return time.Since(nach), nil
-		}
+	zapros, nomer, err := zaprosSTUN()
+	if err != nil {
 		return 0, err
 	}
-	return time.Since(nach), nil
+	nach := time.Now()
+	if err := put.otpravit(zapros); err != nil {
+		return 0, err
+	}
+	for {
+		otv, err := put.poluchit(srok)
+		if err != nil {
+			return 0, err
+		}
+		if otvetSTUN(otv, nomer) {
+			return time.Since(nach), nil
+		}
+	}
 }
 
 func sredniyIRazbros(zamery []time.Duration) (time.Duration, time.Duration) {

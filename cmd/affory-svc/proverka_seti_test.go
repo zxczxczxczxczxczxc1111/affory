@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/netip"
 	"strings"
 	"testing"
@@ -183,6 +184,32 @@ func TestProverkaSetiOtvechaetVsemiSloyami(t *testing.T) {
 		if sl.Podpis == "" {
 			t.Errorf("у слоя %q нет подписи: окно нарисует пустую строку", vid)
 		}
+	}
+}
+
+// С5 аудита 1.6.1. При живом ядре проба UDP обязана идти через прокси-вход
+// ядра: прямые пакеты службы правило процессов уводит мимо туннеля.
+func TestSloyUDPPriZhivomYadreIdyotCherezVhod(t *testing.T) {
+	s := sluzhbaPodnyataya(t)
+	bezSetevyhProb(s)
+	// На порту никого: проба обязана споткнуться о вход, а не уйти в сеть.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	s.mu.Lock()
+	s.portProksiNash = port
+	s.mu.Unlock()
+	if sl := s.sloyUDP(context.Background()); sl.Proshlo || !strings.Contains(sl.Podrobno, "прокси-вход") {
+		t.Fatalf("проба UDP при живом ядре ушла не через вход: %+v", sl)
+	}
+	s.mu.Lock()
+	s.portProksiNash = 0
+	s.mu.Unlock()
+	if sl := s.sloyUDP(context.Background()); sl.Proshlo || !strings.Contains(sl.Podrobno, "вход VPN недоступен") {
+		t.Fatalf("без входа проба UDP ушла напрямую: %+v", sl)
 	}
 }
 

@@ -21,15 +21,16 @@ import (
 // Проверка идёт ПО ЗАПРОСУ, а не постоянно: серия UDP-пакетов и поход к
 // резолверу стоят трафика, и платить за них каждые полминуты незачем.
 
-// Имена и адреса проб. Контрольная цель UDP публичная и та же, к которой ходит
-// туннельный резолвер конфига: если UDP не ходит к ней, не ходит и DNS ядра.
+// Имена и адреса проб. Цель UDP это публичный STUN, тот, что браузер берёт по
+// умолчанию для звонков: DNS на порт 53 через вход ядра забирал бы DNS самого
+// ядра (С5 аудита 1.6.1).
 const (
 	imyaProbyImeni = "cp.cloudflare.com"
 	// Имя для пути МИМО туннеля: российский домен, который ядро направляет на
 	// местный резолвер. Любое из семи проверенных в госте вело себя одинаково;
 	// взято самое устойчивое.
 	imyaProbyMimoVPN = "yandex.ru"
-	celProbyUDP      = "1.1.1.1:53"
+	celProbyUDP      = "stun.l.google.com:19302"
 	// srokProverkiSeti это потолок всей проверки: пять проб подряд, и у каждой
 	// свой худший случай. Срок ОТВЕТА в протоколе обязан быть больше него,
 	// иначе канал оборвёт работающую команду; сверяется тестом.
@@ -69,9 +70,27 @@ func (s *Sluzhba) proveritSloi(ctx context.Context) []sloyProverki {
 	sloi := []sloyProverki{s.sloyTunnelya(ctx), s.sloyYadra(ctx)}
 	sloi = append(sloi, sloy("imya", "Имена сайтов через VPN", proby.Imya(ctx, imyaProbyImeni)))
 	sloi = append(sloi, s.sloyMestnogoRezolvera(ctx))
-	u := proby.UDP(ctx, celProbyUDP)
-	sloi = append(sloi, sloy("udp", "Голос и видео", u.Itog))
+	sloi = append(sloi, s.sloyUDP(ctx))
 	return sloi
+}
+
+// sloyUDP мерит UDP тем путём, каким сейчас идут голос и видео. Пока ядро
+// живо, свои пакеты служба может провести через VPN только прокси-входом ядра:
+// прямые правило процессов уводит мимо туннеля. Без ядра проба идёт напрямую
+// и говорит о самой сети.
+func (s *Sluzhba) sloyUDP(ctx context.Context) sloyProverki {
+	port := 0
+	// Спрашивается ДО замка: dostupKKlash берёт тот же s.mu.
+	if adres, _ := s.dostupKKlash(); adres != "" {
+		s.mu.Lock()
+		port = s.portProksiNash
+		s.mu.Unlock()
+		if port <= 0 {
+			return sloy("udp", "Голос и видео", proby.Itog{
+				Podrobno: "локальный вход VPN недоступен, UDP через VPN проверить нечем"})
+		}
+	}
+	return sloy("udp", "Голос и видео", proby.UDP(ctx, celProbyUDP, port).Itog)
 }
 
 // sloyTunnelya смотрит на САМ адаптер, а не на трафик через него. Туннеля нет,
