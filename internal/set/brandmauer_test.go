@@ -744,6 +744,96 @@ func TestPerezavestiServeryBezAdresovSnimaetPravilo(t *testing.T) {
 	}
 }
 
+// imyaIz достаёт имя правила из команды netsh.
+func imyaIz(a []string) string {
+	for _, s := range a {
+		if strings.HasPrefix(s, "name=") {
+			return strings.TrimPrefix(s, "name=")
+		}
+	}
+	return ""
+}
+
+// С3 аудита 1.6.1. Пересборка под запертой машиной снимала правило и заводила
+// его заново: между двумя вызовами netsh туннель стоял без разрешения, и ping
+// рвался на каждом переподъёме. Теперь на каждом шаге под каждым настоящим
+// именем стоит либо само правило, либо его замена под другим именем.
+func TestPeresborkaPodZashchitoyBezOkna(t *testing.T) {
+	zhurnal := perehvat(t, otvetProfiley(vyvodProfilyaRu))
+	r := obraztsovoeRazreshyonnoe()
+	if err := VklyuchitVesTrafik(r, true); err != nil {
+		t.Fatal(err)
+	}
+	nachalo := len(*zhurnal)
+	if err := VklyuchitVesTrafik(r, true); err != nil {
+		t.Fatal(err)
+	}
+	nastoyashchie := map[string]bool{}
+	stoit := map[string]int{}
+	for _, k := range KomandyRazresheniya(r) {
+		nastoyashchie[k[0]] = true
+		stoit[k[0]] = 1
+	}
+	pokryto := func(x string) bool {
+		for imya, n := range stoit {
+			if n > 0 && (imya == x || strings.HasPrefix(imya, x) && !nastoyashchie[imya]) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, z := range (*zhurnal)[nachalo:] {
+		s := strings.Join(z.argumenty, " ")
+		switch {
+		case strings.Contains(s, " add rule "):
+			stoit[imyaIz(z.argumenty)]++
+		case strings.Contains(s, " delete rule "):
+			stoit[imyaIz(z.argumenty)] = 0
+		default:
+			continue
+		}
+		for x := range nastoyashchie {
+			if !pokryto(x) {
+				t.Fatalf("после «%s» правила %s нет ни под каким именем", s, x)
+			}
+		}
+	}
+	for x := range nastoyashchie {
+		if stoit[x] != 1 {
+			t.Fatalf("после пересборки правил %s стоит %d", x, stoit[x])
+		}
+	}
+}
+
+// Отказ пересборки не снимает защиту: машина заперта нами, и распечатать её
+// отказом netsh значит снять защиту ровно тогда, когда что-то пошло не так.
+func TestOtkazPeresborkiOstavlyaetZashchitu(t *testing.T) {
+	otvet := otvetProfiley(vyvodProfilyaRu)
+	lomat := false
+	zhurnal := perehvat(t, func(a []string) (string, error) {
+		if s := strings.Join(a, " "); lomat && strings.Contains(s, " add rule ") && strings.Contains(s, PravAllowLan) {
+			return "", errors.New("netsh отказал")
+		}
+		return otvet(a)
+	})
+	if err := VklyuchitVesTrafik(obraztsovoeRazreshyonnoe(), true); err != nil {
+		t.Fatal(err)
+	}
+	lomat = true
+	nachalo := len(*zhurnal)
+	if err := VklyuchitVesTrafik(obraztsovoeRazreshyonnoe(), true); err == nil {
+		t.Fatal("отказ пересборки проглочен")
+	}
+	for _, z := range (*zhurnal)[nachalo:] {
+		if s := strings.Join(z.argumenty, " "); strings.Contains(s, "firewallpolicy") && strings.Contains(s, "allowoutbound") {
+			t.Fatalf("отказ пересборки распечатал машину: %s", s)
+		}
+	}
+	if _, err := ProchitatOtkat(); err != nil {
+		t.Fatalf("файл отката снят: %v", err)
+	}
+}
+
 // С2 аудита 1.6.1. Правило серверов без порта пускало любую программу на любой
 // порт этих адресов, а среди них адреса подписки и GitHub. Без портов правила
 // нет вовсе: без remoteport оно снова стало бы распахнутым.

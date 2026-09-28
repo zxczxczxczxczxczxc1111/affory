@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -50,9 +51,14 @@ const (
 // По маске снятие не идёт принципиально: маска однажды заденет чужое правило с
 // похожим именем, и заметят это не сразу.
 func VseImenaPravil() []string {
-	imena := []string{PravAllowTun, PravAllowSrv, PravAllowSrvUdp, PravAllowLan, PravAllowDns, PravAllowDnsTcp, ImyaPravilaIPv6}
+	rezhim := []string{PravAllowTun, PravAllowSrv, PravAllowSrvUdp, PravAllowLan, PravAllowDns, PravAllowDnsTcp}
 	for i := 0; i < 10; i++ {
-		imena = append(imena, fmt.Sprintf("%s-%d", PravAllowProc, i))
+		rezhim = append(rezhim, fmt.Sprintf("%s-%d", PravAllowProc, i))
+	}
+	// Замены живут только посреди пересборки, но служба может умереть и там.
+	imena := append(slices.Clone(rezhim), ImyaPravilaIPv6)
+	for _, imya := range rezhim {
+		imena = append(imena, vremennoeImya(imya))
 	}
 	return imena
 }
@@ -179,7 +185,9 @@ func VklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 	// Namerenno только поднимается. Понизить его пересборкой значило бы
 	// разрешить следующему старту службы распечатать машину, которую заперли
 	// осознанно.
-	if prezhniy, err := ProchitatOtkat(); err == nil {
+	prezhniy, err := ProchitatOtkat()
+	peresborka := err == nil
+	if peresborka {
 		do = prezhniy.Profili
 		namerenno = namerenno || prezhniy.Namerenno
 	} else if !errors.Is(err, ErrOtkataNet) {
@@ -203,7 +211,18 @@ func VklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 			"blockinbound,allowoutbound. Поведение то же, состояние другое")
 	}
 
-	if err := ZapisatOtkat(Otkat{Profili: do, Namerenno: namerenno, Pravila: imena}); err != nil {
+	// Пока пересборка идёт, откат знает и прежние, и временные имена: оборванная
+	// посередине, она оставит их стоять, и выключение режима обязано снять всё.
+	vOtkate := imena
+	if peresborka {
+		vOtkate = slices.Concat(imena, prezhniy.Pravila)
+		for _, imya := range imena {
+			vOtkate = append(vOtkate, vremennoeImya(imya))
+		}
+		slices.Sort(vOtkate)
+		vOtkate = slices.Compact(vOtkate)
+	}
+	if err := ZapisatOtkat(Otkat{Profili: do, Namerenno: namerenno, Pravila: vOtkate}); err != nil {
 		return err
 	}
 
@@ -230,21 +249,95 @@ func VklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 
 	// 3. Разрешающие правила. Ставятся ДО политики: наоборот означает окно, в
 	// котором машина уже заперта, а исключений ещё нет.
-	for _, k := range pravila {
-		_, _ = vypolnit([]string{"advfirewall", "firewall", "delete", "rule", "name=" + k[0]})
-		if _, err := vypolnit(k[1:]); err != nil {
-			_ = VyklyuchitVesTrafik()
-			return fmt.Errorf("правило %s не заведено: %w", k[0], err)
+	if peresborka {
+		// Машина заперта НАМИ и остаётся запертой, что бы ни случилось:
+		// распечатать её отказом netsh значит снять защиту ровно тогда, когда
+		// что-то пошло не так (С3 аудита 1.6.1). Прежние или временные правила
+		// стоят, и откат их знает.
+		if err := zavestiBezOkna(pravila, prezhniy.Pravila); err != nil {
+			return fmt.Errorf("правила не пересобраны, защита осталась прежней: %w", err)
+		}
+	} else {
+		for _, k := range pravila {
+			_, _ = vypolnit([]string{"advfirewall", "firewall", "delete", "rule", "name=" + k[0]})
+			if _, err := vypolnit(k[1:]); err != nil {
+				_ = VyklyuchitVesTrafik()
+				return fmt.Errorf("правило %s не заведено: %w", k[0], err)
+			}
 		}
 	}
 
 	// 4. И только последним запрет по умолчанию.
 	if _, err := vypolnit([]string{"advfirewall", "set", "allprofiles",
 		"firewallpolicy", "blockinbound,blockoutbound"}); err != nil {
+		if peresborka {
+			return fmt.Errorf("политика не поставлена заново, защита осталась прежней: %w", err)
+		}
 		_ = VyklyuchitVesTrafik()
 		return fmt.Errorf("политика не поставлена: %w", err)
 	}
+	if peresborka {
+		// Временных и лишних прежних правил больше нет. Если запись не удалась,
+		// беды нет: лишнее имя в откате при выключении снимается впустую.
+		if err := ZapisatOtkat(Otkat{Profili: do, Namerenno: namerenno, Pravila: imena}); err != nil {
+			log.Printf("откат не сужен до новых правил, лишние имена снимутся при выключении: %v", err)
+		}
+	}
 	return nil
+}
+
+// suffiksZameny отличает правило-замену на время пересборки.
+const suffiksZameny = "-Zamena"
+
+func vremennoeImya(imya string) string { return imya + suffiksZameny }
+
+// zavestiBezOkna меняет правила под запертой машиной без окна.
+//
+// Прежде было «снять, потом завести», и между двумя вызовами netsh туннель
+// стоял без разрешения: ping рвался на каждом переподъёме под режимом (С3
+// аудита 1.6.1). netsh снимает правила по имени все сразу, поэтому новое
+// правило сначала встаёт под временным именем, потом прежнее снимается,
+// настоящее заводится и временное уходит.
+func zavestiBezOkna(pravila [][]string, prezhnie []string) error {
+	novye := map[string]bool{}
+	for _, k := range pravila {
+		imya, vrem := k[0], vremennoeImya(k[0])
+		novye[imya] = true
+		if _, err := vypolnit(sImenem(k[1:], vrem)); err != nil {
+			return fmt.Errorf("замена правила %s не заведена: %w", imya, err)
+		}
+		if err := SnyatPravilo(imya); err != nil {
+			return err
+		}
+		if _, err := vypolnit(k[1:]); err != nil {
+			return fmt.Errorf("правило %s не заведено, стоит замена: %w", imya, err)
+		}
+		if err := SnyatPravilo(vrem); err != nil {
+			return err
+		}
+	}
+	// Прежние правила, которых в новом наборе нет: пропал резолвер, стало
+	// меньше процессов, осталась замена от оборванной пересборки.
+	for _, imya := range prezhnie {
+		if novye[imya] {
+			continue
+		}
+		if err := SnyatPravilo(imya); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sImenem отдаёт копию команды заведения под другим именем.
+func sImenem(komanda []string, imya string) []string {
+	c := slices.Clone(komanda)
+	for i, s := range c {
+		if strings.HasPrefix(s, "name=") {
+			c[i] = "name=" + imya
+		}
+	}
+	return c
 }
 
 // VyklyuchitVesTrafik снимает режим в ОБРАТНОМ порядке.
