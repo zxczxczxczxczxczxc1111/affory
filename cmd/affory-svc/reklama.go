@@ -435,7 +435,11 @@ func zaprositSpisok(ctx context.Context, proksi, adres string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("адрес локального входа не разобран: %w", err)
 		}
-		klient = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(u)}}
+		tr := &http.Transport{Proxy: http.ProxyURL(u)}
+		// Транспорт на один вызов: его соединения закрываются вместе с ним
+		// (L8 аудита 1.8.0).
+		defer tr.CloseIdleConnections()
+		klient = &http.Client{Transport: tr}
 	}
 	o, err := klient.Do(z)
 	if err != nil {

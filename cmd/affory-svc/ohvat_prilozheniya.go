@@ -44,7 +44,7 @@ type ohvatPrilozheniya struct {
 	Ogranichen    bool                         `json:"ogranichen"`
 }
 
-func sameProgram(a, b string) bool { return strings.ToLower(a) == strings.ToLower(b) }
+func sameProgram(a, b string) bool { return strings.EqualFold(a, b) }
 
 // Same precedence as the generated core rules: exact executable, then the
 // nearest configured program that includes the programs it launches.

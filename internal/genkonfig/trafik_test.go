@@ -41,6 +41,37 @@ func TestDistinctEndpointProfilesAcceptedByShippingCore(t *testing.T) {
 	}
 }
 
+// L5 аудита 1.8.0: приложение в VPN теряло частные сети за шлюзом, потому
+// что ip_is_private стоял ниже правил приложений. Вход прокси выше него:
+// через прокси стенд ходит к мишени внутри сервера.
+func TestChastnyeSetiVysheProgramm(t *testing.T) {
+	v := obraztsovyyVhod()
+	v.PortProksi = 10809
+	v.Trafik = &protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikPryamo,
+		Prilozheniya: []protokol.PraviloPrilozheniya{{Put: `C:\Games\Steam\steam.exe`, Marshrut: protokol.TrafikVPN}}}
+	k := sobrat(t, v)
+	chastnye := indeksPravila(t, k, estChastnye)
+	programma := indeksPravila(t, k, func(m map[string]any) bool {
+		p, ok := m["process_path"].([]any)
+		return ok && len(p) == 1 && p[0] == `C:\Games\Steam\steam.exe`
+	})
+	proksi := indeksPravila(t, k, func(m map[string]any) bool {
+		vh, ok := m["inbound"].([]any)
+		return ok && len(vh) == 1 && vh[0] == TegProksiVhod
+	})
+	if chastnye < 0 || programma < 0 || proksi < 0 {
+		t.Fatalf("правил не нашлось: частные %d, программа %d, прокси %d", chastnye, programma, proksi)
+	}
+	if !(proksi < chastnye && chastnye < programma) {
+		t.Fatalf("порядок прокси %d, частные %d, программа %d; ждали прокси, частные, программа", proksi, chastnye, programma)
+	}
+
+	v.VesTrafik = true
+	if i := indeksPravila(t, sobrat(t, v), estChastnye); i >= 0 {
+		t.Fatalf("в режиме «весь трафик» частные сети мимо туннеля на позиции %d", i)
+	}
+}
+
 func TestSelectiveTrafficKeepsExplicitRoutesAndDNS(t *testing.T) {
 	v := obraztsovyyVhod()
 	v.PortProksi = 10809

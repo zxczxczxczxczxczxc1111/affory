@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -26,6 +27,39 @@ func TestStatistikaBerotSchetchiki(t *testing.T) {
 	}
 	if s.Prinyato != 123456 || s.Otdano != 789 {
 		t.Fatalf("счётчики принято=%d отдано=%d", s.Prinyato, s.Otdano)
+	}
+}
+
+// L9 аудита 1.8.0: список соединений больше 4 МиБ обрезался, JSON не
+// разбирался, и цифры вставали. Список здесь стоит перед счётчиками, как
+// у ядра, которое пишет ключи по алфавиту.
+func TestStatistikaBezPotolkaNaSpisokSoedineniy(t *testing.T) {
+	soedinenie := `{"id":"` + strings.Repeat("a", 480) + `","metadata":{"host":"example.com","destinationPort":"443"},"chains":["proxy"]}`
+	adres := podstavnoyKlash(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"connections":[`)
+		for i := 0; i < 12000; i++ {
+			if i > 0 {
+				fmt.Fprint(w, ",")
+			}
+			fmt.Fprint(w, soedinenie)
+		}
+		fmt.Fprint(w, `],"downloadTotal":5000000000,"memory":1,"uploadTotal":42}`)
+	})
+	s, err := Statistika(context.Background(), adres, "sekret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Prinyato != 5000000000 || s.Otdano != 42 {
+		t.Fatalf("счётчики принято=%d отдано=%d", s.Prinyato, s.Otdano)
+	}
+}
+
+func TestStatistikaNeObyektEtoOshibka(t *testing.T) {
+	adres := podstavnoyKlash(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[1,2]`)
+	})
+	if _, err := Statistika(context.Background(), adres, "sekret"); err == nil {
+		t.Fatal("не объект принят за счётчики")
 	}
 }
 

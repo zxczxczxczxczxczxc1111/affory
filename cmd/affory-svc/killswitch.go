@@ -143,10 +143,10 @@ func (s *Sluzhba) aktivirovatZaslon(r set.Razreshyonnoe) error {
 	}
 	if err := s.vklyuchitVes(r, true); err != nil {
 		// Оборванная пересборка оставляет правила в неизвестном виде.
-		s.otpechatokZamka = ""
+		s.otpechatokZamka, s.dnsPodZamkom = "", netip.Addr{}
 		return err
 	}
-	s.otpechatokZamka = o
+	s.otpechatokZamka, s.dnsPodZamkom = o, r.Resolver
 	return nil
 }
 
@@ -210,7 +210,7 @@ func (s *Sluzhba) osvoboditSetPodZamkom() error {
 		}
 		log.Printf("замок в памяти не числится, а файл отката на месте: снимаю по файлу")
 	}
-	s.otpechatokZamka = ""
+	s.otpechatokZamka, s.dnsPodZamkom = "", netip.Addr{}
 	if err := s.vyklyuchitVes(); err != nil {
 		s.postavit(s.Status().Sostoyanie, &protokol.Oshibka{Kod: kodRezhima(err), Tekst: "Не удалось восстановить сеть: " + err.Error()})
 		return err
@@ -450,6 +450,11 @@ func (s *Sluzhba) peresobratRazresheniya() (bool, error) {
 // же поступок человека давал бы разный итог в зависимости от того, поднят ли
 // туннель.
 func (s *Sluzhba) suzitKandidatov() (bool, error) {
+	// Раньше сбора адресов: им нужен DNS, а правило на него могло остаться
+	// под резолвером прежней сети.
+	if err := s.obnovitDnsPodZamkom(); err != nil {
+		log.Printf("правило DNS под замком не переписано: %v", err)
+	}
 	kandidaty, err := s.kandidatySIsklyucheniem()
 	if err != nil {
 		return false, err
@@ -471,6 +476,47 @@ func (s *Sluzhba) suzitKandidatov() (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// obnovitDnsPodZamkom переписывает правило DNS под текущий резолвер, пока
+// машина заперта без туннеля (L4 аудита 1.8.0). Правило вставало под
+// резолвером момента запирания, и после смены сети служба не разрешала имён
+// серверов там, где встроенные правила Windows выключены политикой: подъём
+// не проходил, и восстановление крутилось взаперти вечно.
+//
+// При живом ядре не делает ничего: там правило DNS входит в полный набор.
+// Тот же резолвер второй раз не переписывается.
+func (s *Sluzhba) obnovitDnsPodZamkom() error {
+	s.mu.Lock()
+	zaperta := s.killSwitch && s.zaslonAktiven
+	s.mu.Unlock()
+	if !zaperta {
+		return nil
+	}
+	if adres, _ := s.dostupKKlash(); adres != "" {
+		return nil
+	}
+	resolver, err := s.rezolverDlyaKonfiga()
+	if err != nil {
+		return err
+	}
+	s.muZaslon.Lock()
+	defer s.muZaslon.Unlock()
+	s.mu.Lock()
+	zaperta = s.killSwitch && s.zaslonAktiven
+	s.mu.Unlock()
+	if !zaperta || resolver == s.dnsPodZamkom {
+		return nil
+	}
+	// Правило DNS теперь другое, чем в отпечатке полного списка.
+	s.otpechatokZamka = ""
+	if err := s.perezavestiDns(resolver); err != nil {
+		s.dnsPodZamkom = netip.Addr{}
+		return err
+	}
+	s.dnsPodZamkom = resolver
+	log.Printf("правило DNS под замком переписано под резолвер %s", resolver)
+	return nil
 }
 
 // kodRezhima выбирает код отказа режима «весь трафик» по ПРИЧИНЕ, а не по

@@ -44,12 +44,6 @@ func komandaSozdaniya() []string {
 	}
 }
 
-// Снятие по имени. Имя И ЕСТЬ опознание: по нему правило ищут проверка
-// осиротевшего, аварийный файл и человек в панике.
-func komandaSnyatiya() []string {
-	return []string{"advfirewall", "firewall", "delete", "rule", "name=" + ImyaPravilaIPv6}
-}
-
 func komandaPokaza() []string {
 	return []string{"advfirewall", "firewall", "show", "rule", "name=" + ImyaPravilaIPv6}
 }

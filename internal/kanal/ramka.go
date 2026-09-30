@@ -3,6 +3,7 @@ package kanal
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -24,13 +25,17 @@ const TaymautOtveta = 5 * time.Second
 // either a bug or somebody being creative on the other end.
 const maksKadr = 1 << 20
 
+// ErrKadrVelik: кадр больше maksKadr. Своей ошибкой, чтобы служба ответила
+// на такой отказом, а не промолчала до срока (L10 аудита 1.8.0).
+var ErrKadrVelik = errors.New("кадр длиннее допустимого")
+
 func PisatKadr(w io.Writer, k protokol.Kadr) error {
 	telo, err := json.Marshal(k)
 	if err != nil {
 		return fmt.Errorf("кадр не сериализуется: %w", err)
 	}
 	if len(telo) > maksKadr {
-		return fmt.Errorf("кадр длиннее допустимого: %d", len(telo))
+		return fmt.Errorf("%w: %d", ErrKadrVelik, len(telo))
 	}
 	var dlina [4]byte
 	binary.LittleEndian.PutUint32(dlina[:], uint32(len(telo)))

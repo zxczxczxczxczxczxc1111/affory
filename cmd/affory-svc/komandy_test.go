@@ -50,6 +50,7 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	// Настоящая проверка сервера запускает sing-box.
 	s.proveritServer = func(context.Context) error { return nil }
 	s.suzitServery = func(set.Adresa) error { return nil }
+	s.perezavestiDns = func(netip.Addr) error { return nil }
 	s.naboryZhelaemye = func() []genkonfig.NaborPravil { return nil }
 	s.skachatNabor = func(context.Context, string) ([]byte, error) {
 		return nil, errors.New("network disabled in service fixture")

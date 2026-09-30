@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
-	"regexp"
 	"slices"
 	"strings"
 )
@@ -103,47 +102,20 @@ type Razreshyonnoe struct {
 	// у всех вызывающих и создавало вид покрытия там, где покрывать нечего.
 }
 
-// Значения netsh НЕ локализуются, в отличие от ключей. Поэтому состояние
-// опознаётся по значению строки, а не по имени поля слева: имя поля на другой
-// локали станет другим, а ON и BlockInbound,AllowOutbound останутся собой.
-var (
-	reSostoyanie = regexp.MustCompile(`(?im)^\s*\S+\s+(ON|OFF)\s*$`)
-	rePolitika   = regexp.MustCompile(`(?im)^\s*\S.*?\s+((?:Block|Allow)Inbound,(?:Block|Allow)Outbound)\s*$`)
-)
-
 var imenaProfiley = []string{"domainprofile", "privateprofile", "publicprofile"}
 
-// SostoyanieProfiley спрашивает КАЖДЫЙ профиль отдельно.
-//
-// Один вызов show allprofiles потребовал бы резать вывод на блоки по заголовкам,
-// а заголовки локализуются. Три вызова стоят миллисекунды и не зависят от языка
-// системы вовсе.
+// SostoyanieProfiley читает КАЖДЫЙ профиль из реестра, где у состояния нет
+// языка. Вывод netsh не разбирается вовсе (П2 аудита 1.8.0): он переводится
+// на язык системы, и на русской Windows состояние печаталось «ВКЛ» вместо ON.
+// Недостающие значения реестра дают умолчание Windows, см.
+// sostoyanieIzReestra.
 func SostoyanieProfiley() ([]ProfilDo, error) {
 	var itog []ProfilDo
 	for _, p := range imenaProfiley {
 		imya := strings.TrimSuffix(p, "profile")
-		// Сначала реестр: там у состояния нет языка. Разбор вывода netsh
-		// остаётся запасным путём на случай неполной ветки реестра, и на
-		// английской машине оба пути обязаны сходиться — это сверяет
-		// TestReestrISheshNetshSoglasny.
-		if pr, polno := chitatIzReestra(imya); polno {
-			itog = append(itog, pr)
-			continue
-		}
-		vyhod, err := vypolnit([]string{"advfirewall", "show", p})
+		pr, err := chitatIzReestra(imya)
 		if err != nil {
 			return nil, fmt.Errorf("состояние профиля %s не прочитано: %w", p, err)
-		}
-		pr := ProfilDo{Imya: imya}
-		if m := reSostoyanie.FindStringSubmatch(vyhod); m != nil {
-			pr.Vklyuchen = strings.EqualFold(m[1], "ON")
-		} else {
-			return nil, fmt.Errorf("в выводе профиля %s не нашлось ON или OFF", p)
-		}
-		if m := rePolitika.FindStringSubmatch(vyhod); m != nil {
-			pr.Politika = m[1]
-		} else {
-			return nil, fmt.Errorf("в выводе профиля %s не нашлось политики", p)
 		}
 		itog = append(itog, pr)
 	}
@@ -152,6 +124,10 @@ func SostoyanieProfiley() ([]ProfilDo, error) {
 
 // VklyuchitVesTrafik ставит режим целиком и в единственно верном порядке.
 func VklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
+	return sveritSMpsSvc(vklyuchitVesTrafik(r, namerenno))
+}
+
+func vklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 	if !r.AdresTun.IsValid() {
 		return ErrNetTunnelya
 	}
@@ -456,10 +432,8 @@ func pravilaRazresheniya(r Razreshyonnoe) [][]string {
 	// программе, и в запертом режиме всякая, что шлёт запросы сама мимо
 	// туннеля, резолвила открытым текстом. Наша служба резолвит через ту же
 	// системную службу, а ядру и службе любой выход и так разрешён пунктом 5.
-	if r.Resolver.IsValid() {
-		sluzhbaDns := []string{"program=" + putSvchost(), "service=dnscache"}
-		dobavit(PravAllowDns, append([]string{"remoteip=" + r.Resolver.String(), "remoteport=53", "protocol=udp"}, sluzhbaDns...)...)
-		dobavit(PravAllowDnsTcp, append([]string{"remoteip=" + r.Resolver.String(), "remoteport=53", "protocol=tcp"}, sluzhbaDns...)...)
+	for _, k := range pravilaDns(r.Resolver) {
+		dobavit(k[0], k[1:]...)
 	}
 
 	// 5. Процессы ядер и сама служба. У netsh одно правило это ОДНА программа,
@@ -471,6 +445,19 @@ func pravilaRazresheniya(r Razreshyonnoe) [][]string {
 			"dir=out", "action=allow", "profile=any", "program=" + p})
 	}
 	return itog
+}
+
+// pravilaDns даёт правила порта 53 к резолверу: имя и условия. Пусто без
+// резолвера.
+func pravilaDns(resolver netip.Addr) [][]string {
+	if !resolver.IsValid() {
+		return nil
+	}
+	sluzhbaDns := []string{"program=" + putSvchost(), "service=dnscache"}
+	return [][]string{
+		append([]string{PravAllowDns, "remoteip=" + resolver.String(), "remoteport=53", "protocol=udp"}, sluzhbaDns...),
+		append([]string{PravAllowDnsTcp, "remoteip=" + resolver.String(), "remoteport=53", "protocol=tcp"}, sluzhbaDns...),
+	}
 }
 
 // pravilaServerov даёт пары: имя правила и его условия. Пусто, если адресов или
@@ -684,6 +671,50 @@ func podmestiPoSpisku() (bool, bool, error) {
 // живом туннеле, значит правило уже заведено и уже записано, а пустой список
 // его снимает, и снятие несуществующего правила при выключении режима ничего
 // не стоит.
+// PerezavestiPravilaDns переписывает правила DNS под резолвер, пока машина
+// заперта без туннеля (L4 аудита 1.8.0). Правило стояло под резолвером
+// момента запирания, и после смены сети служба не могла разрешить имена
+// серверов, если встроенные правила Windows выключены политикой: подъём
+// не проходил, и восстановление крутилось взаперти вечно.
+//
+// Снять, потом завести: снятое разрешение только запирает сильнее, утечки
+// в этом окне нет. Имена сперва дописываются в файл отката: замок,
+// вставший без резолвера, их не знает, и выключение режима оставило бы
+// новые правила стоять.
+func PerezavestiPravilaDns(resolver netip.Addr) error {
+	o, err := ProchitatOtkat()
+	switch {
+	case err == nil:
+		dopisat := false
+		for _, imya := range []string{PravAllowDns, PravAllowDnsTcp} {
+			if !slices.Contains(o.Pravila, imya) {
+				o.Pravila = append(o.Pravila, imya)
+				dopisat = true
+			}
+		}
+		if dopisat {
+			if err := ZapisatOtkat(o); err != nil {
+				return err
+			}
+		}
+	case !errors.Is(err, ErrOtkataNet):
+		return err
+	}
+	// Файла отката нет: выключение режима снимает по полному списку имён.
+	for _, imya := range []string{PravAllowDns, PravAllowDnsTcp} {
+		if err := SnyatPravilo(imya); err != nil {
+			return err
+		}
+	}
+	for _, k := range pravilaDns(resolver) {
+		if _, err := vypolnit(append([]string{"advfirewall", "firewall", "add", "rule",
+			"name=" + k[0], "dir=out", "action=allow", "profile=any"}, k[1:]...)); err != nil {
+			return fmt.Errorf("правило %s не переучреждено: %w", k[0], err)
+		}
+	}
+	return nil
+}
+
 func PerezavestiRazreshyonnyeServery(a Adresa) error {
 	// Правила могло не быть вовсе: это не отказ. Отличает SnyatPravilo, и
 	// глотать здесь ЛЮБОЙ отказ нельзя: молчащий netsh означал бы, что старый

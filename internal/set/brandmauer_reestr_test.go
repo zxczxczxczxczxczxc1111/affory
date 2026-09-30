@@ -1,8 +1,11 @@
 package set
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 // Числа реестра превращаются ровно в ту строку, которую netsh принимает назад.
@@ -32,6 +35,38 @@ func TestPolitikaSobiraetsyaVFormateNetsh(t *testing.T) {
 	}
 }
 
+// П2 аудита 1.8.0: на нетронутой русской Windows значений профиля в
+// реестре может не быть, и прежде это уводило в разбор «ВКЛ». Недостающее
+// значение это умолчание Windows, а не отказ.
+func TestNedostayushcheeZnachenieEtoUmolchanieWindows(t *testing.T) {
+	pusto := func(string) (uint64, error) { return 0, registry.ErrNotExist }
+	pr, err := sostoyanieIzZnacheniy("private", pusto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pr.Vklyuchen || pr.Politika != "BlockInbound,AllowOutbound" {
+		t.Fatalf("пустая ветка дала %+v, ждали умолчание Windows", pr)
+	}
+
+	// Есть только одно значение: оно берётся, остальные умолчанием.
+	pr, err = sostoyanieIzZnacheniy("public", func(imya string) (uint64, error) {
+		if imya == "DefaultOutboundAction" {
+			return 1, nil
+		}
+		return 0, registry.ErrNotExist
+	})
+	if err != nil || !pr.Vklyuchen || pr.Politika != "BlockInbound,BlockOutbound" {
+		t.Fatalf("частичная ветка дала %+v, %v", pr, err)
+	}
+
+	// Отказ чтения, кроме отсутствия, не подменяется умолчанием.
+	if _, err := sostoyanieIzZnacheniy("domain", func(string) (uint64, error) {
+		return 0, errors.New("тест: доступ запрещён")
+	}); err == nil {
+		t.Fatal("отказ чтения реестра выдан за умолчание")
+	}
+}
+
 // Профиль private лежит в ветке Standard, и перепутать их нельзя: чтение
 // пошло бы не в тот профиль, а человек получил бы обратно чужое состояние.
 func TestPrivateZhivyotVVetkeStandard(t *testing.T) {
@@ -56,9 +91,9 @@ func TestPrivateZhivyotVVetkeStandard(t *testing.T) {
 func TestReestrISheshNetshSoglasny(t *testing.T) {
 	for _, p := range imenaProfiley {
 		imya := strings.TrimSuffix(p, "profile")
-		izReestra, polno := sostoyanieIzReestra(imya)
-		if !polno {
-			t.Skipf("в реестре нет полного состояния профиля %s, сверять нечего", imya)
+		izReestra, err := sostoyanieIzReestra(imya)
+		if err != nil {
+			t.Fatalf("профиль %s не прочитан из реестра: %v", imya, err)
 		}
 
 		vyhod, err := vypolnitNetsh([]string{"advfirewall", "show", p})

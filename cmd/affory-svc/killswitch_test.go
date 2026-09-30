@@ -454,6 +454,42 @@ func TestPeresborkaTolkoPriIzmeneniiSpiska(t *testing.T) {
 	}
 }
 
+// L4 аудита 1.8.0: машина заперта без туннеля, сеть сменилась. Правило DNS
+// переписывается под новый резолвер до сбора адресов серверов, и один и тот
+// же резолвер не гоняет netsh повторно.
+func TestDnsPodZamkomSleditZaSetyu(t *testing.T) {
+	s, _, _ := sKillSwitch(t)
+	var rezolver atomic.Value
+	rezolver.Store(netip.MustParseAddr("192.168.1.1"))
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return rezolver.Load().(netip.Addr), nil }
+	var perepisano []netip.Addr
+	s.perezavestiDns = func(r netip.Addr) error { perepisano = append(perepisano, r); return nil }
+
+	// Замок не стоит: трогать нечего.
+	if err := s.obnovitDnsPodZamkom(); err != nil || len(perepisano) != 0 {
+		t.Fatalf("правило DNS тронуто без замка: %v, %v", err, perepisano)
+	}
+
+	s.PomnitZapertuyu(true)
+	if _, err := s.peresobratRazresheniya(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.obnovitDnsPodZamkom(); err != nil {
+		t.Fatal(err)
+	}
+	if len(perepisano) != 1 || perepisano[0].String() != "192.168.1.1" {
+		t.Fatalf("правило DNS под замком %v, ждали одно переписывание под 192.168.1.1", perepisano)
+	}
+
+	rezolver.Store(netip.MustParseAddr("10.0.0.1"))
+	if _, err := s.peresobratRazresheniya(); err != nil {
+		t.Fatal(err)
+	}
+	if len(perepisano) != 2 || perepisano[1].String() != "10.0.0.1" {
+		t.Fatalf("новая сеть не дошла до правила DNS: %v", perepisano)
+	}
+}
+
 // L3 аудита 1.8.0: пересборка правил после подъёма упала, и правило TUN
 // стояло на старом адресе до случайного переподъёма, при статусе
 // «подключено». Наблюдатель повторяет её и снимает свою ошибку.

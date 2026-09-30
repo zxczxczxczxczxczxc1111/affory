@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
@@ -223,6 +224,65 @@ func TestPanikaOtvechaetVnutrenneyOshibkoy(t *testing.T) {
 	}
 	if kod := otvet.Oshib.Kod; kod != protokol.KodVnutrennyayaOshibka {
 		t.Errorf("код отказа %q, ожидали internal-error", kod)
+	}
+}
+
+// L10 аудита 1.8.0: клиент перестал читать, и запись ответа висела вечно,
+// держа за собой все ответы и события соединения.
+func TestPisatelNeVisitNaNechitayushchemKliente(t *testing.T) {
+	prezhniy := srokZapisiOtveta
+	srokZapisiOtveta = 50 * time.Millisecond
+	t.Cleanup(func() { srokZapisiOtveta = prezhniy })
+	moy, ih := net.Pipe()
+	t.Cleanup(func() { _ = ih.Close() })
+	gotovo := make(chan error, 1)
+	go func() { gotovo <- pisatel(moy)(protokol.Kadr{Tip: "otvet", Id: 1, Imya: "status"}) }()
+	select {
+	case err := <-gotovo:
+		if err == nil {
+			t.Fatal("запись в нечитающего клиента прошла")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("запись ответа висит без срока")
+	}
+}
+
+// L10: ответ больше 1 МиБ отбрасывался молча, и окно ждало до своего срока.
+func TestBolshoyOtvetStanovitsyaOtkazom(t *testing.T) {
+	moy, ih := net.Pipe()
+	t.Cleanup(func() { _ = moy.Close(); _ = ih.Close() })
+	prishlo := make(chan protokol.Kadr, 1)
+	go func() {
+		k, err := kanal.ChitatKadr(ih)
+		if err == nil {
+			prishlo <- k
+		}
+	}()
+	bolshoy := []byte(`"` + strings.Repeat("a", 2<<20) + `"`)
+	if err := pisatel(moy)(protokol.Kadr{Tip: "otvet", Id: 7, Imya: "exportDiagnostics", Telo: bolshoy}); err != nil {
+		t.Fatalf("отказ не отправлен: %v", err)
+	}
+	select {
+	case k := <-prishlo:
+		if k.Id != 7 || k.Oshib == nil || k.Oshib.Kod != protokol.KodVnutrennyayaOshibka {
+			t.Fatalf("вместо отказа на кадр 7 пришло %+v", k)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("на слишком большой ответ клиент не получил ничего")
+	}
+}
+
+// L10: сверх предела команд на соединение отвечает отказ сразу, без
+// новой горутины.
+func TestLishnyayaKomandaPoluchaetOtkaz(t *testing.T) {
+	s := podstavnaya(t, nil)
+	mesta := make(chan struct{}, 1)
+	mesta <- struct{}{}
+	var otvet protokol.Kadr
+	s.zapustitKomandu(context.Background(), protokol.Kadr{Tip: "cmd", Id: 9, Imya: "status"}, mesta,
+		func(k protokol.Kadr) error { otvet = k; return nil })
+	if otvet.Id != 9 || otvet.Oshib == nil || !strings.Contains(otvet.Oshib.Tekst, "слишком много") {
+		t.Fatalf("сверх предела ответ %+v", otvet)
 	}
 }
 

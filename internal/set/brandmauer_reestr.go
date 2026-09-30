@@ -1,6 +1,7 @@
 package set
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -30,44 +31,66 @@ var vetkiProfiley = map[string]string{
 	"public":  "PublicProfile",
 }
 
-// Шов. Тесты кормят разбор фикстурой вместо netsh, и живой реестр машины
-// прошёл бы мимо неё: фикстура утверждала бы одно, а проверяемый код читал
-// бы другое.
+// Шов. Тесты описывают машину выводом netsh и читают состояние из него
+// (brandmauer_test.go, bezReestra): живой реестр прошёл бы мимо фикстуры.
 var chitatIzReestra = sostoyanieIzReestra
 
-// sostoyanieIzReestra отдаёт состояние профиля и признак того, что ответ полон.
+// Умолчания Windows для профиля, которые действуют, пока значения в реестре
+// нет: брандмауэр включён, входящие запрещены, исходящие разрешены.
+var umolchaniyaProfilya = map[string]uint64{
+	"EnableFirewall":        1,
+	"DefaultInboundAction":  1,
+	"DefaultOutboundAction": 0,
+}
+
+// sostoyanieIzReestra отдаёт состояние профиля из реестра.
 //
-// Неполный ответ (нет хотя бы одного из трёх значений) это не ошибка: Windows
-// в таком случае действует умолчанием, а угадывать умолчание значит однажды
-// вернуть человеку чужую политику. Тогда решает запасной путь через netsh.
-func sostoyanieIzReestra(profil string) (ProfilDo, bool) {
+// Недостающее значение это умолчание Windows (П2 аудита 1.8.0). Прежде
+// неполная ветка уводила в разбор вывода netsh, а он на русской Windows
+// печатает «ВКЛ» вместо ON: режим «весь трафик» не включался, осиротевший
+// замок не снимался, удаление программы останавливалось. Windows при
+// недостающем значении действует умолчанием, так что оно и есть правда о
+// профиле, а не догадка.
+//
+// Отказ только там, где реестр не читается вовсе, кроме отсутствия ветки.
+func sostoyanieIzReestra(profil string) (ProfilDo, error) {
 	vetka, est := vetkiProfiley[profil]
 	if !est {
-		return ProfilDo{}, false
+		return ProfilDo{}, fmt.Errorf("профиль %q неизвестен", profil)
 	}
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, korenBrandmauera+`\`+vetka, registry.QUERY_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return sostoyanieIzZnacheniy(profil, func(string) (uint64, error) { return 0, registry.ErrNotExist })
+	}
 	if err != nil {
-		return ProfilDo{}, false
+		return ProfilDo{}, fmt.Errorf("ветка профиля %s не открылась: %w", profil, err)
 	}
 	defer k.Close()
+	return sostoyanieIzZnacheniy(profil, func(imya string) (uint64, error) {
+		v, _, err := k.GetIntegerValue(imya)
+		return v, err
+	})
+}
 
-	vklyuchen, _, err := k.GetIntegerValue("EnableFirewall")
-	if err != nil {
-		return ProfilDo{}, false
-	}
-	vhod, _, err := k.GetIntegerValue("DefaultInboundAction")
-	if err != nil {
-		return ProfilDo{}, false
-	}
-	vyhod, _, err := k.GetIntegerValue("DefaultOutboundAction")
-	if err != nil {
-		return ProfilDo{}, false
+// sostoyanieIzZnacheniy собирает профиль из трёх значений, подставляя
+// умолчание вместо отсутствующего.
+func sostoyanieIzZnacheniy(profil string, chitat func(string) (uint64, error)) (ProfilDo, error) {
+	znach := map[string]uint64{}
+	for imya, umolch := range umolchaniyaProfilya {
+		v, err := chitat(imya)
+		switch {
+		case errors.Is(err, registry.ErrNotExist):
+			v = umolch
+		case err != nil:
+			return ProfilDo{}, fmt.Errorf("значение %s профиля %s не прочитано: %w", imya, profil, err)
+		}
+		znach[imya] = v
 	}
 	return ProfilDo{
 		Imya:      profil,
-		Vklyuchen: vklyuchen != 0,
-		Politika:  politikaIzChisel(vhod, vyhod),
-	}, true
+		Vklyuchen: znach["EnableFirewall"] != 0,
+		Politika:  politikaIzChisel(znach["DefaultInboundAction"], znach["DefaultOutboundAction"]),
+	}, nil
 }
 
 // politikaIzChisel собирает строку ровно в том виде, в каком её принимает

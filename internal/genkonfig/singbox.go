@@ -253,10 +253,14 @@ func pravila(v Vhod) []any {
 		if v.PortProksi > 0 {
 			p = append(p, map[string]any{"inbound": []string{TegProksiVhod}, "outbound": TegSelector})
 		}
-		p = append(p, trafikPravila(v, false)...)
+		// Частные сети выше правил приложений (L5 аудита 1.8.0): приложение,
+		// направленное в VPN, теряло сети за шлюзом (NAS, принтер соседней
+		// подсети). Вход прокси остаётся выше: явный заход в прокси значит
+		// «через VPN», и через него стенд ходит к мишени внутри сервера.
 		if !v.VesTrafik {
 			p = append(p, map[string]any{"ip_is_private": true, "outbound": TegPryamo})
 		}
+		p = append(p, trafikPravila(v, false)...)
 		if pn, est := praviloNaborov(v); est {
 			p = append(p, pn)
 		}

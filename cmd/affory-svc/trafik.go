@@ -97,28 +97,6 @@ func (s *Sluzhba) pravilaOzhidayut(p PravilaNabora) bool {
 	return s.portClash != 0 && s.pravilaKonfiga != otpechatokPravil(p)
 }
 
-func estPryamoyTrafik(p protokol.PravilaTrafika) bool {
-	if p.PoUmolchaniyu == protokol.TrafikPryamo {
-		return true
-	}
-	for _, a := range p.Prilozheniya {
-		if a.Marshrut == protokol.TrafikPryamo {
-			return true
-		}
-	}
-	for _, d := range p.Domeny {
-		if d.Marshrut == protokol.TrafikPryamo {
-			return true
-		}
-	}
-	for _, s := range p.Servisy {
-		if s.Marshrut == protokol.TrafikPryamo {
-			return true
-		}
-	}
-	return false
-}
-
 func trafikPravil(p PravilaNabora) protokol.PravilaTrafika {
 	r := protokol.PravilaTrafika{PoUmolchaniyu: protokol.TrafikVPN}
 	if p.Trafik != nil {

@@ -352,6 +352,11 @@ type Sluzhba struct {
 	// от vklyuchitVes, потому что зовётся ровно там, где тот бессилен: ядро
 	// умерло, адреса TUN нет, набор целиком не собрать.
 	suzitServery func(set.Adresa) error
+	// Переписывание правила DNS под замком без туннеля (L4 аудита 1.8.0) и
+	// резолвер, под которым оно стоит сейчас. Пустой значит «не знаем».
+	// dnsPodZamkom под muZaslon.
+	perezavestiDns func(netip.Addr) error
+	dnsPodZamkom   netip.Addr
 
 	// killSwitch это НЕ производная от состояния брандмауэра: система может
 	// быть заперта чужим правилом, а мы про это ничего не знаем. Здесь только
@@ -545,6 +550,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.vyklyuchitVes = set.VyklyuchitVesTrafik
 	s.estOtkat = func() bool { _, err := set.ProchitatOtkat(); return err == nil }
 	s.suzitServery = set.PerezavestiRazreshyonnyeServery
+	s.perezavestiDns = set.PerezavestiPravilaDns
 	// Значение метода берётся после создания: раньше её просто не у чего взять.
 	s.podnyatTunnel = s.podnyatTunSistemno
 	hr := hranenie.Novyy()
@@ -590,6 +596,9 @@ func NovayaSluzhba() *Sluzhba {
 			return ssylki.Razbor{}, err
 		}
 		cherez.Ustroystvo = zagr.Ustroystvo
+		// Транспорт свой на каждый вызов: без закрытия его соединения к
+		// локальному входу висели до срока простоя (L8 аудита 1.8.0).
+		defer cherez.Klient.CloseIdleConnections()
 		return cherez.ZagruzitSPovtorami(ctx, adres, popytok)
 	}
 	s.zagruzitPodpisku = s.zagruzitPodpiskuStrategiey
@@ -2090,6 +2099,11 @@ func (s *Sluzhba) vosstanavlivat(ctx context.Context) {
 			return
 		}
 
+		// Под замком без туннеля подъёму нужны имена серверов, а правило DNS
+		// могло остаться под резолвером прежней сети (L4 аудита 1.8.0).
+		if err := s.obnovitDnsPodZamkom(); err != nil {
+			log.Printf("правило DNS под замком не переписано: %v", err)
+		}
 		log.Printf("восстановление, попытка %d", popytka+1)
 		// Контекст восстановления, а не фоновый: «Отключить» и остановка
 		// службы отменяют и попытку, идущую прямо сейчас, а не только следующую.

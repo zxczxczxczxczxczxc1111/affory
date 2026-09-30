@@ -137,12 +137,7 @@ func (s *Sluzhba) obsluzhitOdnogo(ctx context.Context, c net.Conn) {
 	defer perehvatitPaniku("соединении")
 	defer c.Close()
 
-	var pishet sync.Mutex
-	otpravit := func(k protokol.Kadr) error {
-		pishet.Lock()
-		defer pishet.Unlock()
-		return kanal.PisatKadr(c, k)
-	}
+	otpravit := pisatel(c)
 
 	pervyy, err := kanal.ChitatKadr(c)
 	if err != nil {
@@ -179,6 +174,7 @@ func (s *Sluzhba) obsluzhitOdnogo(ctx context.Context, c net.Conn) {
 	ctx = sPodpischikom(ctx, id)
 	fon.Zapustit("рассылке событий", func() { rassylat(sob, otpravit) })
 
+	mesta := make(chan struct{}, komandNaSoedinenie)
 	for {
 		k, err := kanal.ChitatKadr(c)
 		if err != nil {
@@ -187,8 +183,61 @@ func (s *Sluzhba) obsluzhitOdnogo(ctx context.Context, c net.Conn) {
 		// One goroutine per command on purpose: connect blocks for seconds while
 		// it waits for the first probe, and a client that cannot ask for status
 		// meanwhile is a client that draws a frozen window.
-		fon.Zapustit("команде "+k.Imya, func() { s.obsluzhitKomandu(ctx, k, otpravit) })
+		s.zapustitKomandu(ctx, k, mesta, otpravit)
 	}
+}
+
+// komandNaSoedinenie это предел команд в работе на одно соединение (L10
+// аудита 1.8.0). Окно держит в полёте единицы, а без предела клиент,
+// засыпающий канал кадрами, заводил по горутине на каждый.
+const komandNaSoedinenie = 32
+
+// srokZapisiOtveta держит писателя (L10 аудита 1.8.0): клиент, переставший
+// читать, без него держал запись и с ней все ответы и события соединения
+// вечно. Переменная ради теста.
+var srokZapisiOtveta = kanal.TaymautOtveta
+
+// pisatel отдаёт запись кадров в соединение: по одному, со сроком. Отказ
+// записи закрывает соединение: оборванный кадр рассинхронизировал бы поток,
+// а клиент, который не читает, уже не клиент. Ответ больше предела кадра
+// уходит отказом с понятным текстом, а не молчанием до срока клиента.
+func pisatel(c net.Conn) func(protokol.Kadr) error {
+	var pishet sync.Mutex
+	return func(k protokol.Kadr) error {
+		pishet.Lock()
+		defer pishet.Unlock()
+		if err := c.SetWriteDeadline(time.Now().Add(srokZapisiOtveta)); err != nil {
+			_ = c.Close()
+			return err
+		}
+		err := kanal.PisatKadr(c, k)
+		if errors.Is(err, kanal.ErrKadrVelik) {
+			log.Printf("ответ на %s не влез в кадр: %v", k.Imya, err)
+			err = kanal.PisatKadr(c, otkaz(k.Id, k.Imya, protokol.KodVnutrennyayaOshibka,
+				"ответ службы больше 1 МиБ и не передан"))
+		}
+		if err != nil {
+			_ = c.Close()
+		}
+		return err
+	}
+}
+
+// zapustitKomandu запускает команду своей горутиной, если на соединении
+// есть место, иначе отвечает отказом сразу.
+func (s *Sluzhba) zapustitKomandu(ctx context.Context, k protokol.Kadr, mesta chan struct{}, otpravit func(protokol.Kadr) error) {
+	select {
+	case mesta <- struct{}{}:
+	default:
+		log.Printf("команда %s отклонена: в работе уже %d команд этого соединения", k.Imya, cap(mesta))
+		_ = otpravit(otkaz(k.Id, k.Imya, protokol.KodVnutrennyayaOshibka,
+			"слишком много команд разом, повтори"))
+		return
+	}
+	fon.Zapustit("команде "+k.Imya, func() {
+		defer func() { <-mesta }()
+		s.obsluzhitKomandu(ctx, k, otpravit)
+	})
 }
 
 // obsluzhitKomandu runs one command and hands the answer back to the client.

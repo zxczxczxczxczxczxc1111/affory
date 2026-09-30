@@ -2,8 +2,11 @@ package set
 
 import (
 	"errors"
+	"fmt"
 	"net/netip"
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,8 +48,50 @@ func perehvat(t *testing.T, otvet func([]string) (string, error)) *[]zapis {
 		return otvet(a)
 	}
 	bezReestra(t)
-	t.Cleanup(func() { vypolnit = prezhniy; katalogDannyh = prezhniyKat })
+	// Служба брандмауэра живой машины не должна решать исход теста.
+	prezhneeMps := sostoyanieMpsSvc
+	sostoyanieMpsSvc = func() (bool, bool, error) { return true, false, nil }
+	t.Cleanup(func() { vypolnit = prezhniy; katalogDannyh = prezhniyKat; sostoyanieMpsSvc = prezhneeMps })
 	return &zhurnal
+}
+
+// L16 аудита 1.8.0: netsh отказывает, потому что служба брандмауэра
+// остановлена или отключена. Человек видит firewall-disabled с причиной, а
+// не общий отказ.
+func TestOtkazPriOstanovlennomMpsSvcEtoVyklyuchennyyBrandmauer(t *testing.T) {
+	perehvat(t, func([]string) (string, error) { return "", errors.New("netsh: служба не запущена") })
+	for _, sl := range []struct {
+		imya                  string
+		rabotaet, otklyuchena bool
+		vyklyuchen            bool
+	}{
+		{"остановлена", false, false, true},
+		{"отключена", false, true, true},
+		{"работает", true, false, false},
+	} {
+		sostoyanieMpsSvc = func() (bool, bool, error) { return sl.rabotaet, sl.otklyuchena, nil }
+		err := VklyuchitVesTrafik(obraztsovoeRazreshyonnoe(), true)
+		if err == nil {
+			t.Fatalf("%s: отказ netsh проглочен", sl.imya)
+		}
+		if errors.Is(err, ErrBrandmauerVyklyuchen) != sl.vyklyuchen {
+			t.Errorf("%s: %v", sl.imya, err)
+		}
+		if sl.vyklyuchen && !strings.Contains(err.Error(), "MpsSvc") {
+			t.Errorf("%s: причина не названа: %v", sl.imya, err)
+		}
+	}
+	// Состояние не прочиталось: отказ прежний, без догадок.
+	sostoyanieMpsSvc = func() (bool, bool, error) { return false, false, errors.New("тест: нет доступа") }
+	if err := VklyuchitVesTrafik(obraztsovoeRazreshyonnoe(), true); errors.Is(err, ErrBrandmauerVyklyuchen) {
+		t.Fatalf("непрочитанное состояние выдано за выключенный брандмауэр: %v", err)
+	}
+}
+
+func TestSostoyanieMpsSvcChitaetsyaBezAdmina(t *testing.T) {
+	if _, _, err := sostoyanieMpsSvcSistemnoe(); err != nil {
+		t.Fatalf("состояние службы брандмауэра не прочитано: %v", err)
+	}
 }
 
 // bezReestra отключает чтение состояния из реестра.
@@ -57,13 +102,42 @@ func perehvat(t *testing.T, otvet func([]string) (string, error)) *[]zapis {
 func bezReestra(t *testing.T) {
 	t.Helper()
 	prezhniy := chitatIzReestra
-	chitatIzReestra = func(string) (ProfilDo, bool) { return ProfilDo{}, false }
+	chitatIzReestra = profilIzFikstury
 	// Имена правил тоже: уборка идёт по полному списку, как видит её фикстура.
 	prezhnieImena := imenaPravilVReestre
 	imenaPravilVReestre = func() (map[string]bool, error) {
 		return nil, errors.New("тест: реестр правил подменён netsh")
 	}
 	t.Cleanup(func() { chitatIzReestra = prezhniy; imenaPravilVReestre = prezhnieImena })
+}
+
+// Разбор вывода netsh живёт только в тестах (П2 аудита 1.8.0): продукт
+// читает реестр, а тесты описывают машину выводом show, и живая фикстура
+// меняет его вслед за set. Значения netsh не переводятся, ключи слева
+// переводятся, поэтому опознание идёт по значению.
+var (
+	reSostoyanie = regexp.MustCompile(`(?im)^\s*\S+\s+(ON|OFF)\s*$`)
+	rePolitika   = regexp.MustCompile(`(?im)^\s*\S.*?\s+((?:Block|Allow)Inbound,(?:Block|Allow)Outbound)\s*$`)
+)
+
+// profilIzFikstury читает профиль из вывода show подставного netsh.
+func profilIzFikstury(profil string) (ProfilDo, error) {
+	vyhod, err := vypolnit([]string{"advfirewall", "show", profil + "profile"})
+	if err != nil {
+		return ProfilDo{}, err
+	}
+	pr := ProfilDo{Imya: profil}
+	m := reSostoyanie.FindStringSubmatch(vyhod)
+	if m == nil {
+		return ProfilDo{}, fmt.Errorf("в фикстуре профиля %s нет ON или OFF", profil)
+	}
+	pr.Vklyuchen = strings.EqualFold(m[1], "ON")
+	mp := rePolitika.FindStringSubmatch(vyhod)
+	if mp == nil {
+		return ProfilDo{}, fmt.Errorf("в фикстуре профиля %s нет политики", profil)
+	}
+	pr.Politika = mp[1]
+	return pr, nil
 }
 
 // Г1 аудита 1.8.0: уборка на старте зовёт netsh только для правил, которые
@@ -807,6 +881,57 @@ func TestPerezavestiServeryMenyaetTolkoSvoyoPravilo(t *testing.T) {
 		if strings.Contains(s, "firewallpolicy") || strings.Contains(s, PravAllowTun) {
 			t.Errorf("тронуто чужое: %s", s)
 		}
+	}
+}
+
+// L4 аудита 1.8.0: под замком без туннеля правило DNS переписывается под
+// новый резолвер, а его имена попадают в откат, даже если замок вставал без
+// резолвера.
+func TestPerezavestiDnsDopisyvaetOtkatIMenyaetTolkoSvoyo(t *testing.T) {
+	zhurnal := perehvat(t, func([]string) (string, error) { return "Ok.", nil })
+	if err := ZapisatOtkat(Otkat{
+		Profili:   []ProfilDo{{Imya: "domain", Vklyuchen: true, Politika: "BlockInbound,AllowOutbound"}},
+		Namerenno: true, Pravila: []string{PravAllowTun, PravAllowSrv},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := PerezavestiPravilaDns(netip.MustParseAddr("192.168.5.1")); err != nil {
+		t.Fatalf("правило DNS не переписано: %v", err)
+	}
+	o, err := ProchitatOtkat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(o.Pravila, PravAllowDns) || !slices.Contains(o.Pravila, PravAllowDnsTcp) || !o.Namerenno {
+		t.Fatalf("откат после записи %+v: выключение режима оставит правила DNS", o)
+	}
+	var stroki []string
+	for _, z := range *zhurnal {
+		stroki = append(stroki, strings.Join(z.argumenty, " "))
+	}
+	if len(stroki) != 4 {
+		t.Fatalf("вызовов netsh %d, ждали четыре: %v", len(stroki), stroki)
+	}
+	for i, s := range stroki {
+		snyatie := strings.Contains(s, "delete rule name=")
+		if (i < 2) != snyatie {
+			t.Errorf("вызов %d не на своём месте, сначала снятие, потом заведение: %s", i, s)
+		}
+		if !snyatie && (!strings.Contains(s, "remoteip=192.168.5.1") || !strings.Contains(s, "service=dnscache")) {
+			t.Errorf("правило не под новый резолвер или не только для dnscache: %s", s)
+		}
+		if strings.Contains(s, "firewallpolicy") || strings.Contains(s, PravAllowSrv) || strings.Contains(s, PravAllowTun) {
+			t.Errorf("тронуто чужое: %s", s)
+		}
+	}
+
+	*zhurnal = nil
+	if err := PerezavestiPravilaDns(netip.Addr{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*zhurnal) != 2 {
+		t.Fatalf("без резолвера вызовов %d, ждали только снятие двух правил", len(*zhurnal))
 	}
 }
 
