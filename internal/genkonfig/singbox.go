@@ -138,14 +138,22 @@ func SingBox(v Vhod) ([]byte, error) {
 	return json.MarshalIndent(k, "", "  ")
 }
 
-// vhodyashchie: TUN всегда, локальный прокси по требованию.
+// vhodyashchie: TUN всегда, кроме конфига проверки сервера, локальный прокси по
+// требованию.
 //
 // mixed, а не отдельные http и socks: один слушатель закрывает оба протокола,
 // а два порта это два способа промахнуться настройкой. Слушает СТРОГО петлю:
 // на 0.0.0.0 это открытый прокси для всей подсети, то есть чужой трафик под
 // нашим адресом.
 func vhodyashchie(v Vhod) []any {
-	vh := []any{
+	vh := []any{}
+	if v.BezTun {
+		// Проверка сервера меряет исходящий через clash API, входы ей не нужны.
+		// Поднятый здесь TUN отнял бы у человека сеть ровно на ту проверку,
+		// ради которой его не поднимают.
+		return vh
+	}
+	vh = append(vh,
 		map[string]any{
 			"type": "tun", "tag": "tun-in",
 			"address":    []string{v.adresTun()},
@@ -181,7 +189,7 @@ func vhodyashchie(v Vhod) []any {
 			// прокси клиента.
 			"mtu": 1500,
 		},
-	}
+	)
 	if v.PortProksi > 0 {
 		vh = append(vh, map[string]any{
 			"type": "mixed", "tag": TegProksiVhod,

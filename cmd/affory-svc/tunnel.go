@@ -148,13 +148,21 @@ func (s *Sluzhba) peredPerezapuskomYadra(st protokol.Sostoyanie) {
 // переписать отпечаток правил (и pravilaOzhidayut ответил бы «уже применено»
 // про непринятое) и назвать ядру серверы, которых оно не несёт.
 func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, int, string, error) {
-	telo, portClash, sekret, _, err := s.sobratTunPolno(isklyucheny, suhaya, false)
+	telo, portClash, sekret, _, err := s.sobratTunPolno(isklyucheny, suhaya, false, false)
 	return telo, portClash, sekret, err
 }
 
 // sobratTunPolno это sobratTun с блокировкой рекламы. bezReklamy собирает
 // конфиг без неё, sReklamoy отвечает, попал ли блок в конфиг.
-func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy bool) ([]byte, int, string, bool, error) {
+//
+// bezTun собирает конфиг проверки сервера (Б1 аудита 1.8.0): без входов, без
+// прокси, без наборов и рекламы. Проверке нужны только исходящие и clash API, а
+// загрузка набора или выкладка списка рекламы растянули бы её на сеть, которой
+// она не касается. Такая сборка всегда сухая.
+func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy, bezTun bool) ([]byte, int, string, bool, error) {
+	if bezTun {
+		suhaya, bezReklamy = true, true
+	}
 	n, err := s.nabor()
 	if err != nil {
 		return nil, 0, "", false, err
@@ -214,7 +222,7 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 	s.mu.Unlock()
 
 	var trafik *protokol.PravilaTrafika
-	if n.Pravila.Trafik != nil {
+	if n.Pravila.Trafik != nil && !bezTun {
 		merged := trafikPravil(n.Pravila)
 		trafik = &merged
 	}
@@ -224,7 +232,12 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 	}
 	// Вне s.mu: выкладка файла берёт muReklama, а под ним s.mu.
 	rk := s.reklamaDlyaKonfiga(n, bezReklamy)
+	portVhoda, nabory := 0, []genkonfig.NaborPravil(nil)
+	if !bezTun {
+		portVhoda, nabory = s.portDlyaKonfiga(suhaya), s.podgotovitNabory()
+	}
 	telo, err := genkonfig.SingBox(genkonfig.Vhod{
+		BezTun:         bezTun,
 		ProcessTracker: tracker,
 		Trafik:         trafik,
 		AdresTun:       podsetTun.String(),
@@ -243,11 +256,11 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 		Resolver:       resolver,
 		PutiProtsessov: puti,
 		ClashApi:       genkonfig.ClashApi{Adres: "127.0.0.1", Port: portClash, Sekret: sekret},
-		PortProksi:     s.portDlyaKonfiga(suhaya),
+		PortProksi:     portVhoda,
 		VesTrafik:      vesTrafik,
 		// Только наборы с файлом на диске: ядро поднимается с initial_path, а
 		// не с сети, и неудача загрузки остаётся неудачей загрузки.
-		Nabory:    s.podgotovitNabory(),
+		Nabory:    nabory,
 		FaylKesha: putKesha(),
 		// Исключения человека. Генератор сам убирает их в режиме «весь трафик».
 		Protsessy: n.Pravila.Protsessy,
@@ -367,7 +380,7 @@ func (s *Sluzhba) sobratTunProverennyy(put string, suhaya bool) (int, string, er
 	isklyucheny := map[string]bool{}
 	bezReklamy, prichinaBloka := false, ""
 	for {
-		telo, portClash, sekret, sReklamoy, err := s.sobratTunPolno(isklyucheny, suhaya, bezReklamy)
+		telo, portClash, sekret, sReklamoy, err := s.sobratTunPolno(isklyucheny, suhaya, bezReklamy, false)
 		if err != nil {
 			return 0, "", err
 		}

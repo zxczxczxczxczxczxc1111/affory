@@ -1,6 +1,7 @@
 package genkonfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -59,6 +60,46 @@ func IdIzTega(teg string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimPrefix(teg, prefiksKandidata), true
+}
+
+// TegiProverki называет исходящие, которые меряет проверка сервера до TUN: те,
+// через которые пойдёт трафик. В ручном режиме это выбранный сервер, в авто
+// кандидаты группы. Убранный из авто сервер трафик не понесёт, и его живость
+// ничего не говорит о том, будет ли у человека интернет.
+//
+// Читается из собранного конфига, а не из Vhod: так проверка меряет ровно то,
+// что поднимет боевое ядро, и не держит вторую копию правила «кто в группе».
+func TegiProverki(telo []byte) ([]string, error) {
+	var k struct {
+		Outbounds []struct {
+			Type      string   `json:"type"`
+			Tag       string   `json:"tag"`
+			Outbounds []string `json:"outbounds"`
+			Default   string   `json:"default"`
+		} `json:"outbounds"`
+	}
+	if err := json.Unmarshal(telo, &k); err != nil {
+		return nil, fmt.Errorf("конфиг не разобрался: %w", err)
+	}
+	vybrano := ""
+	gruppa := map[string][]string{}
+	for _, o := range k.Outbounds {
+		switch {
+		case o.Type == "selector" && o.Tag == TegSelector:
+			vybrano = o.Default
+		case o.Type == "urltest":
+			gruppa[o.Tag] = o.Outbounds
+		}
+	}
+	switch {
+	case vybrano == "":
+		return nil, fmt.Errorf("в конфиге нет селектора %s или у него нет выбора", TegSelector)
+	case vybrano != TegAvto:
+		return []string{vybrano}, nil
+	case len(gruppa[TegAvto]) == 0:
+		return nil, fmt.Errorf("в конфиге нет кандидатов группы %s", TegAvto)
+	}
+	return gruppa[TegAvto], nil
 }
 
 // kandidaty возвращает список серверов, из которых строится селектор.

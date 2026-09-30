@@ -73,8 +73,11 @@ func praviloNaborov(v Vhod) (map[string]any, bool) {
 
 // keshFayl это experimental.cache_file. store_rdrc не пишется намеренно: поле
 // устарело в 1.14 и уходит в 1.16.
+//
+// Конфиг проверки сервера кэш не пишет: файл один на оба ядра, и проверка
+// навязала бы боевому ядру свой выбор группы или упёрлась бы в его замок.
 func keshFayl(v Vhod) (map[string]any, bool) {
-	if v.FaylKesha == "" {
+	if v.FaylKesha == "" || v.BezTun {
 		return nil, false
 	}
 	return map[string]any{"enabled": true, "path": v.FaylKesha}, true

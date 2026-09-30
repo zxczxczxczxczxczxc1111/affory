@@ -94,6 +94,11 @@ const neudachDoRedkih = 10
 
 const redkiyOtstupPoUmolchaniyu = 5 * time.Minute
 
+// periodSetiVPauzePoUmolchaniyu: пауза восстановления раз в столько сверяет
+// местный резолвер, и смена сети обрывает паузу (Б2 аудита 1.8.0). Вопрос идёт
+// к таблице адаптеров, наружу не ходит, как и у наблюдателя туннеля.
+const periodSetiVPauzePoUmolchaniyu = 2 * time.Second
+
 type Sluzhba struct {
 	processTracker    *nablyudatelPrilozheniy
 	processTrackerErr error
@@ -282,6 +287,11 @@ type Sluzhba struct {
 	// muPerepodyom выстраивает переподъёмы в очередь (L1 аудита 1.8.0).
 	// Порядок замков: muPerepodyom раньше muZaslon и mu.
 	muPerepodyom sync.Mutex
+	// proveritServer проверяет сервер ядром без TUN перед автоматическим
+	// подъёмом (Б1 аудита 1.8.0). Шов: настоящий запускает sing-box.
+	proveritServer func(ctx context.Context) error
+	// periodSetiVPauze: как часто пауза восстановления сверяет сеть (Б2).
+	periodSetiVPauze time.Duration
 
 	podp   map[uint64]chan protokol.Kadr
 	sledId uint64
@@ -365,6 +375,10 @@ type Sluzhba struct {
 	// сна туннель проверяется сразу, а не на следующем тике (Н11 аудита 1.6.1).
 	vneocherednaya chan struct{}
 
+	// tolchokVosst обрывает паузу восстановления после сна машины: без
+	// туннеля vneocherednaya забирать некому (Б2 аудита 1.8.0).
+	tolchokVosst chan struct{}
+
 	// Адаптер туннеля, известен только после подъёма. На его индексе держится
 	// поиск канала ПОД туннелем, на алиасе порядок правил задачи 2.5.
 	tun set.Adapter
@@ -444,6 +458,7 @@ func NovayaSluzhba() *Sluzhba {
 		zapisat:   sostoyanie.Zapisat,
 		// На одну просьбу: две подряд значат ровно то же, что одна.
 		vneocherednaya: make(chan struct{}, 1),
+		tolchokVosst:   make(chan struct{}, 1),
 	}
 	s.period = periodNablyudeniyaPoUmolchaniyu
 	s.periodNesushchego = periodNesushchegoPoUmolchaniyu
@@ -489,6 +504,8 @@ func NovayaSluzhba() *Sluzhba {
 	s.probaImeni = proby.Imya
 	s.otstupy = otstupyPoUmolchaniyu
 	s.redkiyOtstup = redkiyOtstupPoUmolchaniyu
+	s.periodSetiVPauze = periodSetiVPauzePoUmolchaniyu
+	s.proveritServer = s.proveritServerBezTun
 	s.periodProksi = periodProksiPoUmolchaniyu
 	s.proveritKonfig = func(put string) error { return yadra.Proverit(imyaYadraTun, put) }
 	s.fonCtx, s.fonOtmena = context.WithCancel(context.Background())
@@ -771,13 +788,17 @@ func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 	s.zapustitVosstanovlenie()
 }
 
-// ProbaPosleSna просит наблюдателя проверить туннель вне очереди. Без
-// поднятого туннеля просьбу никто не заберёт, и следующий подъём проверит
-// туннель сам.
+// ProbaPosleSna просит наблюдателя проверить туннель вне очереди, а
+// восстановление, если оно ждёт в паузе, попробовать сразу. Просьбу, которую
+// некому забрать, следующий подъём перекроет сам.
 func (s *Sluzhba) ProbaPosleSna() {
 	log.Printf("машина проснулась: проверяю туннель вне очереди")
 	select {
 	case s.vneocherednaya <- struct{}{}:
+	default:
+	}
+	select {
+	case s.tolchokVosst <- struct{}{}:
 	default:
 	}
 }
@@ -946,6 +967,11 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 			Uzel:       diagnostika.Obezlichit(srv.Id),
 		})
 	}()
+
+	if err := s.proveritServerDoTun(ctx, avto, moyo); err != nil {
+		shagPodyoma = "proverka-servera"
+		return err
+	}
 
 	s.mu.Lock()
 	// Только ВЫБОР, и только из n.Vybran как есть. srv это VybrannyyServer(), а
@@ -1843,6 +1869,11 @@ func (s *Sluzhba) zapustitVosstanovlenie() {
 	s.vosstIdyot = true
 	s.otmenaVosst = otmenaV
 	s.mu.Unlock()
+	// Пробуждение, случившееся до аварии, к этому циклу отношения не имеет.
+	select {
+	case <-s.tolchokVosst:
+	default:
+	}
 	zakonchit := func() {
 		s.mu.Lock()
 		s.vosstIdyot = false
@@ -1881,6 +1912,47 @@ func (s *Sluzhba) setZhiva(ctx context.Context) bool {
 	return true
 }
 
+// zhdatVPauze ждёт отступ восстановления и отвечает, идти ли на попытку.
+//
+// Пауза обрывается раньше срока двумя событиями, после которых прежний отказ
+// уже ничего не говорит о следующей попытке: машина проснулась или сменилась
+// сеть (M10 аудита 1.8.0). Без этого после десятка неудач человек ждал до пяти
+// минут, хотя сервер вернулся или он сам пересел на другую сеть. Смена сети
+// видна по местному резолверу: другая сеть это другой шлюз и другой DNS, а
+// короткие паузы её не ждут, им хватает своего срока.
+func (s *Sluzhba) zhdatVPauze(ctx context.Context, otstup time.Duration) bool {
+	taymer := time.NewTimer(otstup)
+	defer taymer.Stop()
+
+	var tik <-chan time.Time
+	var bylo netip.Addr
+	var errBylo error
+	if s.periodSetiVPauze > 0 && otstup > s.periodSetiVPauze {
+		t := time.NewTicker(s.periodSetiVPauze)
+		defer t.Stop()
+		tik = t.C
+		bylo, errBylo = s.mestnyyRezolver()
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-taymer.C:
+			return true
+		case <-s.tolchokVosst:
+			log.Printf("пауза восстановления прервана: машина проснулась")
+			return true
+		case <-tik:
+			stalo, err := s.mestnyyRezolver()
+			if err != nil || !stalo.IsValid() || (errBylo == nil && stalo == bylo) {
+				continue
+			}
+			log.Printf("пауза восстановления прервана: сменилась сеть, резолвер %s", stalo)
+			return true
+		}
+	}
+}
+
 // vosstanavlivat поднимает туннель обратно после АВАРИИ.
 //
 // Своим контекстом, а не контекстом подключения: тот уже отменён Disconnect'ом,
@@ -1897,10 +1969,8 @@ func (s *Sluzhba) vosstanavlivat(ctx context.Context) {
 		// Сон прерываемый. Голый Sleep означал, что отключение человеком
 		// доходит до цикла только после текущего отступа, а он на последних
 		// попытках достигает минуты: кнопка нажата, а туннель ещё поднимется.
-		select {
-		case <-ctx.Done():
+		if !s.zhdatVPauze(ctx, otstup) {
 			return
-		case <-time.After(otstup):
 		}
 
 		// Человек мог отключиться руками, пока мы ждали. Его решение старше
