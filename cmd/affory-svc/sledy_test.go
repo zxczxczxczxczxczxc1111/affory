@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -84,6 +85,70 @@ func TestSnyatSledyUbiraetSledyOkna(t *testing.T) {
 	}
 	if len(zhaloby) == 0 {
 		t.Error("негодный номер уведомлений прошёл молча")
+	}
+}
+
+// Приёмка 1.9.0 в госте 30.09.2026: данные WebView2 оставались после удаления,
+// потому что процессы WebView2 ещё держали файлы, когда уборка до них дошла.
+// Они умирают не вместе с окном, а следом, поэтому каталог снимается с
+// повторами. Держатель здесь настоящий: открытый файл внутри каталога.
+func TestZanyatyyKatalogWebViewSnimaetsyaPovtorom(t *testing.T) {
+	profil := filepath.Join(t.TempDir(), "Users", "chelovek")
+	webview := filepath.Join(profil, katalogWebViewVProfile, "EBWebView")
+	if err := os.MkdirAll(webview, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(webview, "Cookies"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	podstavnyeSledy(t, filepath.Join(t.TempDir(), "net-papki"), map[string]string{"S-1-5-21-1-2-3-1001": profil})
+	prezhnee := zhdatSleda
+	t.Cleanup(func() { zhdatSleda = prezhnee })
+	pauz := 0
+	zhdatSleda = func(time.Duration) {
+		pauz++
+		// Держатель уходит к первой паузе, как WebView2 следом за окном.
+		_ = f.Close()
+	}
+
+	for _, z := range snyatSledy() {
+		t.Fatalf("след не убран: %s", z)
+	}
+	if pauz == 0 {
+		t.Fatal("держатель не помешал ни разу: тест ничего не проверил")
+	}
+	if _, err := os.Stat(filepath.Join(profil, katalogWebViewVProfile)); !os.IsNotExist(err) {
+		t.Error("данные WebView2 остались")
+	}
+}
+
+// Держатель, который не уходит вовсе, не держит удаление вечно: повторы
+// конечны, и остаток называется жалобой.
+func TestVechnoZanyatyyKatalogDayotZhalobu(t *testing.T) {
+	profil := filepath.Join(t.TempDir(), "Users", "chelovek")
+	webview := filepath.Join(profil, katalogWebViewVProfile, "EBWebView")
+	if err := os.MkdirAll(webview, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(webview, "Cookies"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	podstavnyeSledy(t, filepath.Join(t.TempDir(), "net-papki"), map[string]string{"S-1-5-21-1-2-3-1001": profil})
+	prezhnee := zhdatSleda
+	t.Cleanup(func() { zhdatSleda = prezhnee })
+	var vsego time.Duration
+	zhdatSleda = func(d time.Duration) { vsego += d }
+
+	zhaloby := snyatSledy()
+	if !slices.ContainsFunc(zhaloby, func(z string) bool { return strings.Contains(z, katalogWebViewVProfile) }) {
+		t.Fatalf("занятый каталог прошёл молча: %v", zhaloby)
+	}
+	if vsego == 0 || vsego > 15*time.Second {
+		t.Fatalf("ожидание занятого каталога %v", vsego)
 	}
 }
 

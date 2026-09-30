@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/udaleniye"
 	"golang.org/x/sys/windows"
@@ -59,6 +60,7 @@ var (
 	profiliLyudey        = profiliLyudeySistemnye
 	udalitReestrovyySled = udalitKlyuchSPotomkami
 	prochitatAktivator   = prochitatAktivatorSistemnyy
+	zhdatSleda           = time.Sleep
 )
 
 // prochitatAktivatorSistemnyy читает номер COM-активации уведомлений из
@@ -172,7 +174,7 @@ func snyatSledyLyudey() []string {
 			filepath.Join(profil, katalogVProfile),
 			filepath.Join(profil, katalogWebViewVProfile),
 		} {
-			if err := udaleniye.Katalog(katalog); err != nil {
+			if err := udalitKatalogSPovtorami(katalog); err != nil {
 				zhaloby = append(zhaloby, fmt.Sprintf("каталог %s не удалён: %v", katalog, err))
 			}
 		}
@@ -204,6 +206,28 @@ func snyatSledyLyudey() []string {
 		}
 	}
 	return zhaloby
+}
+
+// pauzySnyatiyaKataloga это ожидание держателя каталога в профиле, всего
+// около восьми секунд. Держатель это процессы WebView2: они уходят не вместе
+// с окном, а следом за ним (приёмка 1.9.0 в госте 30.09.2026).
+var pauzySnyatiyaKataloga = []time.Duration{
+	250 * time.Millisecond, 500 * time.Millisecond, time.Second,
+	2 * time.Second, 2 * time.Second, 2 * time.Second,
+}
+
+// udalitKatalogSPovtorami снимает каталог, пока держатель не отпустит файлы,
+// и отдаёт последний отказ, если не отпустил.
+func udalitKatalogSPovtorami(katalog string) error {
+	err := udaleniye.Katalog(katalog)
+	for _, pauza := range pauzySnyatiyaKataloga {
+		if err == nil {
+			return nil
+		}
+		zhdatSleda(pauza)
+		err = udaleniye.Katalog(katalog)
+	}
+	return err
 }
 
 // udalitKlyuchSPotomkami удаляет ветку целиком: registry.DeleteKey отказывается

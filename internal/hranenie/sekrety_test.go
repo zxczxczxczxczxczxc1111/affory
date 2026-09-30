@@ -336,6 +336,33 @@ func TestPorchaNeZhdyotPovtorov(t *testing.T) {
 	}
 }
 
+// Блоб, ключа к которому на машине нет, повторами не читается никогда. Приёмка
+// 1.9.0 в госте 30.09.2026: блоб без флага LOCAL_MACHINE из-под SYSTEM даёт
+// ERROR_PATH_NOT_FOUND, и служба считала это временным отказом, то есть
+// оставалась без серверов навсегда вместо того, чтобы отложить блоб.
+func TestKlyuchNeNaydenHoronitBlob(t *testing.T) {
+	for _, kod := range []windows.Errno{windows.ERROR_PATH_NOT_FOUND, windows.ERROR_FILE_NOT_FOUND} {
+		t.Run(kod.Error(), func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, hranenie.ImyaSekretov), []byte("blob"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			sh := hranenie.SShovom(dir, func([]byte) ([]byte, error) { return nil, kod })
+			sh.Spat = func(time.Duration) { t.Fatal("блоб без ключа ждал повторов") }
+			if _, err := sh.Zagruzit(); !errors.Is(err, hranenie.ErrSekretyNechitaemy) {
+				t.Fatalf("блоб без ключа не опознан: %v", err)
+			}
+			if p := pohoronen(t, dir); len(p) != 1 {
+				t.Fatalf("похоронено %v, ожидался ровно один", p)
+			}
+			// Следующее чтение не упирается в отложенный блоб: набор с нуля.
+			if telo, err := sh.Zagruzit(); err != nil || telo != nil {
+				t.Fatalf("после похорон набор не начался заново: %q, %v", telo, err)
+			}
+		})
+	}
+}
+
 // otlozhit кладёт настоящий блоб туда, куда его хоронили прежние версии.
 func otlozhit(t *testing.T, dir, telo, kogda string) {
 	t.Helper()

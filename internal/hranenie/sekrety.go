@@ -37,14 +37,18 @@ var ErrDPAPINedostupen = errors.New("шифрование Windows сейчас �
 // живом DPAPI 30.09.2026: мусор, обрезанный блоб и блоб с изменённым байтом в
 // любом месте дают ERROR_INVALID_DATA. Коды плохого ключа NTE_BAD_DATA и
 // NTE_BAD_KEY_STATE это чужая машина или сменившийся ключ, повторы им тоже не
-// помогут. Всё остальное, включая RPC к LSASS до входа в систему, временно.
+// помогут. Ключа к блобу на машине нет вовсе: ERROR_PATH_NOT_FOUND, пойман
+// приёмкой 1.9.0 на блобе без флага LOCAL_MACHINE, прочитанном из-под SYSTEM;
+// ERROR_FILE_NOT_FOUND это то же отсутствие файлом, а не каталогом. Всё
+// остальное, включая RPC к LSASS до входа в систему, временно.
 func porchaDannyh(err error) bool {
 	var kod syscall.Errno
 	if !errors.As(err, &kod) {
 		return false
 	}
 	switch uint32(kod) {
-	case uint32(windows.ERROR_INVALID_DATA), 0x80090005, 0x8009000B:
+	case uint32(windows.ERROR_INVALID_DATA), 0x80090005, 0x8009000B,
+		uint32(windows.ERROR_PATH_NOT_FOUND), uint32(windows.ERROR_FILE_NOT_FOUND):
 		return true
 	}
 	return false
