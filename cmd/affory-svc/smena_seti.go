@@ -76,35 +76,47 @@ func (s *Sluzhba) rezolverSmenilsya() (netip.Addr, bool) {
 	return stalo, true
 }
 
-// perezapustitPodNovuyuSet пересобирает конфиг под новую сеть.
+// perezapustitPodNovuyuSet пересобирает конфиг под новую сеть и отвечает, ушёл
+// ли туннель в переподъём.
 //
-// Зовётся из наблюдателя своей горутиной на фоновом контексте: контекст
+// Кандидат проверяется ядром ДО остановки рабочего подключения (A6), и
+// проверяется ЗДЕСЬ, в горутине наблюдателя (А2 аудита 1.8.0). Прежде проверка
+// шла в фоне, а наблюдатель уходил сразу: забракованный кандидат оставлял
+// старый туннель работать без единой пробы, без реакции на следующую смену
+// сети и без восстановления. Теперь наблюдатель уходит, только когда туннель
+// действительно опускают.
+//
+// Сам переподъём идёт своей горутиной на фоновом контексте: контекст
 // наблюдателя отменяет Disconnect, который случится внутри, и переподъём умер
-// бы в момент рождения - той же граблей, что уже описана у vosstanavlivat.
-//
-// Кандидат проверяется ядром ДО остановки рабочего подключения (A6), поэтому
-// сеть, в которой новый конфиг не собирается, не стоит человеку туннеля.
-func (s *Sluzhba) perezapustitPodNovuyuSet(stalo netip.Addr) {
+// бы в момент рождения - той же граблей, что уже описана у vosstanavlivat. Его
+// провал уходит в восстановление (smenitPodklyuchenie).
+func (s *Sluzhba) perezapustitPodNovuyuSet(stalo netip.Addr) bool {
 	s.mu.Lock()
 	bylo := s.rezolverKonfiga
 	s.posledniyPerezapuskSeti = s.seychas()
 	s.mu.Unlock()
 	log.Printf("сеть сменилась: местный резолвер был %s, стал %s; пересобираю конфиг", bylo, stalo)
 
+	if err := s.proveritKandidata(); err != nil {
+		// Туннель цел, наблюдатель остаётся при нём. Повтор после паузы
+		// perezapuskSetiNeChashche: сеть могла ещё не договорить.
+		log.Printf("конфиг под новую сеть не принят, туннель остаётся прежним: %v", err)
+		return false
+	}
 	if !s.zavestiFonovuyu() {
-		return
+		return false
 	}
 	fon.Zapustit("переподъёме под новую сеть", func() {
 		defer s.fon.Done()
-		if err := s.perepodklyuchit(s.fonCtx); err != nil {
-			// Не авария: туннель либо цел (кандидат забракован до остановки),
-			// либо уже поднимается заново. Наблюдатель и восстановление делают
-			// свою работу дальше, а молчать про причину нельзя.
+		s.muPerepodyom.Lock()
+		defer s.muPerepodyom.Unlock()
+		if err := s.smenitPodklyuchenie(s.fonCtx, true); err != nil {
 			log.Printf("переподъём под новую сеть не прошёл: %v", err)
 			return
 		}
 		log.Printf("конфиг пересобран под новую сеть, местный резолвер %s", stalo)
 	})
+	return true
 }
 
 // poraSmotretSet держит паузу между переподъёмами по смене сети.
@@ -124,6 +136,5 @@ func (s *Sluzhba) smotretSet(ctx context.Context) bool {
 	if !smenilsya {
 		return false
 	}
-	s.perezapustitPodNovuyuSet(stalo)
-	return true
+	return s.perezapustitPodNovuyuSet(stalo)
 }

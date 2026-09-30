@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/netip"
 	"os"
 
@@ -18,7 +19,7 @@ func (s *Sluzhba) SetKillSwitch(vkl bool) error {
 		s.mu.Lock()
 		changed := s.killSwitch
 		s.mu.Unlock()
-		if err := s.osvoboditSet(); err != nil {
+		if err := s.snyatZashchitu(); err != nil {
 			return err
 		}
 		if err := s.zapomnitZashchitu(false); err != nil {
@@ -76,6 +77,11 @@ func (s *Sluzhba) SetKillSwitch(vkl bool) error {
 	// защищает запертую машину от того, чтобы следующий старт службы её
 	// распечатал сам (см. set.SnyatOsirotevshee).
 	if err := s.aktivirovatZaslon(r); err != nil {
+		if errors.Is(err, errZaslonNeVremya) {
+			// Туннель упал между переподъёмом и запиранием, или режим успели
+			// выключить: запирать нечего, и назвать это надо так.
+			err = fmt.Errorf("%w: туннель не подтверждён, запирать нечего", set.ErrNetTunnelya)
+		}
 		s.zabytRezhim()
 		// Состояние спрашивается ЗАНОВО: между входом и этой строкой стоит
 		// переподъём, и снимок с порога успел устареть.
@@ -96,6 +102,20 @@ func (s *Sluzhba) zapomnitZashchitu(vkl bool) error {
 	return nil
 }
 
+// errZaslonNeVremya: запирать сейчас нельзя, и это не отказ брандмауэра.
+var errZaslonNeVremya = errors.New("запирать не время")
+
+// aktivirovatZaslon запирает машину или пересобирает стоящий замок.
+//
+// Оба условия читаются ЗДЕСЬ, под muZaslon, а не у вызывающего:
+//   - режим ещё включён (M2 аудита 1.8.0). Пересборка читала флаг на входе,
+//     до ожидания muZaslon, и выключение режима, прошедшее за это время,
+//     она запирала обратно;
+//   - новый замок встаёт только поверх подтверждённого туннеля (H2). Порт
+//     ядра запоминается до его старта, а адаптер до пробы, и запись набора
+//     в это окно (обновление подписки на старте) запирала машину раньше,
+//     чем туннель понёс хоть байт. Проба не прошла, и машина оставалась
+//     запертой без туннеля. Стоящий замок пересобирается как раньше.
 func (s *Sluzhba) aktivirovatZaslon(r set.Razreshyonnoe) error {
 	s.muZaslon.Lock()
 	defer s.muZaslon.Unlock()
@@ -103,19 +123,58 @@ func (s *Sluzhba) aktivirovatZaslon(r set.Razreshyonnoe) error {
 		return errPodyomOtmenyon
 	}
 	s.mu.Lock()
+	// Живое ядро выше судит пустой адрес clash_api, как везде. Состояние здесь
+	// отвечает на другой вопрос: подтвердила ли проба, что туннель несёт.
+	if !s.killSwitch || (!s.zaslonAktiven && s.sost != protokol.SostPodnyat) { // sostoyanie-a-ne-yadro
+		s.mu.Unlock()
+		return errZaslonNeVremya
+	}
 	s.zaslonAktiven = true
 	s.mu.Unlock()
 	return s.vklyuchitVes(r, true)
 }
 
+// snyatZashchitu выключает режим: флаг в памяти падает ПОД muZaslon, вместе
+// со снятием замка (M2 аудита 1.8.0). Пересборка, ждущая muZaslon, после
+// этого видит выключенный режим и не запирает. Неудача снятия возвращает флаг:
+// замок стоит, и считать режим выключенным значило бы соврать.
+func (s *Sluzhba) snyatZashchitu() error {
+	s.muZaslon.Lock()
+	defer s.muZaslon.Unlock()
+	s.mu.Lock()
+	bylo := s.killSwitch
+	s.killSwitch = false
+	s.mu.Unlock()
+	if err := s.osvoboditSetPodZamkom(); err != nil {
+		s.mu.Lock()
+		s.killSwitch = bylo
+		s.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
 func (s *Sluzhba) osvoboditSet() error {
 	s.muZaslon.Lock()
 	defer s.muZaslon.Unlock()
+	return s.osvoboditSetPodZamkom()
+}
+
+// osvoboditSetPodZamkom снимает замок. Зовётся под muZaslon.
+//
+// Флаг в памяти это не единственный признак (L2 аудита 1.8.0). Если снять
+// осиротевший замок на старте не удалось, флаг ложный, а машина заперта, и
+// «Отключить» её прежде не распечатывало. Файл отката на диске говорит правду
+// о брандмауэре, поэтому при ложном флаге решает он.
+func (s *Sluzhba) osvoboditSetPodZamkom() error {
 	s.mu.Lock()
 	aktiven := s.zaslonAktiven
 	s.mu.Unlock()
 	if !aktiven {
-		return nil
+		if !s.estOtkat() {
+			return nil
+		}
+		log.Printf("замок в памяти не числится, а файл отката на месте: снимаю по файлу")
 	}
 	if err := s.vyklyuchitVes(); err != nil {
 		s.postavit(s.Status().Sostoyanie, &protokol.Oshibka{Kod: kodRezhima(err), Tekst: "Не удалось восстановить сеть: " + err.Error()})
@@ -134,6 +193,7 @@ func (s *Sluzhba) osvoboditSet() error {
 // обратно, иначе служба считала бы режим включённым, не заперев машину.
 func (s *Sluzhba) perepodnyatPodRezhim() error {
 	s.mu.Lock()
+	bylo := s.killSwitch
 	s.killSwitch, s.podRezhim = true, true
 	s.mu.Unlock()
 	defer func() {
@@ -143,7 +203,17 @@ func (s *Sluzhba) perepodnyatPodRezhim() error {
 	}()
 
 	if err := s.perepodklyuchit(context.Background()); err != nil {
-		s.zabytRezhim()
+		// Признак возвращается к прежнему, а не падает в «выключено» (M2
+		// аудита 1.8.0): включение поверх уже включённого режима при неудаче
+		// оставляло стоящий замок с флагом «выключено», и текст про открытую
+		// машину был неправдой.
+		s.mu.Lock()
+		s.killSwitch = bylo
+		zaperta := s.zaslonAktiven
+		s.mu.Unlock()
+		if zaperta {
+			return fmt.Errorf("VPN не переподключился под режим, защита осталась прежней: %w", err)
+		}
 		return fmt.Errorf("VPN не переподключился под режим, машина осталась открытой: %w", err)
 	}
 	return nil
@@ -312,6 +382,11 @@ func (s *Sluzhba) peresobratRazresheniya() (bool, error) {
 	// переучреждает. Передать false значило бы разрешить следующему старту
 	// службы распечатать запертую машину.
 	if err := s.aktivirovatZaslon(r); err != nil {
+		if errors.Is(err, errZaslonNeVremya) {
+			// Туннель ещё не подтверждён или режим выключили, пока собирался
+			// список. Замок поставит удачный подъём, если до него дойдёт.
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
@@ -335,6 +410,17 @@ func (s *Sluzhba) suzitKandidatov() (bool, error) {
 	kandidaty, err := s.kandidatySIsklyucheniem()
 	if err != nil {
 		return false, err
+	}
+	// Под muZaslon и с проверкой, что замок ещё стоит (M2 аудита 1.8.0):
+	// пока собирались адреса, режим могли выключить, и правило серверов
+	// завелось бы поверх распечатанной машины.
+	s.muZaslon.Lock()
+	defer s.muZaslon.Unlock()
+	s.mu.Lock()
+	zaperta := s.killSwitch && s.zaslonAktiven
+	s.mu.Unlock()
+	if !zaperta {
+		return false, nil
 	}
 	if err := s.suzitServery(kandidaty); err != nil {
 		return false, err

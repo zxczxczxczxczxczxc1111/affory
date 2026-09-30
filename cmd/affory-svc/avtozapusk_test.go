@@ -232,12 +232,14 @@ func TestTunnelVozvrashchaetsyaPosleSmertiSluzhby(t *testing.T) {
 
 // Н5 аудита 1.6.1. Запертая машина без туннеля не имеет связи вовсе, и шесть
 // неудачных попыток при старте не повод сдаться: сеть могла подняться позже
-// минуты. Дальше работает обычное восстановление с отступом.
+// минуты. Дальше работает обычное восстановление с отступом. С 1.9.0 подъём
+// при старте делает одну попытку и сразу уходит в восстановление, число шесть
+// осталось как длина «минуты без сети».
 func TestZapertayaMashinaNeSdayotsyaPosleShestiPopytok(t *testing.T) {
 	s := podstavnaya(t, nil)
 	var podnimali atomic.Int32
 	s.podnyatTunnel = func(ctx context.Context) (set.Adapter, error) {
-		if podnimali.Add(1) <= popytokPriStarte {
+		if podnimali.Add(1) <= 6 {
 			return set.Adapter{}, errors.New("тест: сети ещё нет")
 		}
 		return set.Adapter{Indeks: 10, Imya: "tun0", Adresa: []netip.Addr{netip.MustParseAddr("172.19.0.1")}}, nil

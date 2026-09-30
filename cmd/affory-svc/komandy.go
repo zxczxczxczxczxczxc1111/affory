@@ -275,6 +275,13 @@ type Sluzhba struct {
 	fonCtx      context.Context
 	fonOtmena   context.CancelFunc
 	otmenaVosst context.CancelFunc
+	// vosstIdyot: восстановление уже крутится (под mu). Второй запуск при нём
+	// ничего не делает: прежде он затирал otmenaVosst первого, и «Отключить»
+	// гасило только один из двух циклов.
+	vosstIdyot bool
+	// muPerepodyom выстраивает переподъёмы в очередь (L1 аудита 1.8.0).
+	// Порядок замков: muPerepodyom раньше muZaslon и mu.
+	muPerepodyom sync.Mutex
 
 	podp   map[uint64]chan protokol.Kadr
 	sledId uint64
@@ -334,6 +341,10 @@ type Sluzhba struct {
 	killSwitch    bool
 	zaslonAktiven bool
 	muZaslon      sync.Mutex
+	// estOtkat отвечает, лежит ли на диске файл отката замка. Шов: настоящий
+	// читает ProgramData, а тесту нужно назвать расхождение с памятью (L2
+	// аудита 1.8.0), не трогая живой брандмауэр.
+	estOtkat func() bool
 
 	// upalaSTunnelem: файл состояния при старте говорил podnyat, то есть прошлая
 	// служба умерла, не опустив туннель (Н2 аудита 1.6.1). Штатное опускание
@@ -487,6 +498,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.vklyuchitVes = set.VklyuchitVesTrafik
 	s.prochitatProksi = set.ProksiLyudey
 	s.vyklyuchitVes = set.VyklyuchitVesTrafik
+	s.estOtkat = func() bool { _, err := set.ProchitatOtkat(); return err == nil }
 	s.suzitServery = set.PerezavestiRazreshyonnyeServery
 	// Значение метода берётся после создания: раньше её просто не у чего взять.
 	s.podnyatTunnel = s.podnyatTunSistemno
@@ -708,14 +720,17 @@ func (s *Sluzhba) SetPolosa(vverh, vniz int) error {
 	})
 }
 
-// popytokPriStarte: служба стартует Automatic, раньше сети, и первый подъём
-// почти наверняка упрётся в отсутствие маршрута. Шесть попыток по десять
-// секунд это минута, за которую сеть поднимается на любой машине.
-const popytokPriStarte = 6
-
 // PodklyuchitPriStarte поднимает туннель при старте службы, если человек это
 // выбрал. Выключенный флаг означает ровно ничего: туннель, поднявшийся сам
 // без просьбы, это самый неприятный сюрприз у VPN.
+//
+// Одна попытка, дальше восстановление (H1в и M1 аудита 1.8.0). Прежде здесь
+// крутились шесть попыток по десять секунд, и у цикла было два изъяна. Он
+// сдавался через минуту на незапертой машине: Wi-Fi после входа, PPPoE или
+// долгий логин, и VPN не поднимался до перезагрузки. И его не гасило
+// «Отключить»: оно отменяет только восстановление, а цикл через десять секунд
+// поднимал туннель снова. Восстановление умеет и то, и другое: у него растущий
+// отступ без потолка попыток, и его отменяет «Отключить».
 func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 	s.mu.Lock()
 	vkl := s.snimok.PodklyuchatPriStarte
@@ -742,24 +757,18 @@ func (s *Sluzhba) PodklyuchitPriStarte(ctx context.Context) {
 	case avariya:
 		log.Printf("прошлая служба завершилась, не опустив туннель: поднимаю его обратно")
 	}
-	for i := 0; i < popytokPriStarte; i++ {
-		err := s.Connect(ctx)
-		if err == nil {
-			log.Printf("туннель поднят при старте, попытка %d", i+1)
-			return
-		}
-		log.Printf("подъём при старте, попытка %d: %v", i+1, err)
-		if i < popytokPriStarte-1 && !s.zhdat(ctx, 10*time.Second) {
-			return
-		}
+	err := s.connect(ctx, nil, true)
+	if err == nil {
+		log.Printf("туннель поднят при старте")
+		return
 	}
-	// Запертая машина без туннеля не имеет связи вовсе, и минута неудач не
-	// повод сдаваться (Н5 аудита 1.6.1): сеть могла подняться позже. Дальше
-	// обычное восстановление с растущим отступом и без потолка попыток.
-	if zaperta && ctx.Err() == nil {
-		log.Printf("машина заперта, а туннель за %d попыток не поднялся: ухожу в восстановление", popytokPriStarte)
-		s.zapustitVosstanovlenie()
+	// Отмена это «Отключить» или остановка службы: возвращать туннель некуда.
+	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+		log.Printf("подъём при старте отменён: %v", err)
+		return
 	}
+	log.Printf("подъём при старте не удался, ухожу в восстановление: %v", err)
+	s.zapustitVosstanovlenie()
 }
 
 // ProbaPosleSna просит наблюдателя проверить туннель вне очереди. Без
@@ -805,11 +814,15 @@ func (s *Sluzhba) StatusS(oshib *protokol.Oshibka) protokol.StatusOtvet {
 // Функция, а не константа на месте вызова: так подмена аргумента видна мутацией.
 func tegDlyaZamera() string { return genkonfig.TegSelector }
 
+// Connect это подъём по команде человека. Автоматические подъёмы (старт,
+// восстановление, смена сети) идут через connect с avto=true.
 func (s *Sluzhba) Connect(ctx context.Context) error {
-	return s.connect(ctx, nil)
+	return s.connect(ctx, nil, false)
 }
 
-func (s *Sluzhba) connect(ctx context.Context, expected *int) (itogErr error) {
+// connect поднимает туннель. avto отличает подъём, который служба затеяла сама:
+// ему перед TUN положена проверка сервера (Б1 аудита 1.8.0).
+func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1815,21 +1828,37 @@ func (s *Sluzhba) pomoglaGruppa(ctx context.Context, adres, sekret, teg string) 
 }
 
 // zapustitVosstanovlenie заводит фоновое восстановление туннеля.
+//
+// Это единственная дверь, через которую туннель, опущенный не человеком,
+// возвращается сам (А1 аудита 1.8.0): наблюдатель, старт, переподъём. Цикл
+// один: пока он крутится, повторный вызов ничего не делает.
 func (s *Sluzhba) zapustitVosstanovlenie() {
 	vosstCtx, otmenaV := context.WithCancel(s.fonCtx)
 	s.mu.Lock()
+	if s.vosstIdyot {
+		s.mu.Unlock()
+		otmenaV()
+		return
+	}
+	s.vosstIdyot = true
 	s.otmenaVosst = otmenaV
 	s.mu.Unlock()
+	zakonchit := func() {
+		s.mu.Lock()
+		s.vosstIdyot = false
+		s.mu.Unlock()
+		otmenaV()
+	}
 	// Не зарегистрировались значит службу останавливают, и возвращаться
 	// некуда: восстановление подняло бы туннель уже после того, как его
 	// опустили насовсем.
 	if !s.zavestiFonovuyu() {
-		otmenaV()
+		zakonchit()
 		return
 	}
 	fon.Zapustit("восстановлении", func() {
 		defer s.fon.Done()
-		defer otmenaV()
+		defer zakonchit()
 		fon.SPovtorom(vosstCtx, "восстановление", pauzaPoslePaniki, func() {
 			s.vosstanavlivat(vosstCtx)
 		})
@@ -1891,7 +1920,9 @@ func (s *Sluzhba) vosstanavlivat(ctx context.Context) {
 		}
 
 		log.Printf("восстановление, попытка %d", popytka+1)
-		if err := s.Connect(context.Background()); err != nil {
+		// Контекст восстановления, а не фоновый: «Отключить» и остановка
+		// службы отменяют и попытку, идущую прямо сейчас, а не только следующую.
+		if err := s.connect(ctx, nil, true); err != nil {
 			log.Printf("восстановление не удалось: %v", err)
 			continue
 		}

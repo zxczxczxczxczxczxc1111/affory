@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net"
 	"path/filepath"
 	"slices"
@@ -18,9 +20,16 @@ import (
 // Кандидат проверяется ДО остановки (A6): иначе человек с набором правил,
 // которого ядро не принимает, терял рабочее подключение и узнавал причину уже
 // без VPN. Подробности в kandidat.go.
+//
+// Переподъёмы идут по очереди (L1 аудита 1.8.0). Смена сети и команда окна,
+// пришедшие разом, прежде брали поколение до чужого Disconnect, и каждый
+// отменял подъём другого: туннель оставался лежать, хотя опускать его не
+// просил никто.
 func (s *Sluzhba) perepodklyuchit(ctx context.Context) error {
+	s.muPerepodyom.Lock()
+	defer s.muPerepodyom.Unlock()
 	s.mu.Lock()
-	active, expected := s.portClash != 0, s.pokolenieP+1
+	active := s.portClash != 0
 	s.mu.Unlock()
 	if !active {
 		// Ядра нет, ронять нечего: конфиг соберётся и проверится сам при
@@ -31,8 +40,36 @@ func (s *Sluzhba) perepodklyuchit(ctx context.Context) error {
 	if err := s.proveritKandidata(); err != nil {
 		return err
 	}
+	return s.smenitPodklyuchenie(ctx, false)
+}
+
+// smenitPodklyuchenie опускает туннель и поднимает его заново. Зовётся под
+// muPerepodyom.
+//
+// Поколение берётся здесь, уже в очереди, а не до проверки кандидата: иначе
+// ждавший своей очереди переподъём сверял бы себя с поколением, которое успел
+// сменить предыдущий.
+//
+// Провал подъёма уходит в восстановление (H1б аудита 1.8.0): туннель опускали
+// мы, а не человек, и оставлять его лежать значило оставить человека без VPN
+// до его следующего нажатия. Отмена восстановления не заводит: её причина это
+// «Отключить» или остановка службы.
+func (s *Sluzhba) smenitPodklyuchenie(ctx context.Context, avto bool) error {
+	s.mu.Lock()
+	active, expected := s.portClash != 0, s.pokolenieP+1
+	s.mu.Unlock()
+	// Пока переподъём ждал очереди, туннель могли опустить: «Отключить» или
+	// авария с восстановлением. Поднимать его поверх этого не нам.
+	if !active {
+		return nil
+	}
 	s.Disconnect()
-	return s.connect(ctx, &expected)
+	err := s.connect(ctx, &expected, avto)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		log.Printf("переподъём не поднял туннель, ухожу в восстановление: %v", err)
+		s.zapustitVosstanovlenie()
+	}
+	return err
 }
 
 // otpechatokPravil это отпечаток ТОГО, ЧТО УХОДИТ В КОНФИГ. Уровень списка

@@ -45,6 +45,8 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	s.dirProgrammy = t.TempDir()
 	s.vklyuchitVes = func(set.Razreshyonnoe, bool) error { return nil }
 	s.vyklyuchitVes = func() error { return nil }
+	// Настоящий шов читает файл отката живой машины разработчика.
+	s.estOtkat = func() bool { return false }
 	s.suzitServery = func(set.Adresa) error { return nil }
 	s.naboryZhelaemye = func() []genkonfig.NaborPravil { return nil }
 	s.skachatNabor = func(context.Context, string) ([]byte, error) {

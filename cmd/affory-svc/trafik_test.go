@@ -18,7 +18,7 @@ func TestStaleReconnectCannotResurrectExplicitDisconnect(t *testing.T) {
 	s.mu.Unlock()
 	s.Disconnect()
 	s.Otklyuchit()
-	if err := s.connect(context.Background(), &expected); !errors.Is(err, context.Canceled) {
+	if err := s.connect(context.Background(), &expected, false); !errors.Is(err, context.Canceled) {
 		t.Fatalf("stale reconnect: %v", err)
 	}
 	if s.Status().Sostoyanie != protokol.SostVyklyuchen {
