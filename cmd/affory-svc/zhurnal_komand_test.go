@@ -72,6 +72,7 @@ func TestBezZhurnalaKomandyRabotayut(t *testing.T) {
 	// Тесты и стенд создают службу без журнала: nil обязан значить «молчим», а
 	// не «падаем на первой команде».
 	s := NovayaSluzhba()
+	zakrytZhurnalDiag(t, s)
 	k := s.Obrabotat(context.Background(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "status"})
 	if k.Oshib != nil {
 		t.Fatalf("status без журнала отказал: %+v", k.Oshib)

@@ -57,6 +57,12 @@ var razresheno = map[string]string{
 		"переписывает набор ЖИВОЙ машины. 20.09.2026 так и было: тестовая подписка " +
 		"panel.example появлялась у владельца после каждой сборки выпуска. Вызов " +
 		"из продуктового кода стережёт TestPodmenaKatalogaZovyotsyaTolkoIzTestov",
+	pakets + "diagnostika.(Zhurnal).Zakryt": "шов для уборки тестов чужого пакета: " +
+		"NovayaSluzhba открывает log/diagnostika.jsonl в каталоге прогона, и " +
+		"cmd/affory-svc/glavnyy_test.go (zakrytZhurnalDiag) отпускает файл в конце " +
+		"теста. В проде файл держится всю жизнь процесса и закрывается его выходом. " +
+		"Без закрытия Windows не давал TestMain удалить каталог, и к 29.09.2026 в " +
+		"%TEMP% скопилось 298 каталогов affory-testy-*",
 }
 
 const pakets = "github.com/zxczxczxczxczxczxc1111/affory/internal/"

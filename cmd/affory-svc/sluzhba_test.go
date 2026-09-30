@@ -14,6 +14,7 @@ import (
 // с обрывом журнала на полуслове. Этот тест закрывает весь класс сразу.
 func TestKonstruktorZapolnyaetVseShvy(t *testing.T) {
 	s := NovayaSluzhba()
+	zakrytZhurnalDiag(t, s)
 	// Через указатель, а не значением: копия структуры утащила бы с собой
 	// мьютекс, и vet справедливо ругается на это.
 	v := reflect.ValueOf(s).Elem()

@@ -67,6 +67,23 @@ func (z *Zhurnal) Ochistit() error {
 	return c.Ochistit()
 }
 
+// Zakryt отпускает файл журнала. Служба держит его всю жизнь процесса, и там
+// файл закрывает выход; явно закрывать нужно тем, кто создаёт службу много раз
+// за процесс, то есть тестам: Windows не удаляет каталог с открытым файлом
+// внутри. Буфер, которому закрываться нечем, пропускается.
+func (z *Zhurnal) Zakryt() error {
+	if z == nil || z.kuda == nil {
+		return nil
+	}
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	c, umeet := z.kuda.(io.Closer)
+	if !umeet {
+		return nil
+	}
+	return c.Close()
+}
+
 // Sobytie пишет строку вне очереди: разрыв случается между секундами, и ждать
 // своего тика значит потерять порядок относительно чисел.
 func (z *Zhurnal) Sobytie(tekst string) error {

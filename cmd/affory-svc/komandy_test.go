@@ -37,6 +37,9 @@ import (
 func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	t.Helper()
 	s := NovayaSluzhba()
+	// Закрытие журнала заводится ДО Zavershit: уборка идёт в обратном порядке,
+	// и файл отпускается, когда фоновые писатели уже остановлены.
+	zakrytZhurnalDiag(t, s)
 	t.Cleanup(s.Zavershit)
 	s.dirDannyh = t.TempDir()
 	s.dirProgrammy = t.TempDir()

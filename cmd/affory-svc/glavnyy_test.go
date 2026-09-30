@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,8 +30,30 @@ func TestMain(m *testing.M) {
 	}
 	sostoyanie.PodmenitKatalogDannyh(vrem)
 	kod := m.Run()
-	_ = os.RemoveAll(vrem)
+	// Отказ уборки печатается, но прогон не роняет: тесты своё отработали, а
+	// каталог в %TEMP% это мусор, а не дефект продукта. Проглоченный молча, он
+	// копился: к 29.09.2026 в %TEMP% лежало 298 таких каталогов, в каждом
+	// открытый до конца прогона log/diagnostika.jsonl.
+	if err := os.RemoveAll(vrem); err != nil {
+		fmt.Fprintf(os.Stderr, "каталог тестов %s не удалён: %v\n", vrem, err)
+	}
 	os.Exit(kod)
+}
+
+// zakrytZhurnalDiag закрывает в уборке теста подробный журнал, который
+// NovayaSluzhba открывает в общем каталоге прогона. Незакрытый файл не даёт
+// TestMain удалить каталог на Windows.
+//
+// Журнал берётся сразу, а не в уборке: фикстуры подменяют s.zhurnalDiag
+// буфером, и уборка закрыла бы буфер, оставив файл открытым.
+func zakrytZhurnalDiag(t *testing.T, s *Sluzhba) {
+	t.Helper()
+	zh := s.zhurnalDiag
+	t.Cleanup(func() {
+		if err := zh.Zakryt(); err != nil {
+			t.Errorf("подробный журнал не закрылся: %v", err)
+		}
+	})
 }
 
 // Заслон: прогон обязан идти МИМО настоящего каталога данных.
