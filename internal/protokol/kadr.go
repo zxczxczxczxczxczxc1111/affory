@@ -87,6 +87,10 @@ type StatusOtvet struct {
 	VersiyaSluzh string     `json:"versiya_sluzhby"`
 	PodnyatS     *time.Time `json:"podnyat_s,omitempty"`
 	Oshib        *Oshibka   `json:"oshibka,omitempty"`
+	// Когда восстановление попробует снова (с 1.9.1). Есть только на паузе
+	// между попытками, во время самой попытки пусто: окно пишет тогда
+	// «пробую подключиться», а не отсчёт до прошедшего срока.
+	SledPopytka *time.Time `json:"sled_popytka,omitempty"`
 	// Версия программы (сборка выпуска), а не протокола: экран показывает её
 	// в строке обновления. У сборки dev пустая.
 	VersiyaProgrammy string `json:"versiya_programmy,omitempty"`

@@ -119,21 +119,16 @@ func TestNablyudenieOpuskaetTunnelPerestavshiyNesti(t *testing.T) {
 	}
 	s.period = 20 * time.Millisecond
 
+	vzglyanut, _ := sobytiyaStatusa(s)
 	if err := s.Connect(context.Background()); err != nil {
 		t.Fatalf("подъём не прошёл: %v", err)
 	}
 
-	srok := time.Now().Add(3 * time.Second)
-	for time.Now().Before(srok) {
-		if s.Status().Sostoyanie == protokol.SostNeNeset {
-			if got := s.Status().Oshib; got == nil || got.Kod != protokol.KodTunnelNeNeset {
-				t.Fatalf("код ошибки %v, ожидался tunnel-not-carrying", got)
-			}
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	// С 1.9.1 упавший туннель уходит в восстановление, и снаружи это
+	// vosstanavlivaetsya с причиной, а не ne-neset.
+	if got := pervayaPrichinaVosstanovleniya(t, vzglyanut); got.Kod != protokol.KodTunnelNeNeset {
+		t.Fatalf("код ошибки %v, ожидался tunnel-not-carrying", got)
 	}
-	t.Fatal("туннель молчит, а служба продолжает считать его поднятым")
 }
 
 // Одиночный провал это норма жизни на мобильной сети, а не смерть туннеля.

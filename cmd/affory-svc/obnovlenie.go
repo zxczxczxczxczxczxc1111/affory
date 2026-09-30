@@ -102,12 +102,12 @@ func (s *Sluzhba) ustanovitArhivSVersiey(k protokol.Kadr, put, versiya string) p
 	// новая служба поднимет его сама, человек в VPN не должен после
 	// обновления оказаться без него. Защита отдельно не передаётся: её
 	// настройка живёт в файле состояния и встаёт вместе с туннелем.
-	bylPodnyat := s.Status().Sostoyanie == protokol.SostPodnyat
+	bylPodnyat := s.vnutriSost() == protokol.SostPodnyat
 	// Туннель опускается ДО подмены: правила и политика снимаются штатно, а
 	// не остаются сиротами от службы, которую сейчас убьют.
 	s.Otklyuchit()
-	if st := s.Status(); st.Oshib != nil {
-		return s.otkazObnovleniya(k, st.Oshib.Kod, st.Oshib.Tekst)
+	if oshib := s.vnutriOshib(); oshib != nil {
+		return s.otkazObnovleniya(k, oshib.Kod, oshib.Tekst)
 	}
 	// Событие уходит ДО запуска подменщика: тот останавливает службу первым
 	// делом, и после него до окна уже ничего не долетит.

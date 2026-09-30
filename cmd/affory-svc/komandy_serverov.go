@@ -425,7 +425,7 @@ func (s *Sluzhba) setRouteMode(ctx context.Context, r protokol.Rezhim) (trebuetP
 	// setServer.
 	if err := s.perepisatVyborVKonfige(teg); err != nil {
 		log.Printf("режим не переписан в конфиге, перезапуск ядра его отменит: %v", err)
-		s.postavit(s.Status().Sostoyanie, &protokol.Oshibka{
+		s.postavit(s.vnutriSost(), &protokol.Oshibka{
 			Kod:   protokol.KodPereklyuchenieNeDoehalo,
 			Tekst: "режим выбран, но не сохранён: после перезапуска VPN вернётся прежний",
 		})
@@ -609,7 +609,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		// Отказ уезжает в СОСТОЯНИЕ, а значит и в событие state, и в ответ
 		// команды: ответом setServer служит s.Status().
 		log.Printf("выбор не переписан в конфиге, перезапуск ядра его отменит: %v", err)
-		s.postavit(s.Status().Sostoyanie, &protokol.Oshibka{
+		s.postavit(s.vnutriSost(), &protokol.Oshibka{
 			Kod:   protokol.KodPereklyuchenieNeDoehalo,
 			Tekst: "сервер выбран, но не сохранён: после перезапуска VPN вернётся прежний",
 		})

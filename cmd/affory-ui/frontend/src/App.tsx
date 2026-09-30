@@ -946,7 +946,9 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     pokazat = pravilaOtkaz;
     naPovtor = () => void obnovitPravila();
   }
-  if (!pokazat && naEkrane.oshibka) {
+  // Во время восстановления причина уже стоит строкой под статусом, и попытки
+  // ещё идут. Красная плашка поверх читалась как «всё, сдалось» (1.9.1).
+  if (!pokazat && naEkrane.oshibka && naEkrane.sostoyanie !== "vosstanavlivaetsya") {
     const izStatusa = { kod: naEkrane.oshibka.kod, tekst: naEkrane.oshibka.tekst };
     if (klyuchOtkaza(izStatusa) !== zakryto) pokazat = izStatusa;
   }

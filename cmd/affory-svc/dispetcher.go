@@ -286,7 +286,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 			// сервер, а Connect ответит на него успехом по идемпотентности.
 			// Записать выбор и сказать «готово» значит соврать с отсрочкой на
 			// те четыре секунды, что осталось подниматься.
-			if s.Status().Sostoyanie == protokol.SostPodnimaetsya {
+			if s.vnutriSost() == protokol.SostPodnimaetsya {
 				return otkaz(k.Id, k.Imya, protokol.KodPereklyuchenieNeDoehalo,
 					"подъём уже идёт: выбери сервер, когда он закончится")
 			}
@@ -344,7 +344,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return otvet(k.Id, k.Imya, s.Status())
 			}
-			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.Status().Oshib), err.Error())
+			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.vnutriOshib()), err.Error())
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 

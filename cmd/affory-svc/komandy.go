@@ -292,6 +292,15 @@ type Sluzhba struct {
 	// ничего не делает: прежде он затирал otmenaVosst первого, и «Отключить»
 	// гасило только один из двух циклов.
 	vosstIdyot bool
+	// vosstPokaz: пока идёт восстановление, наружу уходит одно состояние
+	// vosstanavlivaetsya (под mu). Круг otkaz, vyklyuchen и podnimaetsya
+	// между попытками нужен самому циклу, а человеку он говорил «отказ» и
+	// «выключено», пока служба пыталась сама (приёмка 1.9.0). oshibVosst это
+	// причина последнего отказа внутри цикла, sledPopytka срок следующей
+	// попытки на паузе.
+	vosstPokaz  bool
+	oshibVosst  *protokol.Oshibka
+	sledPopytka *time.Time
 	// muPerepodyom выстраивает переподъёмы в очередь (L1 аудита 1.8.0).
 	// Порядок замков: muPerepodyom раньше muZaslon и mu.
 	muPerepodyom sync.Mutex
@@ -668,6 +677,9 @@ func (s *Sluzhba) postavit(n protokol.Sostoyanie, oshib *protokol.Oshibka) {
 	}
 	s.sost = n
 	s.oshib = oshib
+	if s.vosstPokaz && oshib != nil && n != protokol.SostPodnyat {
+		s.oshibVosst = oshib
+	}
 	if n == protokol.SostPodnyat && s.podnyatS == nil {
 		t := time.Now()
 		s.podnyatS = &t
@@ -683,6 +695,10 @@ func (s *Sluzhba) postavit(n protokol.Sostoyanie, oshib *protokol.Oshibka) {
 	}
 }
 
+// Status это то, что служба ПОКАЗЫВАЕТ. Решать по нему нельзя: во время
+// восстановления там vosstanavlivaetsya вместо внутреннего круга, и postavit
+// с состоянием, взятым отсюда, записал бы маску внутрь. Решения берут
+// состояние из vnutri.
 func (s *Sluzhba) Status() protokol.StatusOtvet {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -693,9 +709,24 @@ func (s *Sluzhba) Status() protokol.StatusOtvet {
 		k.Deystvuet = s.reklamaVKonfige && s.sost == protokol.SostPodnyat
 		rk = &k
 	}
+	sost, oshib := s.sost, s.oshib
+	var sled *time.Time
+	if s.vosstPokaz && vKrugeVosstanovleniya(sost) {
+		sost = protokol.SostVosstanavl
+		// На паузе и в начале попытки своей ошибки у состояния нет, а причина
+		// последнего отказа нужна человеку всё время цикла.
+		if oshib == nil {
+			oshib = s.oshibVosst
+		}
+		if s.sledPopytka != nil {
+			t := *s.sledPopytka
+			sled = &t
+		}
+	}
 	return protokol.StatusOtvet{
 		Reklama:             rk,
-		Sostoyanie:          s.sost,
+		Sostoyanie:          sost,
+		SledPopytka:         sled,
 		TrafikPoUmolchaniyu: s.trafikKonfiga,
 		VybranId:            s.vybranId,
 		NesushchiyId:        s.nesushchiyId,
@@ -713,11 +744,55 @@ func (s *Sluzhba) Status() protokol.StatusOtvet {
 		Diagnostika:          s.snimok.Diagnostika,
 		PolosaVverh:          s.snimok.PolosaVverh,
 		PolosaVniz:           s.snimok.PolosaVniz,
-		Oshib:                s.oshib,
+		Oshib:                oshib,
 		VersiyaProgrammy:     versiyaDlyaEkrana(),
 		Obnovlenie:           s.obnovlenie,
 		ObnovlenieProvereno:  s.obnovlenieProvereno,
 		ObnovlenieOtkaz:      s.obnovlenieOtkaz,
+	}
+}
+
+// vKrugeVosstanovleniya: состояния, через которые цикл восстановления ходит
+// между попытками. podnyat в их число не входит, это конец цикла.
+func vKrugeVosstanovleniya(s protokol.Sostoyanie) bool {
+	switch s {
+	case protokol.SostVyklyuchen, protokol.SostPodnimaetsya, protokol.SostOtkaz, protokol.SostNeNeset:
+		return true
+	}
+	return false
+}
+
+// vnutri отдаёт состояние и ошибку, по которым служба РЕШАЕТ, без маски
+// восстановления.
+func (s *Sluzhba) vnutri() (protokol.Sostoyanie, *protokol.Oshibka) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sost, s.oshib
+}
+
+func (s *Sluzhba) vnutriSost() protokol.Sostoyanie {
+	sost, _ := s.vnutri()
+	return sost
+}
+
+func (s *Sluzhba) vnutriOshib() *protokol.Oshibka {
+	_, oshib := s.vnutri()
+	return oshib
+}
+
+// pokazVosst включает и снимает vosstanavlivaetsya снаружи. Смена уходит
+// событием сразу: иначе она дошла бы до окна и трея только следующим
+// опросом, через пять секунд.
+func (s *Sluzhba) pokazVosst(vkl bool) {
+	s.mu.Lock()
+	bylo := s.vosstPokaz
+	s.vosstPokaz = vkl
+	if !vkl {
+		s.oshibVosst, s.sledPopytka = nil, nil
+	}
+	s.mu.Unlock()
+	if bylo != vkl {
+		s.izvestit("state", s.Status())
 	}
 }
 
@@ -996,7 +1071,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 			// Тот же ответ, что уйдёт человеку: код берётся у
 			// kodPodklyucheniya, а не собирается здесь заново. Иначе журнал и
 			// экран однажды назвали бы один отказ по-разному.
-			itog, shag = kodPodklyucheniya(itogErr, s.Status().Oshib), shagPodyoma
+			itog, shag = kodPodklyucheniya(itogErr, s.vnutriOshib()), shagPodyoma
 		}
 		_ = s.zhurnalDiag.SobytieOperatsii(diagnostika.Operatsiya{
 			Vid:        "podklyuchenie",
@@ -1591,6 +1666,10 @@ func (s *Sluzhba) Otklyuchit() {
 	s.mu.Lock()
 	otmenaV := s.otmenaVosst
 	s.otmenaVosst = nil
+	// Показ восстановления снимается БЕЗ события: Disconnect ниже сам объявит
+	// vyklyuchen, а событие отсюда показало бы на миг otkaz, в котором цикл
+	// стоял на паузе.
+	s.vosstPokaz, s.oshibVosst, s.sledPopytka = false, nil, nil
 	s.mu.Unlock()
 	if otmenaV != nil {
 		otmenaV()
@@ -1903,6 +1982,9 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 			// Причина выясняется ДО остановки, пока адаптер и конфиг ещё на
 			// месте: после s.opustit() спрашивать уже нечего и не у чего (A3).
 			prichina := s.prichinaRazryva(ctx)
+			// Показ восстановления ДО опускания: иначе между ним и запуском
+			// цикла наружу ушли бы vyklyuchen и ne-neset.
+			s.pokazVosst(true)
 			s.otmenit()
 			s.opustit()
 			tekst := "VPN перестал нести трафик"
@@ -1956,6 +2038,7 @@ func (s *Sluzhba) bezNablyudatelya(ctx context.Context, moyo int) {
 		return
 	}
 	log.Printf("наблюдатель туннеля сдался после двух паник: опускаю туннель и ухожу в восстановление")
+	s.pokazVosst(true)
 	s.otmenit()
 	s.opustit()
 	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
@@ -1979,6 +2062,7 @@ func (s *Sluzhba) zapustitVosstanovlenie() {
 	s.vosstIdyot = true
 	s.otmenaVosst = otmenaV
 	s.mu.Unlock()
+	s.pokazVosst(true)
 	// Пробуждение, случившееся до аварии, к этому циклу отношения не имеет.
 	select {
 	case <-s.tolchokVosst:
@@ -1989,6 +2073,7 @@ func (s *Sluzhba) zapustitVosstanovlenie() {
 		s.vosstIdyot = false
 		s.mu.Unlock()
 		otmenaV()
+		s.pokazVosst(false)
 	}
 	// Не зарегистрировались значит службу останавливают, и возвращаться
 	// некуда: восстановление подняло бы туннель уже после того, как его
@@ -2076,10 +2161,28 @@ func (s *Sluzhba) vosstanavlivat(ctx context.Context) {
 			otstup = s.redkiyOtstup
 			log.Printf("сеть жива, а туннель не встаёт %d раз подряд: следующая попытка через %s", popytka, otstup)
 		}
+		// Срок следующей попытки виден снаружи всю паузу, и событием сразу:
+		// окно ведёт по нему отсчёт, а не угадывает.
+		// Только пока показ включён и цикл не отменён: после «Отключить» это
+		// событие показало бы на миг otkaz, в котором цикл стоял.
+		sled := time.Now().Add(otstup)
+		s.mu.Lock()
+		obyavit := s.vosstPokaz && ctx.Err() == nil
+		if obyavit {
+			s.sledPopytka = &sled
+		}
+		s.mu.Unlock()
+		if obyavit {
+			s.izvestit("state", s.Status())
+		}
 		// Сон прерываемый. Голый Sleep означал, что отключение человеком
 		// доходит до цикла только после текущего отступа, а он на последних
 		// попытках достигает минуты: кнопка нажата, а туннель ещё поднимется.
-		if !s.zhdatVPauze(ctx, otstup) {
+		ok := s.zhdatVPauze(ctx, otstup)
+		s.mu.Lock()
+		s.sledPopytka = nil
+		s.mu.Unlock()
+		if !ok {
 			return
 		}
 

@@ -69,6 +69,9 @@ export interface StatusOtvet {
   polosa_vniz?: number;
   versiya_sluzhby?: string;
   podnyat_s?: string;
+  /** Когда восстановление попробует снова (kadr.go SledPopytka, с 1.9.1). Есть
+   *  только на паузе между попытками; во время самой попытки поля нет. */
+  sled_popytka?: string;
   /** Release build version; absent on dev builds. */
   versiya_programmy?: string;
   /** A newer version seen on the update server (service checks daily). */

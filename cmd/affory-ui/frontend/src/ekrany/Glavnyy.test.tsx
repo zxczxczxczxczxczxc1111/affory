@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Glavnyy, obyom } from "./Glavnyy";
+import { Glavnyy, hodVosstanovleniya, obyom } from "./Glavnyy";
 import { podpis } from "./podpisi";
 
 afterEach(cleanup);
@@ -45,6 +45,30 @@ describe("главный экран", () => {
     // Слово о действии живёт в доступном имени, а не текстом поверх картинки.
     expect(screen.getByTestId("glavnoe-deystvie").textContent).toBe("");
     expect(screen.getByTestId("glavnoe-deystvie")).toHaveAccessibleName("Отменить подключение");
+  });
+
+  it("восстановление говорит, почему и когда следующая попытка", () => {
+    const seychas = Date.parse("2026-09-30T12:00:00Z");
+    const oshibka = { kod: "all-servers-down", tekst: "тест" };
+    expect(hodVosstanovleniya(oshibka, "2026-09-30T12:00:42Z", seychas)).toBe("ни один сервер не отвечает, снова через 42 с");
+    expect(hodVosstanovleniya(oshibka, "2026-09-30T12:04:10Z", seychas)).toBe("ни один сервер не отвечает, снова через 5 мин");
+    // Срок уже прошёл, а новый статус ещё не пришёл: не «через 0 с» и не минус.
+    expect(hodVosstanovleniya(oshibka, "2026-09-30T11:59:58Z", seychas)).toBe("ни один сервер не отвечает, снова через 1 с");
+    // Во время самой попытки срока нет.
+    expect(hodVosstanovleniya(oshibka, undefined, seychas)).toBe("ни один сервер не отвечает, пробую подключиться");
+    expect(hodVosstanovleniya(undefined, undefined, seychas)).toBe("пробую подключиться");
+    // Неизвестный окну код показывается текстом службы, а не пустотой.
+    expect(hodVosstanovleniya({ kod: "novyy-kod", tekst: "что-то новое" }, undefined, seychas)).toBe("что-то новое, пробую подключиться");
+  });
+
+  it("строка восстановления есть только при восстановлении, и из него можно выйти", () => {
+    render(<Glavnyy status={{ sostoyanie: "vosstanavlivaetsya", oshibka: { kod: "tunnel-not-carrying", tekst: "" } }} naDeystvie={() => {}} />);
+    expect(screen.getByTestId("hod-vosstanovleniya")).toHaveTextContent("VPN перестал нести трафик, пробую подключиться");
+    expect(screen.getByTestId("glavnoe-deystvie")).toHaveAccessibleName("Отменить подключение");
+    expect(screen.getByTestId("glavnoe-deystvie")).toBeEnabled();
+    cleanup();
+    render(<Glavnyy status={{ sostoyanie: "otkaz", oshibka: { kod: "all-servers-down", tekst: "" } }} />);
+    expect(screen.queryByTestId("hod-vosstanovleniya")).toBeNull();
   });
 
   it("от режима трафика есть путь в правила, а не только через полосу разделов", () => {

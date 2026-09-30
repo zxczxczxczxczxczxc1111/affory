@@ -82,7 +82,7 @@ func TestNablyudatelPosleVtoroyPanikiOtdayotTunnelVosstanovleniyu(t *testing.T) 
 	}
 	slomat.Store(true)
 	dozhdatsya(t, "туннель опущен после второй паники", func() bool {
-		return s.Status().Sostoyanie == protokol.SostNeNeset
+		return s.Status().Sostoyanie == protokol.SostVosstanavl && s.vnutriSost() == protokol.SostNeNeset
 	})
 	s.mu.Lock()
 	idyot, port := s.vosstIdyot, s.portClash
@@ -91,6 +91,6 @@ func TestNablyudatelPosleVtoroyPanikiOtdayotTunnelVosstanovleniyu(t *testing.T) 
 		t.Fatal("туннель опущен, а восстановление не запущено: он не вернётся сам")
 	}
 	if port != 0 {
-		t.Fatal("состояние ne-neset, а ядро не опущено")
+		t.Fatal("туннель признан упавшим, а ядро не опущено")
 	}
 }

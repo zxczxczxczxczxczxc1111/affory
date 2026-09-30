@@ -76,6 +76,10 @@ func deystvieTreya(s protokol.Sostoyanie) (podpis, komanda string) {
 		return "Подключить", "connect"
 	case protokol.SostPodnyat, protokol.SostNeNeset:
 		return "Отключить", "disconnect"
+	case protokol.SostVosstanavl:
+		// Восстановление ждёт между попытками до пяти минут. Пока в трее не
+		// было действия, выйти из него можно было только через окно (1.9.1).
+		return "Отменить подключение", "disconnect"
 	case protokol.SostOtkaz:
 		return "Повторить", "connect"
 	default:

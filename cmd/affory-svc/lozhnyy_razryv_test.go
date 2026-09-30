@@ -96,7 +96,9 @@ func TestNastoyashchiyOtkazVsyoeshchyoOpuskaetTunnel(t *testing.T) {
 
 	do := time.Now().Add(2 * time.Second)
 	for time.Now().Before(do) {
-		if s.Status().Sostoyanie == protokol.SostNeNeset {
+		// Упавший туннель уходит в восстановление, снаружи это
+		// vosstanavlivaetsya (1.9.1), а не ne-neset.
+		if s.Status().Sostoyanie == protokol.SostVosstanavl {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)

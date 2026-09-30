@@ -25,6 +25,8 @@ export const glavnoeDeystvie: Record<Sostoyanie, string | null> = {
   podnimaetsya: null,
   podnyat: "Отключить",
   "ne-neset": "Отключить",
-  vosstanavlivaetsya: null,
+  // Not transient any more (1.9.1): recovery may wait minutes between
+  // attempts, and without a way out the person was locked into it.
+  vosstanavlivaetsya: "Отменить подключение",
   otkaz: "Повторить",
 };

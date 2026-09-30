@@ -843,6 +843,17 @@ describe("баннер отказа", () => {
     expect(screen.getByTestId("otkaz")).toBeTruthy();
   });
 
+  it("пока служба восстанавливает туннель, причина не встаёт красной плашкой", async () => {
+    // Приёмка 1.9.0: между попытками окно показывало отказ, и казалось, что
+    // программа сдалась. Причина живёт строкой под статусом, плашки нет.
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "vosstanavlivaetsya", oshibka: { kod: "all-servers-down", tekst: "ни один не ответил" } });
+    render(<App periodOprosaMs={BYSTRO} />);
+    expect(await screen.findByTestId("hod-vosstanovleniya")).toHaveTextContent("ни один сервер не отвечает");
+    await new Promise((r) => setTimeout(r, BYSTRO * 4));
+    expect(screen.queryByTestId("otkaz")).toBeNull();
+  });
+
   it("закрытый баннер не воскресает из status.oshibka", async () => {
     const most = mostProby();
     // The service holds a standing refusal in status: it survived every

@@ -7,6 +7,7 @@ import type {
   StatusOtvet,
 } from "../protokol";
 import { glavnoeDeystvie, podpis } from "./podpisi";
+import { tekstOtkaza } from "./otkazy";
 import { type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./Servery";
 import type { PravilaOtvet } from "./Pravila";
 import type { Marshrut } from "../trafik";
@@ -128,6 +129,24 @@ export function vSeti(
   return `${ch} ч ${String(min % 60).padStart(2, "0")} мин`;
 }
 
+/** Что происходит во время восстановления: причина прошлого отказа и когда
+ *  следующая попытка. Без неё «восстанавливается» висело минутами молча, и
+ *  не было видно, идёт ли что-то вообще (1.9.1). */
+export function hodVosstanovleniya(
+  oshibka: StatusOtvet["oshibka"],
+  sledPopytka: string | undefined,
+  seychas: number = Date.now(),
+): string {
+  const prichina = oshibka ? (tekstOtkaza[oshibka.kod]?.tekst ?? oshibka.tekst) : "";
+  const t = sledPopytka ? Date.parse(sledPopytka) : NaN;
+  let kogda = "пробую подключиться";
+  if (!Number.isNaN(t)) {
+    const s = Math.max(1, Math.ceil((t - seychas) / 1000));
+    kogda = s < 60 ? `снова через ${s} с` : `снова через ${Math.ceil(s / 60)} мин`;
+  }
+  return prichina ? `${prichina}, ${kogda}` : kogda;
+}
+
 export function Glavnyy({
   podpiski = [],
   naObnovitPodpisku,
@@ -174,6 +193,15 @@ export function Glavnyy({
     const timer = setInterval(() => zadatSeychas(Date.now()), 30000);
     return () => clearInterval(timer);
   }, [podnyat]);
+  const vosst = status.sostoyanie === "vosstanavlivaetsya";
+  // Отсчёт до следующей попытки идёт по секундам, поэтому часы тикают чаще,
+  // но только пока он на экране.
+  useEffect(() => {
+    if (!vosst || !status.sled_popytka) return;
+    zadatSeychas(Date.now());
+    const timer = setInterval(() => zadatSeychas(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [vosst, status.sled_popytka]);
   const action = busy
     ? "Отменить подключение"
     : (glavnoeDeystvie[status.sostoyanie] ?? "Отключить");
@@ -229,6 +257,11 @@ export function Glavnyy({
               <span data-testid="v-seti">{vSeti(podnyat ? status.podnyat_s : undefined, seychas)}</span>
             </span>
           </div>
+          {vosst && (
+            <p className="text-fg-secondary mt-1 text-center text-sm" data-testid="hod-vosstanovleniya">
+              {hodVosstanovleniya(status.oshibka, status.sled_popytka, seychas)}
+            </p>
+          )}
           <p className="affory-carrier text-foreground mt-2 w-full break-all text-center text-[17px] font-medium" data-testid="nesushchiy">
             <span className="affory-server-name">{imya}</span>
             {transport && <span className="affory-protocol text-fg-muted">{transport}</span>}

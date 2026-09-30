@@ -64,3 +64,38 @@ func TestPodpisiTreyaSovpadayutSEkranom(t *testing.T) {
 		}
 	}
 }
+
+// Действие в трее то же, что главная кнопка экрана. Расхождение поймано
+// приёмкой 1.9.0: пока служба восстанавливала туннель, окно предлагало
+// отменить подключение, а трей не предлагал ничего. Молчащая служба
+// исключение: окно переспрашивает её само, а трею слать команду некуда.
+func TestDeystviyaTreyaSovpadayutSEkranom(t *testing.T) {
+	tekst, err := os.ReadFile(filepath.Join("frontend", "src", "ekrany", "podpisi.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blok := regexp.MustCompile(`(?s)export const glavnoeDeystvie[^{]*\{(.*?)
+\};`).FindStringSubmatch(string(tekst))
+	if blok == nil {
+		t.Fatal("в podpisi.ts не найдена карта glavnoeDeystvie")
+	}
+	re := regexp.MustCompile(`(?m)^\s*"?([a-z-]+)"?:\s*(?:"([^"]+)"|null)`)
+	naEkrane := map[string]string{}
+	for _, m := range re.FindAllStringSubmatch(blok[1], -1) {
+		naEkrane[m[1]] = m[2]
+	}
+	if len(naEkrane) != len(vseSostoyaniya) {
+		t.Fatalf("на экране %d действий, состояний %d", len(naEkrane), len(vseSostoyaniya))
+	}
+	for _, s := range vseSostoyaniya {
+		if s == protokol.SostSluzhbaMolchit {
+			continue
+		}
+		if got, _ := deystvieTreya(s); got != naEkrane[string(s)] {
+			t.Errorf("%s: в трее %q, на экране %q", s, got, naEkrane[string(s)])
+		}
+	}
+	if _, komanda := deystvieTreya(protokol.SostVosstanavl); komanda != "disconnect" {
+		t.Errorf("отмена восстановления шлёт %q, а не disconnect", komanda)
+	}
+}
