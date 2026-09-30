@@ -8,7 +8,9 @@ import (
 	"golang.org/x/sys/windows"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -129,15 +131,25 @@ func TestPartlyDeliveredChainWaitsForTheRemainingLifetime(t *testing.T) {
 	}
 }
 
-func TestUnconfirmedNewChainDoesNotSelectTheDefaultRoute(t *testing.T) {
+// A chain whose launcher never shows up waits for queued events, then answers
+// with its confirmed part. Refusing it forever broke every connection of that
+// program until the service restarted (H4 of the 1.8.0 audit).
+func TestUnconfirmedChainWaitsThenAnswersWithConfirmedPart(t *testing.T) {
 	w, err := NewEventWatcher(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer w.Close()
-	_, err = w.resolve(Process{PID: 0xfffffffe, Parent: 0xfffffffd, Created: clockTicks(), Path: `C:\Pending.exe`})
-	if !errors.Is(err, ErrSharedUnavailable) {
-		t.Fatalf("unconfirmed launch accepted: %v", err)
+	started := time.Now()
+	paths, err := w.resolve(Process{PID: 0xfffffffe, Parent: 0xfffffffd, Created: clockTicks(), Path: `C:\Pending.exe`})
+	if err != nil {
+		t.Fatalf("unconfirmed chain refused: %v", err)
+	}
+	if waited := time.Since(started); waited < settleWait {
+		t.Fatalf("answered after %v without waiting for queued launch events", waited)
+	}
+	if len(paths) != 1 || paths[0] != `C:\Pending.exe` {
+		t.Fatalf("invented lineage: %v", paths)
 	}
 }
 
@@ -168,15 +180,32 @@ func TestStoppedEventSessionIsReportedAsUnavailable(t *testing.T) {
 	}
 }
 
-func TestLostEventsDoNotBecomeAnUnknownProcess(t *testing.T) {
+func shortEventRestarts(t *testing.T) {
+	t.Helper()
+	before := eventRestartDelays
+	eventRestartDelays = []time.Duration{10 * time.Millisecond}
+	t.Cleanup(func() { eventRestartDelays = before })
+}
+
+// H4 of the 1.8.0 audit: one lost event used to fail every request until the
+// service restarted. Now the watcher answers from snapshots and starts a new
+// event session.
+func TestLostEventsFallBackToSnapshotsAndRestart(t *testing.T) {
+	shortEventRestarts(t)
 	w, err := NewEventWatcher(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer w.Close()
-	w.events.fail(errors.New("injected event loss"))
-	if _, err := w.Find(uint32(os.Getpid())); !errors.Is(err, ErrSharedUnavailable) {
-		t.Fatalf("lost events hidden: %v", err)
+	first := w.healthyEvents()
+	first.fail(errors.New("injected event loss"))
+	self, err := readProcess(uint32(os.Getpid()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := readProcess(self.Parent)
+	if err != nil {
+		t.Fatal(err)
 	}
 	api, err := NewSharedServer(w.FindIdentity)
 	if err != nil {
@@ -188,8 +217,62 @@ func TestLostEventsDoNotBecomeAnUnknownProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	if _, err := client.Find(uint32(os.Getpid())); !errors.Is(err, ErrSharedUnavailable) {
-		t.Fatalf("lost events not propagated across API: %v", err)
+	paths, err := client.Find(self.PID)
+	if err != nil {
+		t.Fatalf("lost events failed the request: %v", err)
+	}
+	if !slices.Contains(paths, self.Path) || !slices.Contains(paths, parent.Path) {
+		t.Fatalf("snapshot answer lost the lineage: %v", paths)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if again := w.healthyEvents(); again != nil && again != first {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("event session was not restarted")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := client.Find(self.PID); err != nil {
+		t.Fatalf("restarted session: %v", err)
+	}
+}
+
+func TestEventStartFailureStartsOnSnapshots(t *testing.T) {
+	shortEventRestarts(t)
+	before := startProcessEvents
+	var failing atomic.Bool
+	failing.Store(true)
+	startProcessEvents = func(g *Graph, report func(error)) (*processEvents, error) {
+		if failing.Load() {
+			return nil, errors.New("injected start failure")
+		}
+		return before(g, report)
+	}
+	t.Cleanup(func() { startProcessEvents = before })
+	w, err := NewEventWatcher(nil)
+	if err != nil {
+		t.Fatalf("event start failure failed the watcher: %v", err)
+	}
+	defer w.Close()
+	if _, err := w.Find(uint32(os.Getpid())); err != nil {
+		t.Fatalf("no answer from snapshots: %v", err)
+	}
+	failing.Store(false)
+	deadline := time.Now().Add(10 * time.Second)
+	for w.healthyEvents() == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("event session never started")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestNoEventsAndNoSnapshotIsUnavailable(t *testing.T) {
+	w := &Watcher{graph: NewGraph(), snap: &snapshotter{}, withEvents: true, done: make(chan struct{}), snapErr: errors.New("injected snapshot failure")}
+	if _, err := w.Find(uint32(os.Getpid())); !errors.Is(err, ErrSharedUnavailable) {
+		t.Fatalf("answered without events and snapshots: %v", err)
 	}
 }
 

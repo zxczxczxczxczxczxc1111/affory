@@ -35,9 +35,21 @@ type SharedServer struct {
 	Address, Secret string
 	server          *http.Server
 	done            chan error
+	stopped         chan struct{}
 	closeOnce       sync.Once
 	closeErr        error
 }
+
+// A request beyond the concurrent limit waits this long for a free slot. An
+// immediate 503 made the core refuse the connection during a burst of them.
+const slotWait = time.Second
+
+// Timeouts leave room for the slot wait plus the launch settle wait.
+const (
+	serverWriteTimeout   = slotWait + settleWait + 2*time.Second
+	clientHeaderTimeout  = slotWait + settleWait + time.Second
+	clientRequestTimeout = clientHeaderTimeout + time.Second
+)
 
 // NewSharedServer serves only loopback with an ephemeral unguessable token.
 // It stores no history on disk and exposes no command line or credentials.
@@ -54,9 +66,9 @@ func NewSharedServer(find func(uint32, uint64) ([]string, error)) (*SharedServer
 		listener.Close()
 		return nil, err
 	}
-	s := &SharedServer{Address: "http://" + listener.Addr().String(), Secret: hex.EncodeToString(token[:]), done: make(chan error, 1)}
+	s := &SharedServer{Address: "http://" + listener.Addr().String(), Secret: hex.EncodeToString(token[:]), done: make(chan error, 1), stopped: make(chan struct{})}
 	active := make(chan struct{}, 32)
-	s.server = &http.Server{ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: 2 * time.Second, IdleTimeout: 15 * time.Second, MaxHeaderBytes: 4096}
+	s.server = &http.Server{ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: serverWriteTimeout, IdleTimeout: 15 * time.Second, MaxHeaderBytes: 4096}
 	s.server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+s.Secret)) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -66,13 +78,11 @@ func NewSharedServer(find func(uint32, uint64) ([]string, error)) (*SharedServer
 			http.NotFound(w, r)
 			return
 		}
-		select {
-		case active <- struct{}{}:
-			defer func() { <-active }()
-		default:
+		if !takeSlot(r.Context(), active) {
 			http.Error(w, "busy", http.StatusServiceUnavailable)
 			return
 		}
+		defer func() { <-active }()
 		var q identityRequest
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128))
 		decoder.DisallowUnknownFields()
@@ -106,9 +116,38 @@ func NewSharedServer(find func(uint32, uint64) ([]string, error)) (*SharedServer
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}
+		close(s.stopped)
 		s.done <- err
 	}()
 	return s, nil
+}
+
+func takeSlot(ctx context.Context, active chan struct{}) bool {
+	select {
+	case active <- struct{}{}:
+		return true
+	default:
+	}
+	wait := time.NewTimer(slotWait)
+	defer wait.Stop()
+	select {
+	case active <- struct{}{}:
+		return true
+	case <-wait.C:
+		return false
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// Err is non-nil once the server no longer serves requests.
+func (s *SharedServer) Err() error {
+	select {
+	case <-s.stopped:
+		return fmt.Errorf("%w: tracker API stopped", ErrSharedUnavailable)
+	default:
+		return nil
+	}
 }
 
 func (s *SharedServer) Close() error {
@@ -135,8 +174,8 @@ func NewSharedClient(address, secret string) (*SharedClient, error) {
 	if _, err := hex.DecodeString(secret); err != nil {
 		return nil, errors.New("invalid shared process tracker token")
 	}
-	transport := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: time.Second}).DialContext, MaxConnsPerHost: 32, MaxIdleConnsPerHost: 4, IdleConnTimeout: 15 * time.Second, ResponseHeaderTimeout: time.Second}
-	return &SharedClient{address: address, secret: secret, transport: transport, client: &http.Client{Transport: transport, Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("tracker redirect refused") }}}, nil
+	transport := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: time.Second}).DialContext, MaxConnsPerHost: 32, MaxIdleConnsPerHost: 4, IdleConnTimeout: 15 * time.Second, ResponseHeaderTimeout: clientHeaderTimeout}
+	return &SharedClient{address: address, secret: secret, transport: transport, client: &http.Client{Transport: transport, Timeout: clientRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("tracker redirect refused") }}}, nil
 }
 func (c *SharedClient) Close() error { c.transport.CloseIdleConnections(); return nil }
 func (c *SharedClient) Find(pid uint32) ([]string, error) {

@@ -102,10 +102,14 @@ const periodSetiVPauzePoUmolchaniyu = 2 * time.Second
 type Sluzhba struct {
 	processTracker    *nablyudatelPrilozheniy
 	processTrackerErr error
-	klyuchVersiy      []byte
-	serveryYadra      []protokol.Server
-	otpechatkiYadra   map[string][32]byte
-	mu                sync.Mutex
+	// muTracker держит пересоздание трекера одним: сборку конфига зовут и
+	// подъём, и проверка кандидата, а два трекера это две сессии событий.
+	muTracker       sync.Mutex
+	novyyTracker    func() (*nablyudatelPrilozheniy, error)
+	klyuchVersiy    []byte
+	serveryYadra    []protokol.Server
+	otpechatkiYadra map[string][32]byte
+	mu              sync.Mutex
 	// Поколения обновлений защищены muNabor вместе с записью их результатов.
 	nomerObnovleniya    uint64
 	obnovleniyaPodpisok map[string]uint64
@@ -506,6 +510,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.redkiyOtstup = redkiyOtstupPoUmolchaniyu
 	s.periodSetiVPauze = periodSetiVPauzePoUmolchaniyu
 	s.proveritServer = s.proveritServerBezTun
+	s.novyyTracker = novyyNablyudatelPrilozheniy
 	s.periodProksi = periodProksiPoUmolchaniyu
 	s.proveritKonfig = func(put string) error { return yadra.Proverit(imyaYadraTun, put) }
 	s.fonCtx, s.fonOtmena = context.WithCancel(context.Background())
@@ -1434,8 +1439,14 @@ func (s *Sluzhba) Zavershit() {
 	s.fonOtmena()
 	s.fon.Wait()
 	s.Disconnect()
-	if s.processTracker != nil {
-		if err := s.processTracker.Close(); err != nil {
+	s.muTracker.Lock()
+	s.mu.Lock()
+	tracker := s.processTracker
+	s.processTracker = nil
+	s.mu.Unlock()
+	s.muTracker.Unlock()
+	if tracker != nil {
+		if err := tracker.Close(); err != nil {
 			log.Printf("остановка наблюдения за приложениями: %v", err)
 		}
 	}

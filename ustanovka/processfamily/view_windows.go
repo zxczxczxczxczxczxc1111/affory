@@ -21,14 +21,10 @@ func (w *Watcher) Views(session uint32) ([]ProcessView, error) {
 		return nil, fmt.Errorf("%w: watcher stopped", ErrSharedUnavailable)
 	default:
 	}
-	if w.events != nil {
-		if err := w.events.Err(); err != nil {
-			return nil, err
-		}
-		w.events.flush()
-		if err := w.events.Err(); err != nil {
-			return nil, err
-		}
+	// A failed event session does not fail the view: the snapshot below is
+	// the answer, as for a watcher without events.
+	if events := w.healthyEvents(); events != nil {
+		events.flush()
 	}
 	at := clockTicks()
 	processes, err := w.snap.take(w.graph, &session)

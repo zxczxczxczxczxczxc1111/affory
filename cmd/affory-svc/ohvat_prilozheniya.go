@@ -163,10 +163,8 @@ func (s *Sluzhba) inspectApplication(ctx context.Context, k protokol.Kadr) proto
 	if err := windows.ProcessIdToSessionId(pid, &session); err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodVnutrennyayaOshibka, "Не удалось определить текущий сеанс Windows")
 	}
-	s.mu.Lock()
-	tracker := s.processTracker
-	s.mu.Unlock()
-	if tracker == nil {
+	tracker, err := s.zhivoyTracker()
+	if err != nil || tracker == nil {
 		return otkaz(k.Id, k.Imya, protokol.KodYadroNeOtvechaet, "Наблюдение за приложениями недоступно. Подтвердить охват сейчас нельзя")
 	}
 	views, err := tracker.watcher.Views(session)

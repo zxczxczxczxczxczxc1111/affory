@@ -144,11 +144,31 @@ func trafikPravila(v Vhod, dns bool) []any {
 	return p
 }
 
+// NuzhnaSemyaProtsessov отвечает, будет ли в конфиге правило по дереву
+// процессов. Такому конфигу нужен трекер службы: без него ядро следит за
+// процессами само, опросом четыре раза в секунду, и пропускает короткоживущий
+// лаунчер (L6 аудита 1.8.0). Ответ берётся из того же списка, по которому
+// строятся правила, а не из одних ручных правил: карточки сервисов с
+// программами дают дерево всегда.
+func NuzhnaSemyaProtsessov(t *protokol.PravilaTrafika) bool {
+	if t == nil {
+		return false
+	}
+	for _, a := range programmyIz(t) {
+		if a.Potomki {
+			return true
+		}
+	}
+	return false
+}
+
 // programmyTrafika сводит ручные правила приложений и программы включённых
 // сервисов в один список в порядке применения.
-func programmyTrafika(v Vhod) []protokol.PraviloPrilozheniya {
-	itog := append([]protokol.PraviloPrilozheniya(nil), v.Trafik.Prilozheniya...)
-	for _, s := range v.Trafik.Servisy {
+func programmyTrafika(v Vhod) []protokol.PraviloPrilozheniya { return programmyIz(v.Trafik) }
+
+func programmyIz(t *protokol.PravilaTrafika) []protokol.PraviloPrilozheniya {
+	itog := append([]protokol.PraviloPrilozheniya(nil), t.Prilozheniya...)
+	for _, s := range t.Servisy {
 		for _, put := range s.Programmy {
 			// Потомки у сервиса включены ВСЕГДА: карточка Steam это лаунчер и
 			// игры, которые он запускает, а галочки на карточке нет. Правило,

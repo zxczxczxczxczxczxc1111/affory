@@ -7,7 +7,10 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestSharedGraphSurvivesCoreClientsAndRejectsReusedPID(t *testing.T) {
@@ -111,6 +114,58 @@ func TestSharedFailureIsNotAnUnknownProcess(t *testing.T) {
 	if !errors.Is(err, ErrSharedUnavailable) {
 		t.Fatalf("tracker failure hidden: %v", err)
 	}
+}
+
+// A burst beyond the concurrent limit waits for a slot instead of an instant
+// 503, which the core turned into a refused connection.
+func TestSharedBusyWaitsForAFreeSlot(t *testing.T) {
+	release := make(chan struct{})
+	var inside atomic.Int32
+	api, err := NewSharedServer(func(uint32, uint64) ([]string, error) {
+		if inside.Add(1) <= 32 {
+			<-release
+		}
+		return []string{`C:\App.exe`}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer api.Close()
+	client, err := NewSharedClient(api.Address, api.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	app := Process{PID: 1, Created: 2, Path: `C:\App.exe`}
+	var group sync.WaitGroup
+	for range 32 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			if _, err := client.find(context.Background(), app); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	for inside.Load() < 32 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	extra, err := NewSharedClient(api.Address, api.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer extra.Close()
+	answered := make(chan error, 1)
+	go func() {
+		_, err := extra.find(context.Background(), app)
+		answered <- err
+	}()
+	time.Sleep(slotWait / 4)
+	close(release)
+	if err := <-answered; err != nil {
+		t.Fatalf("request over the limit was refused instead of waiting: %v", err)
+	}
+	group.Wait()
 }
 
 func TestSharedEndpointCannotSendTokenOffMachine(t *testing.T) {
