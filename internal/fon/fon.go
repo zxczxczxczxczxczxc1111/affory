@@ -40,21 +40,27 @@ func Vypolnit(gde string, fn func()) (upala bool) {
 // Один, а не вечно: цикл, падающий на каждом заходе, крутил бы панику в
 // журнал без конца, а второй подряд провал уже говорит, что дефект в
 // состоянии, а не в случайности. Отмена ctx во время паузы повтор снимает.
-func SPovtorom(ctx context.Context, gde string, pauza time.Duration, fn func()) {
+//
+// Ответ true значит «сдался»: fn упал паникой дважды, и работы, которую он
+// делал, больше нет. Вызывающему решать, чем её заменить: наблюдатель туннеля,
+// например, не имеет права оставить туннель без присмотра.
+func SPovtorom(ctx context.Context, gde string, pauza time.Duration, fn func()) (sdalsya bool) {
 	if !Vypolnit(gde, fn) {
-		return
+		return false
 	}
 	t := time.NewTimer(pauza)
 	defer t.Stop()
 	select {
 	case <-ctx.Done():
-		return
+		return false
 	case <-t.C:
 	}
 	log.Printf("перезапускаю %s после паники", gde)
 	if Vypolnit(gde, fn) {
 		log.Printf("%s упал паникой второй раз подряд, больше не перезапускаю", gde)
+		return true
 	}
+	return false
 }
 
 // ZapisatPaniku пишет панику в журнал со стеком.

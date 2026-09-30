@@ -379,6 +379,14 @@ type Sluzhba struct {
 	// сна туннель проверяется сразу, а не на следующем тике (Н11 аудита 1.6.1).
 	vneocherednaya chan struct{}
 
+	// rezhimNeProchitan: хранилище не прочиталось при создании службы, и режим
+	// в статусе стоит умолчанием, а не из набора.
+	rezhimNeProchitan bool
+
+	// pauzaPaniki: отступ перед повтором наблюдателя после паники. Полем, а не
+	// константой на месте вызова, ради теста второй паники (Г6).
+	pauzaPaniki time.Duration
+
 	// tolchokVosst обрывает паузу восстановления после сна машины: без
 	// туннеля vneocherednaya забирать некому (Б2 аудита 1.8.0).
 	tolchokVosst chan struct{}
@@ -511,6 +519,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.periodSetiVPauze = periodSetiVPauzePoUmolchaniyu
 	s.proveritServer = s.proveritServerBezTun
 	s.novyyTracker = novyyNablyudatelPrilozheniy
+	s.pauzaPaniki = pauzaPoslePaniki
 	s.periodProksi = periodProksiPoUmolchaniyu
 	s.proveritKonfig = func(put string) error { return yadra.Proverit(imyaYadraTun, put) }
 	s.fonCtx, s.fonOtmena = context.WithCancel(context.Background())
@@ -548,6 +557,9 @@ func NovayaSluzhba() *Sluzhba {
 	s.rezhim = rezhimPoUmolchaniyu
 	if n, err := s.naborIzHranilishcha(); err == nil {
 		s.rezhim = rezhimNabora(n)
+	} else {
+		// Дочитает DochitatKhranilishche, когда служба запустит фон (M4).
+		s.rezhimNeProchitan = true
 	}
 	// Прямой загрузчик один на службу: транспорт держит пул соединений, и
 	// заводить его заново на каждое обновление незачем. Загрузчик через туннель
@@ -1264,9 +1276,12 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 				}
 				fon.Zapustit("наблюдателе туннеля", func() {
 					defer s.nabl.Done()
-					fon.SPovtorom(vnutr, "наблюдатель туннеля", pauzaPoslePaniki, func() {
+					sdalsya := fon.SPovtorom(vnutr, "наблюдатель туннеля", s.pauzaPaniki, func() {
 						s.nablyudat(vnutr, adres, sekret, teg)
 					})
+					if sdalsya {
+						s.bezNablyudatelya(vnutr, moyo)
+					}
 				})
 				return nil
 			}
@@ -1430,12 +1445,14 @@ func (s *Sluzhba) Zavershit() {
 	// регистрируется, и оба ожидания ниже досчитываются до нуля навсегда, а не
 	// до следующего опоздавшего Add.
 	//
-	// Поколение подъёма меняется заодно: идущий Connect обязан выйти, а не
-	// досидеть до своего срока на службе, которой уже нет.
+	// Идущий подъём отменяется ДО ожидания фоновых горутин (Г3 аудита 1.8.0):
+	// поколение меняется и его контекст гасится. Прежде менялось одно
+	// поколение, а подъём из восстановления досиживал пробу до своего срока,
+	// и остановка службы ждала его до 35 секунд.
 	s.mu.Lock()
 	s.ostanovlena = true
-	s.pokolenieP++
 	s.mu.Unlock()
+	s.otmenitPodyom()
 	s.fonOtmena()
 	s.fon.Wait()
 	s.Disconnect()
@@ -1862,6 +1879,26 @@ func (s *Sluzhba) pomoglaGruppa(ctx context.Context, adres, sekret, teg string) 
 	}
 	log.Printf("группа авто выбрала другой сервер, туннель сохраняем")
 	return true
+}
+
+// bezNablyudatelya опускает туннель, наблюдатель которого упал паникой дважды
+// (Г6 аудита 1.8.0), и отдаёт его восстановлению.
+//
+// Туннель без наблюдателя это туннель, чью смерть никто не заметит: экран
+// говорит «подключено», а трафик стоит. Новый подъём заводит нового
+// наблюдателя, и если паника была от состояния, его сбросит переподъём.
+// Зовётся из горутины наблюдателя, до её s.nabl.Done(), поэтому Disconnect
+// здесь нельзя: он ждал бы саму эту горутину.
+func (s *Sluzhba) bezNablyudatelya(ctx context.Context, moyo int) {
+	if ctx.Err() != nil || s.podyomOtmenyon(moyo) {
+		return
+	}
+	log.Printf("наблюдатель туннеля сдался после двух паник: опускаю туннель и ухожу в восстановление")
+	s.otmenit()
+	s.opustit()
+	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
+		Kod: protokol.KodTunnelNeNeset, Tekst: "Проверка VPN сломалась, переподключаюсь"})
+	s.zapustitVosstanovlenie()
 }
 
 // zapustitVosstanovlenie заводит фоновое восстановление туннеля.

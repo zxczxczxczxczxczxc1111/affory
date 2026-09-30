@@ -58,7 +58,70 @@ func bezReestra(t *testing.T) {
 	t.Helper()
 	prezhniy := chitatIzReestra
 	chitatIzReestra = func(string) (ProfilDo, bool) { return ProfilDo{}, false }
-	t.Cleanup(func() { chitatIzReestra = prezhniy })
+	// Имена правил тоже: уборка идёт по полному списку, как видит её фикстура.
+	prezhnieImena := imenaPravilVReestre
+	imenaPravilVReestre = func() (map[string]bool, error) {
+		return nil, errors.New("тест: реестр правил подменён netsh")
+	}
+	t.Cleanup(func() { chitatIzReestra = prezhniy; imenaPravilVReestre = prezhnieImena })
+}
+
+// Г1 аудита 1.8.0: уборка на старте зовёт netsh только для правил, которые
+// стоят, и узнаёт их по точному имени.
+func TestPodmestiSnimaetTolkoStoyashchie(t *testing.T) {
+	zhurnal := perehvat(t, func([]string) (string, error) { return "Ok.", nil })
+	imenaPravilVReestre = func() (map[string]bool, error) {
+		return map[string]bool{
+			PravAllowTun: true, PravAllowProc + "-3": true,
+			// Похожие имена чужие: снятие по маске запрещено.
+			PravAllowTun + "-Chuzhoe": true, "Chuzhoe-Pravilo": true,
+		}, nil
+	}
+	nashli, _, err := podmesti()
+	if err != nil || !nashli {
+		t.Fatalf("nashli=%v err=%v", nashli, err)
+	}
+	var snyali []string
+	for _, z := range *zhurnal {
+		snyali = append(snyali, strings.Join(z.argumenty, " "))
+	}
+	ozhidali := []string{
+		"advfirewall firewall delete rule name=" + PravAllowTun,
+		"advfirewall firewall delete rule name=" + PravAllowProc + "-3",
+	}
+	if strings.Join(snyali, "\n") != strings.Join(ozhidali, "\n") {
+		t.Fatalf("команды netsh:\n%s\nожидались:\n%s", strings.Join(snyali, "\n"), strings.Join(ozhidali, "\n"))
+	}
+}
+
+func TestPodmestiBezNashihPravilNeZovyotNetsh(t *testing.T) {
+	zhurnal := perehvat(t, func([]string) (string, error) { return "Ok.", nil })
+	imenaPravilVReestre = func() (map[string]bool, error) { return map[string]bool{"Chuzhoe-Pravilo": true}, nil }
+	if nashli, _, err := podmesti(); err != nil || nashli || len(*zhurnal) != 0 {
+		t.Fatalf("nashli=%v err=%v, команд netsh %d", nashli, err, len(*zhurnal))
+	}
+}
+
+func TestImyaPravilaIzZapisiReestra(t *testing.T) {
+	zapis := `v2.33|Action=Allow|Active=TRUE|Dir=Out|Protocol=17|RA4=10.0.0.1|Name=Affory-Allow-Server-Udp|`
+	if got := imyaIzZapisi(zapis); got != PravAllowSrvUdp {
+		t.Fatalf("имя %q", got)
+	}
+	if got := imyaIzZapisi(`v2.33|Action=Block|Dir=In|`); got != "" {
+		t.Fatalf("имя без поля Name: %q", got)
+	}
+}
+
+// Живой реестр читается и без прав на запись: там стоят встроенные правила
+// Windows, и пустой ответ значит, что читали не то.
+func TestImenaPravilChitayutsyaIzZhivogoReestra(t *testing.T) {
+	est, err := chitatImenaPravil()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(est) == 0 {
+		t.Fatal("в постоянном хранилище брандмауэра не нашлось ни одного правила")
+	}
 }
 
 func otvetProfiley(vyvod string) func([]string) (string, error) {

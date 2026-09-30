@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -26,6 +28,27 @@ const ImyaSekretov = "sekrety.dat"
 const PopytokRasshifrovki = 5
 
 var ErrSekretyNechitaemy = errors.New("секреты не расшифровываются на этой машине")
+
+// ErrDPAPINedostupen это временный отказ: блоб цел, не ответила система (М4
+// аудита 1.8.0). Следующее чтение пробует снова, блоб остаётся на месте.
+var ErrDPAPINedostupen = errors.New("шифрование Windows сейчас не отвечает, секреты не прочитаны")
+
+// porchaDannyh отличает испорченный блоб от временного отказа. Проверено на
+// живом DPAPI 30.09.2026: мусор, обрезанный блоб и блоб с изменённым байтом в
+// любом месте дают ERROR_INVALID_DATA. Коды плохого ключа NTE_BAD_DATA и
+// NTE_BAD_KEY_STATE это чужая машина или сменившийся ключ, повторы им тоже не
+// помогут. Всё остальное, включая RPC к LSASS до входа в систему, временно.
+func porchaDannyh(err error) bool {
+	var kod syscall.Errno
+	if !errors.As(err, &kod) {
+		return false
+	}
+	switch uint32(kod) {
+	case uint32(windows.ERROR_INVALID_DATA), 0x80090005, 0x8009000B:
+		return true
+	}
+	return false
+}
 
 // Shifrovshchik это DPAPI МАШИННЫЙ, и это решение, а не умолчание.
 //
@@ -91,7 +114,7 @@ func (s *Shifrovshchik) Sohranit(telo []byte) error {
 func (s *Shifrovshchik) Zagruzit() ([]byte, error) {
 	blob, err := os.ReadFile(s.put())
 	if os.IsNotExist(err) {
-		return nil, nil
+		return s.voskresit()
 	}
 	if err != nil {
 		return nil, fmt.Errorf("секреты не читаются: %w", err)
@@ -109,13 +132,24 @@ func (s *Shifrovshchik) Zagruzit() ([]byte, error) {
 			return telo, nil
 		}
 		posledn = err
+		// Испорченный блоб повторами не чинится: ждать незачем.
+		if porchaDannyh(err) {
+			break
+		}
 		if i < PopytokRasshifrovki-1 {
 			s.Spat(pauza)
 			pauza *= 2
 		}
 	}
 
-	// Попытки кончились. Теперь это приговор, и блоб убирается с дороги, иначе
+	// Временный отказ не приговор (M4 аудита 1.8.0). Прежде блоб хоронился и
+	// после него: следующее чтение видело пустое место и отдавало набор
+	// первого запуска, а серверы человека оставались в отложенном файле.
+	if !porchaDannyh(posledn) {
+		return nil, fmt.Errorf("%w: %v", ErrDPAPINedostupen, posledn)
+	}
+
+	// Блоб испорчен. Теперь это приговор, и блоб убирается с дороги, иначе
 	// следующий запуск упрётся в него же и так до конца времён.
 	imya, err := s.pohoronit()
 	if err != nil {
@@ -148,6 +182,55 @@ func (s *Shifrovshchik) vernutZapas() ([]byte, bool) {
 		log.Printf("прежняя версия секретов не встала на место: %v", err)
 	}
 	return telo, true
+}
+
+// voskresit отвечает на пустое место основного блоба.
+//
+// Пустое место с отложенными блобами рядом это не первый запуск. До 1.9.0
+// блоб хоронился и при временном отказе DPAPI, то есть в отложенном может
+// лежать целый набор человека (M4 аудита 1.8.0). Читается: встаёт на место.
+// Не отвечает система: отказ, а не пустой набор, иначе первая же запись
+// нового сервера оставила бы старые серверы только в отложенном файле.
+// Испорчены все: набор начинается заново, как и прежде.
+func (s *Shifrovshchik) voskresit() ([]byte, error) {
+	otlozhennye, err := filepath.Glob(filepath.Join(s.dir, ImyaSekretov+".mertvyy-*"))
+	if err != nil {
+		return nil, fmt.Errorf("отложенные секреты не ищутся: %w", err)
+	}
+	// Новые первыми: в имени дата и время, и строковый порядок это их порядок.
+	sort.Sort(sort.Reverse(sort.StringSlice(otlozhennye)))
+	var vremennyy error
+	for _, put := range otlozhennye {
+		blob, err := os.ReadFile(put)
+		if err != nil {
+			log.Printf("отложенные секреты %s не читаются: %v", filepath.Base(put), err)
+			continue
+		}
+		telo, err := s.rasshifrovat(blob)
+		if err != nil {
+			if !porchaDannyh(err) {
+				vremennyy = err
+			}
+			continue
+		}
+		if err := sostoyanie.ZapisatNadyozhno(s.put(), blob, nil); err != nil {
+			return nil, fmt.Errorf("секреты из %s прочитаны, но не встали на место: %w", filepath.Base(put), err)
+		}
+		// Копия стоит на месте основного: отложенный файл больше не нужен, а
+		// оставленный, он вернул бы старый набор после следующей порчи.
+		if err := os.Remove(put); err != nil {
+			log.Printf("вернувшийся блоб %s не удалён: %v", filepath.Base(put), err)
+		}
+		log.Printf("секреты вернулись из %s: блоб был отложен без порчи", filepath.Base(put))
+		return telo, nil
+	}
+	if vremennyy != nil {
+		return nil, fmt.Errorf("%w: отложенные секреты не проверены: %v", ErrDPAPINedostupen, vremennyy)
+	}
+	if len(otlozhennye) > 0 {
+		log.Printf("основного блоба нет, отложенные (%d) испорчены: набор начинается заново", len(otlozhennye))
+	}
+	return nil, nil
 }
 
 // pohoronit переименовывает мёртвый блоб.

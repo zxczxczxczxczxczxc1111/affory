@@ -280,6 +280,11 @@ func ustanovit(putBinarya string, podnyat bool) error {
 		return fmt.Errorf("восстановление службы не настроено, а без него запертая машина"+
 			" не возвращается в сеть: %w", err)
 	}
+	// Отказ не рушит установку: служба с умолчанием Windows работает, а
+	// снятие защиты при выключении просто рискует не успеть.
+	if err := zadatPredvyklyuchenie(s, srokPredvyklyucheniya); err != nil {
+		log.Printf("%v", err)
+	}
 
 	// Between create and start, and not anywhere else: the files are in place by
 	// now, and the service has not had a chance to touch them yet. Redaction 2
@@ -510,21 +515,6 @@ func obnovitNastroyki(k mgr.Config, putBinarya string) mgr.Config {
 	k.BinaryPathName = syscall.EscapeArg(putBinarya)
 	k.Password = ""
 	return k
-}
-
-func zhdatSostoyaniya(s *mgr.Service, hotim svc.State) error {
-	do := time.Now().Add(zhdatSCM)
-	for time.Now().Before(do) {
-		st, err := s.Query()
-		if err != nil {
-			return fmt.Errorf("состояние службы не читается: %w", err)
-		}
-		if st.State == hotim {
-			return nil
-		}
-		time.Sleep(300 * time.Millisecond)
-	}
-	return fmt.Errorf("служба не пришла в состояние %d за %s", hotim, zhdatSCM)
 }
 
 // sozdatSluzhbu создаёт службу, переживая ERROR_SERVICE_MARKED_FOR_DELETE.

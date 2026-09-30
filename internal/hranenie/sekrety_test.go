@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
 )
 
@@ -121,7 +123,7 @@ func TestNastoyashchayaSmertHoronitBlob(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh := hranenie.SShovom(dir, func(b []byte) ([]byte, error) {
-		return nil, errors.New("ключ мёртв")
+		return nil, windows.ERROR_INVALID_DATA
 	})
 	sh.Spat = func(time.Duration) {}
 
@@ -178,7 +180,7 @@ func TestSuffiksSoderzhitVremyaANeTolkoDatu(t *testing.T) {
 			t.Fatal(err)
 		}
 		sh := hranenie.SShovom(dir, func(b []byte) ([]byte, error) {
-			return nil, errors.New("ключ мёртв")
+			return nil, windows.ERROR_INVALID_DATA
 		})
 		sh.Spat = func(time.Duration) {}
 		// Второй отказ в те же сутки, но на минуту позже.
@@ -202,7 +204,7 @@ func TestChislOPopytokKonechno(t *testing.T) {
 	popytok := 0
 	sh := hranenie.SShovom(dir, func(b []byte) ([]byte, error) {
 		popytok++
-		return nil, errors.New("ключ мёртв")
+		return nil, errors.New("LSASS не отвечает")
 	})
 	sh.Spat = func(time.Duration) {}
 	if _, err := sh.Zagruzit(); err == nil {
@@ -220,7 +222,7 @@ func TestPauzaNarastaet(t *testing.T) {
 	}
 	var pauzy []time.Duration
 	sh := hranenie.SShovom(dir, func(b []byte) ([]byte, error) {
-		return nil, errors.New("ключ мёртв")
+		return nil, errors.New("LSASS не отвечает")
 	})
 	sh.Spat = func(d time.Duration) { pauzy = append(pauzy, d) }
 	_, _ = sh.Zagruzit()
@@ -294,5 +296,97 @@ func TestSohranitPerezhivaetZanyatyyFayl(t *testing.T) {
 	}
 	if _, err := os.Stat(put + ".tmp"); !os.IsNotExist(err) {
 		t.Fatal("временный файл остался")
+	}
+}
+
+// M4 аудита 1.8.0: DPAPI не ответил за все попытки. Блоб цел, хоронить его
+// нельзя: следующее чтение отдало бы пустой набор первого запуска.
+func TestVremennyyOtkazDoKontsaNeHoronitBlob(t *testing.T) {
+	dir := t.TempDir()
+	put := filepath.Join(dir, hranenie.ImyaSekretov)
+	if err := os.WriteFile(put, []byte("blob"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sh := hranenie.SShovom(dir, func([]byte) ([]byte, error) { return nil, errors.New("LSASS не отвечает") })
+	sh.Spat = func(time.Duration) {}
+	if _, err := sh.Zagruzit(); !errors.Is(err, hranenie.ErrDPAPINedostupen) {
+		t.Fatalf("временный отказ назван %v", err)
+	}
+	if p := pohoronen(t, dir); len(p) != 0 {
+		t.Fatalf("блоб похоронен после временного отказа: %v", p)
+	}
+	if _, err := os.Stat(put); err != nil {
+		t.Fatalf("блоб ушёл с места: %v", err)
+	}
+}
+
+func TestPorchaNeZhdyotPovtorov(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, hranenie.ImyaSekretov), []byte("blob"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	popytok := 0
+	sh := hranenie.SShovom(dir, func([]byte) ([]byte, error) { popytok++; return nil, windows.ERROR_INVALID_DATA })
+	sh.Spat = func(time.Duration) { t.Fatal("испорченный блоб ждал повторов") }
+	if _, err := sh.Zagruzit(); !errors.Is(err, hranenie.ErrSekretyNechitaemy) {
+		t.Fatal(err)
+	}
+	if popytok != 1 {
+		t.Fatalf("попыток %d на испорченном блобе", popytok)
+	}
+}
+
+// otlozhit кладёт настоящий блоб туда, куда его хоронили прежние версии.
+func otlozhit(t *testing.T, dir, telo, kogda string) {
+	t.Helper()
+	sh := hranenie.NovyyV(dir)
+	if err := sh.Sohranit([]byte(telo)); err != nil {
+		t.Fatal(err)
+	}
+	put := filepath.Join(dir, hranenie.ImyaSekretov)
+	if err := os.Rename(put, put+".mertvyy-"+kogda); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(put + ".bak"); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+// Блоб, похороненный прежней версией по временному отказу, возвращается.
+func TestOtlozhennyyBezPorchiVozvrashchaetsya(t *testing.T) {
+	dir := t.TempDir()
+	otlozhit(t, dir, "staryy", "2026-09-01-100000")
+	otlozhit(t, dir, "novyy", "2026-09-02-100000")
+	nazad, err := hranenie.NovyyV(dir).Zagruzit()
+	if err != nil || string(nazad) != "novyy" {
+		t.Fatalf("вернулось %q, %v: ждали самый свежий отложенный", nazad, err)
+	}
+	nazad, err = hranenie.NovyyV(dir).Zagruzit()
+	if err != nil || string(nazad) != "novyy" {
+		t.Fatalf("блоб не встал на место: %q, %v", nazad, err)
+	}
+	if p := pohoronen(t, dir); len(p) != 1 {
+		t.Fatalf("отложенные после возврата: %v, ждали только старый", p)
+	}
+}
+
+func TestOtlozhennyyPriNedostupnomDPAPINeDayotPustoy(t *testing.T) {
+	dir := t.TempDir()
+	otlozhit(t, dir, "sekret", "2026-09-01-100000")
+	sh := hranenie.SShovom(dir, func([]byte) ([]byte, error) { return nil, errors.New("LSASS не отвечает") })
+	nazad, err := sh.Zagruzit()
+	if !errors.Is(err, hranenie.ErrDPAPINedostupen) || nazad != nil {
+		t.Fatalf("при живом отложенном блобе отдано %q, %v: первая запись похоронила бы серверы", nazad, err)
+	}
+}
+
+func TestOtlozhennyyIsporchennyyNachinaetNaborZanovo(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, hranenie.ImyaSekretov+".mertvyy-2026-09-01-100000"), make([]byte, 64), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nazad, err := hranenie.NovyyV(dir).Zagruzit()
+	if err != nil || nazad != nil {
+		t.Fatalf("испорченный отложенный блоб: %q, %v", nazad, err)
 	}
 }

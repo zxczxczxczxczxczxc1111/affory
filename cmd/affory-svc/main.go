@@ -109,7 +109,8 @@ func main() {
 type sluzhba struct{}
 
 func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- svc.Status) (bool, uint32) {
-	st <- svc.Status{State: svc.StartPending}
+	// Ход старта докладывается, пока идут уборка, трекер и хранилище (Г2).
+	zapushchena := dokladyvatSCM(st, svc.StartPending)
 
 	// A service has no console, so log.Printf writes into the void and every
 	// failure looks like silence. Found the hard way: the pipe refused a client
@@ -201,6 +202,7 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 	// сеть, и первый заход почти всегда приходится на этот момент. До находки 15
 	// комментарий про это был, а самой загрузки не было.
 	yadro.ZapustitRaspisanie()
+	yadro.DochitatKhranilishche()
 	// Второе решение §9.2: туннель при старте поднимается только по флагу, и
 	// поднимает его служба, а не окно: окна при входе может не быть вовсе.
 	ubratHvostyPodmeny()
@@ -217,12 +219,13 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 	fon.Zapustit("приёме канала", func() {
 		// Отправка в defer: паника в приёме тоже должна дойти до цикла ниже,
 		// иначе служба осталась бы жить глухой, без единого способа до неё
-		// достучаться. Выход с кодом 1 отдаёт её восстановлению SCM.
+		// достучаться.
 		err := errors.New("приём канала упал паникой")
 		defer func() { oshibki <- err }()
 		err = yadro.Obsluzhivat(ctx)
 	})
 
+	zapushchena()
 	st <- svc.Status{State: svc.Running, Accepts: priemlet}
 	for {
 		select {
@@ -230,10 +233,14 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 			// The pipe is the only way anybody talks to us. Losing it and staying
 			// alive would mean a service that runs and answers nothing, which
 			// looks exactly like a hung machine.
-			if err != nil {
-				log.Printf("канал упал: %v", err)
+			//
+			// Выход аварийный, без доклада об остановке (Г5 аудита 1.8.0):
+			// штатный выход с кодом 1 SCM падением не считал, и служба
+			// оставалась лежать, хотя здесь было обещано восстановление.
+			if err == nil {
+				err = errors.New("приём канала закончился без причины")
 			}
-			st <- svc.Status{State: svc.StopPending}
+			avariynyyVyhod(err)
 			return false, 1
 		case c := <-r:
 			switch {
@@ -242,11 +249,17 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 			case sonZakonchen(c):
 				yadro.ProbaPosleSna()
 			case ostanovka(c):
-				st <- svc.Status{State: svc.StopPending}
 				// Zavershit, а не Disconnect: у службы две фоновые горутины,
 				// наблюдатель и восстановление, и вторая переживала остановку.
 				// Служба «остановлена», а её горутина через отступ поднимает
 				// туннель обратно.
+				//
+				// Здесь, а не только в defer: пока он идёт, SCM видит ход
+				// остановки (Г3). Повторный вызов из defer ничего не делает.
+				ostanovlena := dokladyvatSCM(st, svc.StopPending)
+				otmena()
+				yadro.Zavershit()
+				ostanovlena()
 				return false, 0
 			}
 		}

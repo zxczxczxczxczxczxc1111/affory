@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
@@ -74,6 +78,45 @@ var (
 	ErrNetServerov  = errors.New("серверов нет")
 	ErrServerNeNayd = errors.New("сервер не найден")
 )
+
+// Паузы дочитывания хранилища. Переменная ради теста: её читает только
+// горутина дочитывания, а заводит её один main.
+var pauzyDochityvaniya = []time.Duration{5 * time.Second, 15 * time.Second, time.Minute, 5 * time.Minute}
+
+// DochitatKhranilishche перечитывает в фоне хранилище, не прочитанное при
+// создании службы (M4 аудита 1.8.0). Команды и подъём читают его сами на
+// каждом вызове, а поле режима в статусе считалось один раз: без дочитывания
+// окно до первой записи набора показывало бы режим умолчанием.
+func (s *Sluzhba) DochitatKhranilishche() {
+	s.mu.Lock()
+	nuzhno := s.rezhimNeProchitan
+	s.mu.Unlock()
+	if !nuzhno || !s.zavestiFonovuyu() {
+		return
+	}
+	fon.Zapustit("дочитывании хранилища", func() {
+		defer s.fon.Done()
+		for _, pauza := range pauzyDochityvaniya {
+			select {
+			case <-s.fonCtx.Done():
+				return
+			case <-time.After(pauza):
+			}
+			n, err := s.nabor()
+			if err != nil {
+				log.Printf("хранилище по-прежнему не читается: %v", err)
+				continue
+			}
+			s.mu.Lock()
+			if s.rezhimNeProchitan {
+				s.rezhim, s.rezhimNeProchitan = rezhimNabora(n), false
+			}
+			s.mu.Unlock()
+			log.Printf("хранилище прочитано после отказа при старте")
+			return
+		}
+	})
+}
 
 // naborIzHranilishcha читает набор из хранилища секретов.
 //

@@ -804,7 +804,7 @@ func (s *Sluzhba) posleZapisiNabora(n Nabor) error {
 	// Поле службы идёт за хранилищем.
 	r := rezhimNabora(n)
 	s.mu.Lock()
-	s.rezhim = r
+	s.rezhim, s.rezhimNeProchitan = r, false
 	s.mu.Unlock()
 	// Отказ пересборки НЕ откатывает запись: список уже верен, а правила лишь
 	// отстали. Откат вернул бы человеку старый список и оставил бы его в

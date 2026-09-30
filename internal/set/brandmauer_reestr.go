@@ -2,6 +2,7 @@ package set
 
 import (
 	"fmt"
+	"strings"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -82,4 +83,47 @@ func deystvie(v uint64) string {
 		return "Block"
 	}
 	return "Allow"
+}
+
+// Правила, заведённые netsh, лежат в постоянном хранилище брандмауэра одной
+// строкой на правило: `v2.33|Action=Allow|Dir=Out|...|Name=Affory-Allow-Tun|`.
+// Шов: тест подменяет реестр списком имён.
+var imenaPravilVReestre = chitatImenaPravil
+
+// chitatImenaPravil отдаёт имена всех правил постоянного хранилища (Г1 аудита
+// 1.8.0). Уборка на старте спрашивала netsh о каждом из трёх десятков возможных
+// имён и снимала каждое вслепую: до минуты на медленной машине, и всё это время
+// служба не отвечала SCM. Реестр отвечает за миллисекунды и без языка системы.
+func chitatImenaPravil() (map[string]bool, error) {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, korenBrandmauera+`\FirewallRules`, registry.QUERY_VALUE)
+	if err != nil {
+		return nil, fmt.Errorf("ветка правил брандмауэра не открылась: %w", err)
+	}
+	defer k.Close()
+	znacheniya, err := k.ReadValueNames(0)
+	if err != nil {
+		return nil, fmt.Errorf("список правил брандмауэра не прочитан: %w", err)
+	}
+	est := make(map[string]bool, len(znacheniya))
+	for _, z := range znacheniya {
+		s, _, err := k.GetStringValue(z)
+		if err != nil {
+			// Непрочитанное правило может оказаться нашим: неполный список
+			// оставил бы его висеть. Вызывающий тогда снимает по полному.
+			return nil, fmt.Errorf("правило %s не прочитано: %w", z, err)
+		}
+		if imya := imyaIzZapisi(s); imya != "" {
+			est[imya] = true
+		}
+	}
+	return est, nil
+}
+
+func imyaIzZapisi(zapis string) string {
+	for _, pole := range strings.Split(zapis, "|") {
+		if imya, est := strings.CutPrefix(pole, "Name="); est {
+			return imya
+		}
+	}
+	return ""
 }

@@ -621,7 +621,32 @@ func snyatBezOtkata(prichina error) error {
 // Политику при этом НЕ трогает: без файла отката неизвестно, ставили ли её мы,
 // и вернуть чужой Block в Allow значит отключить чужую защиту, приняв её за
 // свой мусор.
+//
+// Снимаются только правила, которые стоят: их имена читаются из реестра одним
+// проходом (Г1 аудита 1.8.0). Сверка идёт по точным именам из VseImenaPravil,
+// как и прежде, маски нет. Реестр не прочитался: снятие по всему списку, как
+// до этой правки, медленно, но без пропусков.
 func podmesti() (bool, bool, error) {
+	est, err := imenaPravilVReestre()
+	if err != nil {
+		log.Printf("имена правил из реестра не прочитаны, снимаю по полному списку: %v", err)
+		return podmestiPoSpisku()
+	}
+	nashli := false
+	var oshibki []error
+	for _, imya := range VseImenaPravil() {
+		if !est[imya] {
+			continue
+		}
+		nashli = true
+		if err := SnyatPravilo(imya); err != nil {
+			oshibki = append(oshibki, err)
+		}
+	}
+	return nashli, false, errors.Join(oshibki...)
+}
+
+func podmestiPoSpisku() (bool, bool, error) {
 	nashli := false
 	var oshibki []error
 	for _, imya := range VseImenaPravil() {
