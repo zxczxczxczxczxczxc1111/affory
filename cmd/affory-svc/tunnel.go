@@ -186,7 +186,7 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 		return nil, 0, "", false, err
 	}
 
-	resolver, err := s.mestnyyBezTunnelya()
+	resolver, err := s.rezolverDlyaKonfiga()
 	if err != nil {
 		return nil, 0, "", false, fmt.Errorf("локальный резолвер не определён: %w", err)
 	}

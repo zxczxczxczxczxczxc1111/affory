@@ -406,6 +406,51 @@ func ubratHvostyPodmeny() {
 	}
 }
 
+// Паузы повторной уборки каталога подменщика. Переменная ради теста.
+var pauzyUborkiPodmeny = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+
+// DoubratPodmenu повторяет уборку каталогов подменщика в фоне (Х1 аудита
+// 1.8.0). Подменщик жив, пока ждёт ответа новой службы, то есть дольше её
+// старта, и уборка на старте его каталог не снимала: «Access is denied», и
+// 20 МБ лежали до следующего перезапуска службы.
+func (s *Sluzhba) DoubratPodmenu(dannye string) {
+	if !estKatalogiPodmeny(dannye) || !s.zavestiFonovuyu() {
+		return
+	}
+	fon.Zapustit("уборке после подмены", func() {
+		defer s.fon.Done()
+		var zhaloby []string
+		for _, pauza := range pauzyUborkiPodmeny {
+			select {
+			case <-s.fonCtx.Done():
+				return
+			case <-time.After(pauza):
+			}
+			if zhaloby = ubratKatalogiPodmeny(dannye); len(zhaloby) == 0 {
+				log.Printf("каталог подменщика убран после ответа новой версии")
+				return
+			}
+		}
+		for _, z := range zhaloby {
+			log.Printf("уборка после подмены не удалась: %s", z)
+		}
+	})
+}
+
+// estKatalogiPodmeny отвечает, остался ли хоть один каталог подменщика.
+func estKatalogiPodmeny(dannye string) bool {
+	zapisi, err := os.ReadDir(dannye)
+	if err != nil {
+		return false
+	}
+	for _, z := range zapisi {
+		if z.IsDir() && strings.HasPrefix(z.Name(), prefiksPodmeny) {
+			return true
+		}
+	}
+	return false
+}
+
 // Уборка скачанных обновлений.
 //
 // downloadUpdate кладёт каждый выпуск в obnovleniya и больше к нему не

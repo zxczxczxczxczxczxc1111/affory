@@ -36,6 +36,11 @@ const (
 	// платил трафиком и получал отказ. Тесты службы зовут Obrabotat напрямую,
 	// минуя канал, поэтому не видели этого с 05.09.
 	srokZamera = 90 * time.Second
+	// srokPodpiski для команд, которые тянут подписку по сети. У службы на
+	// это свой общий бюджет в 90 с (budzhetPodpiski), после него ещё запись
+	// набора и пересборка правил. Окно, ждущее минуту, рвало работающую
+	// команду (L14 аудита 1.8.0).
+	srokPodpiski = 2 * time.Minute
 )
 
 // dolgie перечисляет команды, за которыми стоит работа, а не чтение поля.
@@ -62,11 +67,15 @@ var dolgie = map[string]time.Duration{
 	"addServer":       SrokDolgoy,
 	"addServers":      SrokDolgoy,
 	"removeServer":    SrokDolgoy,
-	"setSubscription": SrokDolgoy,
+	"setSubscription": srokPodpiski,
 	// Обе ходят в сеть тем же путём, что и setSubscription: добавление первой
 	// подписки и переключение активной тянут список сразу.
-	"addSubscription":       SrokDolgoy,
-	"setActiveSubscription": SrokDolgoy,
+	"addSubscription":       srokPodpiski,
+	"setActiveSubscription": srokPodpiski,
+	// Пишут набор, а запись набора при включённом режиме «весь трафик»
+	// пересобирает правила брандмауэра (M6 аудита 1.8.0).
+	"setAutoMember":      SrokDolgoy,
+	"removeSubscription": SrokDolgoy,
 	// Argon2id с 64 МиБ памяти и тремя проходами. На слабой машине это секунды,
 	// и они честные: дешёвый вывод ключа означал бы дешёвый подбор пароля.
 	"exportProfile": SrokDolgoy,

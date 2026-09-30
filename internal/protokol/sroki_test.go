@@ -14,8 +14,10 @@ func TestDolgieKomandyPoluchayutDolgiySrok(t *testing.T) {
 		"connect", "disconnect", "setKillSwitch", "refreshSubscription",
 		"addServer", "addServers", "removeServer", "setSubscription",
 		"exportProfile", "importProfile", "exportServers",
+		"setAutoMember", "removeSubscription",
 	} {
-		if SrokOtveta(imya) != SrokDolgoy {
+		// Не меньше, а не ровно: команды подписок ждут дольше минуты (L14).
+		if SrokOtveta(imya) < SrokDolgoy {
 			t.Fatalf("команда %s получила быстрый срок, а за ней стоит работа", imya)
 		}
 	}

@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/netip"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
@@ -129,9 +131,41 @@ func (s *Sluzhba) aktivirovatZaslon(r set.Razreshyonnoe) error {
 		s.mu.Unlock()
 		return errZaslonNeVremya
 	}
+	stoyal := s.zaslonAktiven
 	s.zaslonAktiven = true
 	s.mu.Unlock()
-	return s.vklyuchitVes(r, true)
+	// Тот же список поверх стоящего замка это без netsh (M6 аудита 1.8.0):
+	// каждая запись набора звала пересборку, а она это десятки вызовов netsh
+	// и секунды на команду человека, даже когда адреса не менялись.
+	o := otpechatokRazreshyonnogo(r)
+	if stoyal && o == s.otpechatokZamka {
+		return nil
+	}
+	if err := s.vklyuchitVes(r, true); err != nil {
+		// Оборванная пересборка оставляет правила в неизвестном виде.
+		s.otpechatokZamka = ""
+		return err
+	}
+	s.otpechatokZamka = o
+	return nil
+}
+
+// otpechatokRazreshyonnogo сводит список в строку для сравнения. Порядок
+// адресов, портов и путей правилам безразличен, поэтому они сортируются:
+// иначе тот же список в другом порядке гонял бы netsh зря.
+func otpechatokRazreshyonnogo(r set.Razreshyonnoe) string {
+	kandidaty := make([]string, 0, len(r.Kandidaty))
+	for _, a := range r.Kandidaty {
+		kandidaty = append(kandidaty, a.String())
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "tun=%s;shlyuz=%s;resolver=%s", r.AdresTun, r.Shlyuz, r.Resolver)
+	for _, chast := range [][]string{kandidaty, slices.Clone(r.Porty), slices.Clone(r.Protsessy), slices.Clone(r.ChuzhieSeti)} {
+		slices.Sort(chast)
+		b.WriteString(";")
+		b.WriteString(strings.Join(chast, ","))
+	}
+	return b.String()
 }
 
 // snyatZashchitu выключает режим: флаг в памяти падает ПОД muZaslon, вместе
@@ -176,6 +210,7 @@ func (s *Sluzhba) osvoboditSetPodZamkom() error {
 		}
 		log.Printf("замок в памяти не числится, а файл отката на месте: снимаю по файлу")
 	}
+	s.otpechatokZamka = ""
 	if err := s.vyklyuchitVes(); err != nil {
 		s.postavit(s.Status().Sostoyanie, &protokol.Oshibka{Kod: kodRezhima(err), Tekst: "Не удалось восстановить сеть: " + err.Error()})
 		return err
@@ -266,8 +301,16 @@ func (s *Sluzhba) spisokRazreshyonnogo(tun set.Adapter) (set.Razreshyonnoe, erro
 	if g, err := set.ShlyuzKrome(tun.Indeks); err == nil {
 		r.Shlyuz = g
 	}
-	if d, err := set.LokalnyyResolverKrome(tun.Indeks); err == nil {
-		r.Resolver = d
+	// Резолвер тот, что уехал в конфиг ядра: он бывает не первым из
+	// объявленных (M9 аудита 1.8.0), и правило на первый оставило бы ядро
+	// под замком без имён.
+	s.mu.Lock()
+	r.Resolver = s.rezolverKonfiga
+	s.mu.Unlock()
+	if !r.Resolver.IsValid() {
+		if d, err := set.LokalnyyResolverKrome(tun.Indeks); err == nil {
+			r.Resolver = d
+		}
 	}
 	return r, nil
 }
@@ -422,6 +465,8 @@ func (s *Sluzhba) suzitKandidatov() (bool, error) {
 	if !zaperta {
 		return false, nil
 	}
+	// Правило серверов теперь другое, чем в отпечатке полного списка.
+	s.otpechatokZamka = ""
 	if err := s.suzitServery(kandidaty); err != nil {
 		return false, err
 	}

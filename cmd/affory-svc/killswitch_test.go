@@ -6,11 +6,33 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
+
+// adresaIzNabora собирает список из литералов набора, как настоящий
+// сборщик. Постоянный список фикстуры от добавления сервера не меняется, и
+// пересборка по отпечатку (M6 аудита 1.8.0) на нём честно ничего не делает.
+func adresaIzNabora(s *Sluzhba) func() (set.Adresa, error) {
+	return func() (set.Adresa, error) {
+		n, err := s.nabor()
+		if err != nil {
+			return set.Adresa{}, err
+		}
+		vse := []netip.Addr{netip.MustParseAddr("192.0.2.225")}
+		for _, srv := range n.Servery {
+			if a, err := netip.ParseAddr(srv.Host); err == nil {
+				vse = append(vse, a)
+			}
+		}
+		return adresaIz(vse...), nil
+	}
+}
 
 func sKillSwitch(t *testing.T) (*Sluzhba, *[]set.Razreshyonnoe, *int) {
 	t.Helper()
@@ -319,6 +341,7 @@ func TestUdalenieServeraPriMyortvomYadreSuzhaetPravila(t *testing.T) {
 // сужает правило всегда и дважды.
 func TestPriZhivomYadreSuzheniyaNeProishodit(t *testing.T) {
 	s, vklyucheno, _ := sKillSwitch(t)
+	s.sobratAdresa = adresaIzNabora(s)
 	suzheno := 0
 	s.suzitServery = func(set.Adresa) error { suzheno++; return nil }
 	if err := s.Connect(context.Background()); err != nil {
@@ -371,5 +394,110 @@ func TestUdaleniePoslednegoServeraNeSnimaetPravilo(t *testing.T) {
 	}
 	if len(n.Servery) != 0 {
 		t.Errorf("серверов осталось %d: отказ правил откатил запись списка", len(n.Servery))
+	}
+}
+
+// M6 аудита 1.8.0: запись набора с тем же списком адресов больше не гоняет
+// netsh поверх стоящего замка. Изменённый список, отказ пересборки и снятый
+// замок пересобираются, как раньше.
+func TestPeresborkaTolkoPriIzmeneniiSpiska(t *testing.T) {
+	s, vklyucheno, _ := sKillSwitch(t)
+	adresa := adresaIz(netip.MustParseAddr("203.0.113.1"))
+	s.sobratAdresa = func() (set.Adresa, error) { return adresa, nil }
+	if err := s.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetKillSwitch(true); err != nil {
+		t.Fatal(err)
+	}
+	vyzovov := func() int { return len(*vklyucheno) }
+	if vyzovov() != 1 {
+		t.Fatalf("вызовов включения %d", vyzovov())
+	}
+
+	if err := s.PeresobratRazresheniya(); err != nil {
+		t.Fatal(err)
+	}
+	if vyzovov() != 1 {
+		t.Fatal("тот же список пересобран netsh заново")
+	}
+
+	adresa = adresaIz(netip.MustParseAddr("203.0.113.2"), netip.MustParseAddr("203.0.113.1"))
+	if err := s.PeresobratRazresheniya(); err != nil {
+		t.Fatal(err)
+	}
+	if vyzovov() != 2 {
+		t.Fatal("новый сервер не попал в правила")
+	}
+	// Тот же набор в другом порядке правилам безразличен.
+	adresa = adresaIz(netip.MustParseAddr("203.0.113.1"), netip.MustParseAddr("203.0.113.2"))
+	if err := s.PeresobratRazresheniya(); err != nil {
+		t.Fatal(err)
+	}
+	if vyzovov() != 2 {
+		t.Fatal("перестановка адресов гоняет netsh")
+	}
+
+	prezhniy := s.vklyuchitVes
+	s.vklyuchitVes = func(set.Razreshyonnoe, bool) error { return errors.New("тест: netsh оборвался") }
+	adresa = adresaIz(netip.MustParseAddr("203.0.113.3"))
+	if err := s.PeresobratRazresheniya(); err == nil {
+		t.Fatal("отказ netsh проглочен")
+	}
+	s.vklyuchitVes = prezhniy
+	adresa = adresaIz(netip.MustParseAddr("203.0.113.1"), netip.MustParseAddr("203.0.113.2"))
+	if err := s.PeresobratRazresheniya(); err != nil {
+		t.Fatal(err)
+	}
+	if vyzovov() != 3 {
+		t.Fatal("после оборванной пересборки прежний список не пересобран: правила в неизвестном виде")
+	}
+}
+
+// L3 аудита 1.8.0: пересборка правил после подъёма упала, и правило TUN
+// стояло на старом адресе до случайного переподъёма, при статусе
+// «подключено». Наблюдатель повторяет её и снимает свою ошибку.
+func TestNablyudatelDogonyaetOtstavshiePravila(t *testing.T) {
+	s, vklyucheno, _ := sKillSwitch(t)
+	s.period = 10 * time.Millisecond
+	var adresa atomic.Value
+	adresa.Store(adresaIz(netip.MustParseAddr("203.0.113.1")))
+	s.sobratAdresa = func() (set.Adresa, error) { return adresa.Load().(set.Adresa), nil }
+	if err := s.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetKillSwitch(true); err != nil {
+		t.Fatal(err)
+	}
+
+	var otkazyvat atomic.Bool
+	otkazyvat.Store(true)
+	var mu sync.Mutex
+	prezhniy := s.vklyuchitVes
+	s.vklyuchitVes = func(r set.Razreshyonnoe, namerenno bool) error {
+		if otkazyvat.Load() {
+			return errors.New("тест: netsh отказал")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return prezhniy(r, namerenno)
+	}
+	adresa.Store(adresaIz(netip.MustParseAddr("203.0.113.2")))
+	if err := s.perepodklyuchit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if o := s.Status().Oshib; o == nil || o.Kod != protokol.KodFirewallFailed {
+		t.Fatalf("отказ пересборки на подъёме не виден: %v", o)
+	}
+
+	otkazyvat.Store(false)
+	dozhdatsya(t, "наблюдатель догнал правила", func() bool {
+		return s.Status().Oshib == nil
+	})
+	mu.Lock()
+	posledniy := (*vklyucheno)[len(*vklyucheno)-1]
+	mu.Unlock()
+	if !slices.Contains(posledniy.Kandidaty, netip.MustParseAddr("203.0.113.2")) {
+		t.Fatalf("правила пересобраны не под новый список: %v", posledniy.Kandidaty)
 	}
 }

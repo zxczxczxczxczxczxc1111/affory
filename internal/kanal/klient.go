@@ -285,7 +285,12 @@ func (k *Klient) Zvat(imya string, telo any) (protokol.Kadr, error) {
 	}
 }
 
+// chitat единственный, кто пишет в sobytiya, поэтому и закрывает его он (M8
+// аудита 1.8.0). Незакрытый канал событий держал цикл окна вечно: трей
+// считал службу на связи и не спрашивал её после перезапуска, иконка
+// показывала старое состояние, а первое действие из трея отказывало.
 func (k *Klient) chitat() {
+	defer close(k.sobytiya)
 	for {
 		kadr, err := ChitatKadr(k.c)
 		if err != nil {

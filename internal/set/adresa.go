@@ -12,8 +12,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
@@ -22,7 +24,19 @@ var ErrImyaNeRazreshilos = errors.New("имя не разрешилось")
 
 // Сколько ждать системный резолвер. Без предела подъём туннеля висел бы на
 // молчащем DNS, а «висит» это единственный исход, под который в §9.1 нет экрана.
-var TaymautRezolva = 5 * time.Second
+//
+// Срок у каждого имени свой, а имена разрешаются параллельно (M7 аудита
+// 1.8.0). По очереди с общим сроком один молчащий хост съедал весь срок, и
+// все следующие отказывали мгновенно, живые тоже: мёртвый домен первым в
+// подписке ронял каждый подъём. Общий бюджет держит худший случай, мёртвый
+// DNS при длинном наборе.
+var (
+	TaymautRezolva  = 5 * time.Second
+	byudzhetRezolva = 10 * time.Second
+)
+
+// potokovRezolva ограничивает число имён, которые спрашиваются разом.
+const potokovRezolva = 8
 
 // SobratAdresa это ЕДИНСТВЕННЫЙ источник адресов для двух списков сразу:
 // правила петли в конфиге sing-box и разрешающих правил брандмауэра.
@@ -38,7 +52,7 @@ var TaymautRezolva = 5 * time.Second
 // zagruzki это адреса прочих загрузок мимо туннеля (наборы rule_set, §«Загрузки
 // идут мимо туннеля»): их хосты входят в список брандмауэра наравне с подпиской.
 func SobratAdresa(servery []protokol.Server, podpiska string, zagruzki ...string) (Adresa, error) {
-	ctx, otmena := context.WithTimeout(context.Background(), TaymautRezolva)
+	ctx, otmena := context.WithTimeout(context.Background(), byudzhetRezolva)
 	defer otmena()
 	return sobratAdresaS(ctx, net.DefaultResolver.LookupNetIP, servery, podpiska, zagruzki...)
 }
@@ -95,16 +109,21 @@ func sobratAdresaS(ctx context.Context, r rezolver, servery []protokol.Server, p
 
 	a := Adresa{Servery: map[string][]netip.Addr{}}
 	vidno := map[netip.Addr]bool{}
-	sprosheno := map[string]bool{}
 	var nerazreshilis []string
 
+	unikalnye := make([]string, 0, len(hosty))
+	sprosheno := map[string]bool{}
 	for _, h := range hosty {
-		if sprosheno[h] {
-			continue
+		if !sprosheno[h] {
+			sprosheno[h] = true
+			unikalnye = append(unikalnye, h)
 		}
-		sprosheno[h] = true
-		adresa, err := razreshit(ctx, r, h)
-		if err != nil {
+	}
+	itogi := razreshitParallelno(ctx, r, unikalnye)
+
+	for i, h := range unikalnye {
+		adresa, err := itogi[i].adresa, itogi[i].err
+		if err != nil || len(adresa) == 0 {
 			// Имя, которое не разрешилось, НЕ проглатывается. Пропустить его
 			// молча значит оставить дыру в правиле петли: сервер потом
 			// зарезолвится по TTL уже внутри туннеля, и трафик к нему пойдёт в
@@ -142,6 +161,39 @@ func sobratAdresaS(ctx context.Context, r rezolver, servery []protokol.Server, p
 		return Adresa{}, fmt.Errorf("%w: собирать нечего", ErrImyaNeRazreshilos)
 	}
 	return a, nil
+}
+
+type itogImeni struct {
+	adresa []netip.Addr
+	err    error
+}
+
+// razreshitParallelno спрашивает имена разом, не больше potokovRezolva
+// одновременно, и каждому даёт свой срок TaymautRezolva внутри ctx. Итоги
+// лежат по индексам hosty. Имя, чья горутина упала паникой, остаётся с
+// пустым итогом и считается неразрешившимся.
+func razreshitParallelno(ctx context.Context, r rezolver, hosty []string) []itogImeni {
+	itogi := make([]itogImeni, len(hosty))
+	mesta := make(chan struct{}, potokovRezolva)
+	var wg sync.WaitGroup
+	for i, h := range hosty {
+		wg.Add(1)
+		fon.Zapustit("разрешении имени "+h, func() {
+			defer wg.Done()
+			select {
+			case mesta <- struct{}{}:
+			case <-ctx.Done():
+				itogi[i].err = ctx.Err()
+				return
+			}
+			defer func() { <-mesta }()
+			c, otmena := context.WithTimeout(ctx, TaymautRezolva)
+			defer otmena()
+			itogi[i].adresa, itogi[i].err = razreshit(c, r, h)
+		})
+	}
+	wg.Wait()
+	return itogi
 }
 
 // razreshit отдаёт адреса хоста без дубликатов и в устойчивом порядке.

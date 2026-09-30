@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Подменщик ложится в каталог данных и каждый раз в новый каталог.
@@ -81,6 +82,36 @@ func TestUborkaPodmenyTrogaetTolkoEyo(t *testing.T) {
 }
 
 // Без каталога данных уборке нечего делать, и это не отказ.
+// Х1 аудита 1.8.0: на старте новой службы подменщик ещё держит свой
+// каталог. Уборка повторяется в фоне и снимает его, когда он отпущен.
+func TestKatalogPodmenyUbiraetsyaPosleOtveta(t *testing.T) {
+	prezhnie := pauzyUborkiPodmeny
+	pauzyUborkiPodmeny = []time.Duration{50 * time.Millisecond, 50 * time.Millisecond, 50 * time.Millisecond}
+	t.Cleanup(func() { pauzyUborkiPodmeny = prezhnie })
+	dannye := t.TempDir()
+	kat := filepath.Join(dannye, prefiksPodmeny+"1")
+	if err := os.Mkdir(kat, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(kat, "affory-svc.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zhaloby := ubratKatalogiPodmeny(dannye); len(zhaloby) == 0 {
+		t.Fatal("открытый файл не помешал уборке: тест не воспроизводит живого подменщика")
+	}
+
+	s := podstavnaya(t, nil)
+	s.DoubratPodmenu(dannye)
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dozhdatsya(t, "каталог подменщика убран", func() bool {
+		_, err := os.Stat(kat)
+		return errors.Is(err, os.ErrNotExist)
+	})
+}
+
 func TestUborkaPodmenyBezKatalogaDannyh(t *testing.T) {
 	if zhaloby := ubratKatalogiPodmeny(filepath.Join(t.TempDir(), "net")); len(zhaloby) != 0 {
 		t.Errorf("отсутствие каталога данных названо отказом: %v", zhaloby)

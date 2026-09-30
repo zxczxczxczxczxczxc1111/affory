@@ -62,6 +62,56 @@ func TestPropavshayaSetNeSchitaetsyaSmenoySeti(t *testing.T) {
 	}
 }
 
+// M9 аудита 1.8.0: первый DNS адаптера молчит, второй отвечает. Конфиг берёт
+// второй, и наблюдатель не принимает это за смену сети.
+func TestKonfigBeryotOtvetivshiyDNS(t *testing.T) {
+	s := sluzhbaSRezolverom(t, "192.168.0.1")
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("192.168.0.1"), nil }
+	s.mestnyeRezolvery = func(...uint32) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("192.168.0.1"), netip.MustParseAddr("1.1.1.1")}, nil
+	}
+	s.sprositRezolver = func(_ context.Context, r netip.Addr) error {
+		if r.String() == "192.168.0.1" {
+			return errors.New("тест: молчит")
+		}
+		return nil
+	}
+	r, err := s.rezolverDlyaKonfiga()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.String() != "1.1.1.1" {
+		t.Fatalf("в конфиг идёт %s, а он молчит", r)
+	}
+
+	s.mu.Lock()
+	s.rezolverKonfiga = r
+	s.mu.Unlock()
+	if _, smenilsya := s.rezolverSmenilsya(); smenilsya {
+		t.Fatal("второй DNS той же сети принят за смену сети: переподъём по кругу")
+	}
+	// Та же сеть без второго DNS это уже другая сеть.
+	s.mestnyeRezolvery = func(...uint32) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("192.168.0.1")}, nil
+	}
+	if _, smenilsya := s.rezolverSmenilsya(); !smenilsya {
+		t.Fatal("резолвер конфига пропал из списка, а смена сети не замечена")
+	}
+}
+
+func TestVseDNSMolchatBerotsyaPervyy(t *testing.T) {
+	s := podstavnaya(t, nil)
+	s.mestnyyRezolver = func(...uint32) (netip.Addr, error) { return netip.MustParseAddr("192.168.0.1"), nil }
+	s.mestnyeRezolvery = func(...uint32) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("192.168.0.1"), netip.MustParseAddr("1.1.1.1")}, nil
+	}
+	s.sprositRezolver = func(context.Context, netip.Addr) error { return errors.New("тест: молчит") }
+	r, err := s.rezolverDlyaKonfiga()
+	if err != nil || r.String() != "192.168.0.1" {
+		t.Fatalf("резолвер %s, %v; ждали первый, как до M9", r, err)
+	}
+}
+
 func TestBezKonfigaSmenaSetiNeRassmatrivaetsya(t *testing.T) {
 	// Туннель опущен: ядра нет, сверять не с чем, пересобирать нечего.
 	s := podstavnaya(t, nil)

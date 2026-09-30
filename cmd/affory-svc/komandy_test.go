@@ -62,6 +62,10 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	}
 	// Настоящий сброс чистит кэш DNS всей машины: тестам это ни к чему.
 	s.sbrositKeshDNS = func() error { return nil }
+	// Настоящая проба резолвера шлёт вопрос в сеть. Список пуст, значит
+	// выбирать не из чего и резолвер конфига это mestnyyRezolver.
+	s.mestnyeRezolvery = func(...uint32) ([]netip.Addr, error) { return nil, nil }
+	s.sprositRezolver = func(context.Context, netip.Addr) error { return nil }
 	s.zapisat = func(sostoyanie.SostoyanieFayla) error { return nil }
 	// Конструктор уже прочитал НАСТОЯЩИЙ файл настроек машины: 03.09.2026
 	// тест «журнал выключен по умолчанию» покраснел на хосте, где журнал

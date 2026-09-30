@@ -47,6 +47,40 @@ func medlennayaSluzhba(t *testing.T, zaderzhka time.Duration) *Klient {
 	return k
 }
 
+// M8 аудита 1.8.0: служба перезапустилась, канал оборвался, и подписчик
+// событий обязан это увидеть закрытием, а не ждать вечно.
+func TestObryvKanalaZakryvaetSobytiya(t *testing.T) {
+	moy, ih := net.Pipe()
+	k := &Klient{
+		c:        moy,
+		zhdut:    make(map[uint64]chan protokol.Kadr),
+		sobytiya: make(chan protokol.Kadr, 8),
+		gotovo:   make(chan struct{}),
+	}
+	go k.chitat()
+	t.Cleanup(func() { _ = moy.Close() })
+	if err := PisatKadr(ih, protokol.Kadr{Tip: "sobytie", Imya: "state"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = ih.Close()
+	prishlo := 0
+	srok := time.After(2 * time.Second)
+	for {
+		select {
+		case _, otkryt := <-k.Sobytiya():
+			if !otkryt {
+				if prishlo != 1 {
+					t.Fatalf("событий до обрыва %d, ждали одно", prishlo)
+				}
+				return
+			}
+			prishlo++
+		case <-srok:
+			t.Fatal("канал событий не закрылся после обрыва: трей не узнает о перезапуске службы")
+		}
+	}
+}
+
 func TestDolgayaKomandaPerezhivaetSrokBystroy(t *testing.T) {
 	// Замерено на стенде 01.09.2026: при едином сроке в пять секунд connect
 	// отвечал «служба не ответила», а туннель в это время был поднят, оба ядра

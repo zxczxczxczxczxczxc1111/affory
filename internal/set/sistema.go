@@ -162,24 +162,45 @@ func LokalnyyResolver() (netip.Addr, error) { return LokalnyyResolverKrome() }
 // чужим VPN в системе не мог подключиться ни разу, а сообщение называло ему имя
 // чужого адаптера. Резолвер соседнего канала это рабочий ответ, а отказ - нет.
 func LokalnyyResolverKrome(krome ...uint32) (netip.Addr, error) {
-	spisok, err := perechislit()
+	vse, err := LokalnyeResolveryKrome(krome...)
 	if err != nil {
 		return netip.Addr{}, err
 	}
+	return vse[0], nil
+}
+
+// LokalnyeResolveryKrome отдаёт DNS-серверы всех кандидатов по порядку:
+// сначала лучшего адаптера, потом следующих, без повторов. Первый в списке
+// тот же, что у LokalnyyResolverKrome.
+//
+// Нужен целиком, а не первым (M9 аудита 1.8.0): у адаптера бывает несколько
+// DNS, и если первый молчит, Windows сама уходит на второй, а ядро с одним
+// первым оставалось без имён и туннель не поднимался.
+func LokalnyeResolveryKrome(krome ...uint32) ([]netip.Addr, error) {
+	spisok, err := perechislit()
+	if err != nil {
+		return nil, err
+	}
 	g := kandidaty(spisok, krome...)
 	if len(g) == 0 {
-		return netip.Addr{}, ErrNetAdaptera
+		return nil, ErrNetAdaptera
 	}
+	var vse []netip.Addr
 	for _, a := range g {
-		if len(a.Resolvery) > 0 {
-			return a.Resolvery[0], nil
+		for _, r := range a.Resolvery {
+			if !slices.Contains(vse, r) {
+				vse = append(vse, r)
+			}
 		}
+	}
+	if len(vse) > 0 {
+		return vse, nil
 	}
 	imena := make([]string, 0, len(g))
 	for _, a := range g {
 		imena = append(imena, a.Imya)
 	}
-	return netip.Addr{}, fmt.Errorf("%w: %s", ErrNetResolvera, strings.Join(imena, ", "))
+	return nil, fmt.Errorf("%w: %s", ErrNetResolvera, strings.Join(imena, ", "))
 }
 
 // pometitUmolchanie отмечает адаптер по таблице маршрутов, а при её отказе по

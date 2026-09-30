@@ -45,6 +45,7 @@ func TestVyklyuchennyyBrandmauerNazyvayetsyaSvoimKodom(t *testing.T) {
 // терялась вместе с признаком.
 func TestVyklyuchennyyBrandmauerVidenIPriZapisiNabora(t *testing.T) {
 	s, _, _ := sKillSwitch(t)
+	s.sobratAdresa = adresaIzNabora(s)
 	if err := s.Connect(context.Background()); err != nil {
 		t.Fatal(err)
 	}

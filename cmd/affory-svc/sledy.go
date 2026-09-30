@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/udaleniye"
@@ -35,14 +37,47 @@ const (
 	papkaYarlykovImya    = "Affory"
 	katalogVProfile      = `AppData\Local\Affory`
 	putProfiley          = `SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList`
+
+	// Три следа окна, найденные аудитом 1.8.0 (L12). Данные WebView2: свой
+	// путь окну не задан, и Wails кладёт их в %AppData%\<имя exe>. Ключ
+	// COM-активации уведомлений Wails заводит под номером из значения
+	// CustomActivator рядом с иконкой, а картинку уведомлений кладёт во
+	// временную папку человека под именем «Affory<номер>.png».
+	katalogWebViewVProfile = `AppData\Roaming\affory-ui.exe`
+	tempVProfile           = `AppData\Local\Temp`
+	znachenieAktivatora    = "CustomActivator"
 )
+
+// guidAktivatora пропускает только номер вида {8-4-4-4-12}. Значение живёт
+// в кусте человека, а снимает ключ служба от SYSTEM: всё, кроме номера,
+// могло бы увести удаление на чужой ключ или файл.
+var guidAktivatora = regexp.MustCompile(`^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$`)
 
 // Швы для тестов: настоящие функции ходят в реестр и меню Пуск живой машины.
 var (
 	papkaYarlykov        = papkaYarlykovSistemnaya
 	profiliLyudey        = profiliLyudeySistemnye
 	udalitReestrovyySled = udalitKlyuchSPotomkami
+	prochitatAktivator   = prochitatAktivatorSistemnyy
 )
+
+// prochitatAktivatorSistemnyy читает номер COM-активации уведомлений из
+// куста человека. Нет ключа или значения: пустая строка, это не отказ.
+func prochitatAktivatorSistemnyy(sid string) (string, error) {
+	k, err := registry.OpenKey(registry.USERS, sid+`\`+klyuchIkonkiVKuste, registry.QUERY_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	defer k.Close()
+	v, _, err := k.GetStringValue(znachenieAktivatora)
+	if errors.Is(err, registry.ErrNotExist) {
+		return "", nil
+	}
+	return v, err
+}
 
 func papkaYarlykovSistemnaya() (string, error) {
 	koren, err := windows.KnownFolderPath(windows.FOLDERID_CommonPrograms, 0)
@@ -133,16 +168,36 @@ func snyatSledyLyudey() []string {
 	}
 
 	for sid, profil := range profili {
-		katalog := filepath.Join(profil, katalogVProfile)
-		if err := udaleniye.Katalog(katalog); err != nil {
-			zhaloby = append(zhaloby, fmt.Sprintf("каталог %s не удалён: %v", katalog, err))
+		for _, katalog := range []string{
+			filepath.Join(profil, katalogVProfile),
+			filepath.Join(profil, katalogWebViewVProfile),
+		} {
+			if err := udaleniye.Katalog(katalog); err != nil {
+				zhaloby = append(zhaloby, fmt.Sprintf("каталог %s не удалён: %v", katalog, err))
+			}
 		}
 
-		for _, put := range []string{
+		kluchi := []string{
 			sid + `\` + klyuchOknaVKuste,
 			sid + `\` + klyuchIkonkiVKuste,
 			sid + `_Classes\` + klyuchIkonkiVKlassah,
-		} {
+		}
+		// Номер читается ДО снятия ключа иконки: он лежит внутри него.
+		aktivator, err := prochitatAktivator(sid)
+		switch {
+		case err != nil:
+			zhaloby = append(zhaloby, fmt.Sprintf("номер уведомлений %s не прочитан: %v", sid, err))
+		case guidAktivatora.MatchString(aktivator):
+			kluchi = append(kluchi, sid+`\Software\Classes\CLSID\`+aktivator)
+			png := filepath.Join(profil, tempVProfile, "Affory"+aktivator+".png")
+			if err := os.Remove(png); err != nil && !errors.Is(err, os.ErrNotExist) {
+				zhaloby = append(zhaloby, fmt.Sprintf("картинка уведомлений %s не удалена: %v", png, err))
+			}
+		case aktivator != "":
+			zhaloby = append(zhaloby, fmt.Sprintf("номер уведомлений %s негоден (%q), ключ оставлен", sid, aktivator))
+		}
+
+		for _, put := range kluchi {
 			if err := udalitReestrovyySled(registry.USERS, put); err != nil {
 				zhaloby = append(zhaloby, fmt.Sprintf("ключ %s не снят: %v", put, err))
 			}

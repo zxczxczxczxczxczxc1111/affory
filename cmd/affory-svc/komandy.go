@@ -221,6 +221,10 @@ type Sluzhba struct {
 	// машины, а тесту смены сети нужно назвать ДРУГОЙ адрес, не трогая сеть
 	// рабочей машины.
 	mestnyyRezolver func(krome ...uint32) (netip.Addr, error)
+	// Все DNS адаптеров и короткий вопрос одному из них (M9 аудита 1.8.0).
+	// Настоящие читают адаптеры и ходят в сеть.
+	mestnyeRezolvery func(krome ...uint32) ([]netip.Addr, error)
+	sprositRezolver  func(context.Context, netip.Addr) error
 	// Швы проверки слоёв (A3). Настоящие спрашивают систему и ходят в сеть, а
 	// тесту нужно назвать состояние адаптеров и ответ резолвера, не трогая ни
 	// сеть рабочей машины, ни её адаптеры.
@@ -355,6 +359,14 @@ type Sluzhba struct {
 	killSwitch    bool
 	zaslonAktiven bool
 	muZaslon      sync.Mutex
+	// otpechatokZamka это отпечаток списка, под который замок собран
+	// последним удачным vklyuchitVes (Д1 аудита 1.8.0). Пустой значит «не
+	// знаем, что стоит». Под muZaslon.
+	otpechatokZamka string
+	// pravilaOtstali это ошибка, поставленная подъёмом, когда пересборка
+	// правил после него не прошла (L3 аудита 1.8.0). nil значит «догнали».
+	// Под mu.
+	pravilaOtstali *protokol.Oshibka
 	// estOtkat отвечает, лежит ли на диске файл отката замка. Шов: настоящий
 	// читает ProgramData, а тесту нужно назвать расхождение с памятью (L2
 	// аудита 1.8.0), не трогая живой брандмауэр.
@@ -512,6 +524,8 @@ func NovayaSluzhba() *Sluzhba {
 	s.provalov = provalovPodryadPoUmolchaniyu
 	s.perezapuskSetiNeChashche = perezapusSetiNeChashche
 	s.mestnyyRezolver = set.LokalnyyResolverKrome
+	s.mestnyeRezolvery = set.LokalnyeResolveryKrome
+	s.sprositRezolver = set.SprositResolver
 	s.adaptery = set.Adaptery
 	s.probaImeni = proby.Imya
 	s.otstupy = otstupyPoUmolchaniyu
@@ -1255,10 +1269,20 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 				s.mu.Lock()
 				podRezhim := s.podRezhim
 				s.mu.Unlock()
+				s.mu.Lock()
+				s.pravilaOtstali = nil
+				s.mu.Unlock()
 				if err := s.peresobratEsliNado(podRezhim); err != nil {
 					log.Printf("правила брандмауэра отстали от подъёма: %v", err)
-					s.postavit(protokol.SostPodnyat, &protokol.Oshibka{
-						Kod: protokol.KodFirewallFailed, Tekst: err.Error()})
+					// Наблюдатель повторяет пересборку (L3 аудита 1.8.0):
+					// «чинится следующим подъёмом» значило держать машину
+					// запертой при статусе «подключено» до случайного
+					// переподъёма.
+					oshibka := &protokol.Oshibka{Kod: protokol.KodFirewallFailed, Tekst: err.Error()}
+					s.mu.Lock()
+					s.pravilaOtstali = oshibka
+					s.mu.Unlock()
+					s.postavit(protokol.SostPodnyat, oshibka)
 				}
 				// Наблюдатель живёт столько же, сколько подключение. До него подъём
 				// проверялся ровно один раз, и туннель, умерший через минуту, до
@@ -1742,6 +1766,34 @@ func (s *Sluzhba) dosprositNesushchego(ctx context.Context, adres, sekret string
 // Смысл ровно в том состоянии, ради которого в проекте заведено отдельное имя:
 // поднятый туннель, не несущий ничего, со стороны сокета неотличим от рабочего.
 // Заметить его может только тот, кто спрашивает регулярно.
+// dognatPravila повторяет пересборку правил, упавшую на подъёме (L3 аудита
+// 1.8.0). Удалась: снимает ту ошибку, что поставил подъём, и только её.
+// Раз в период пробы, а не на каждом тике: пока брандмауэр отказывает,
+// частые вызовы netsh ничего не дадут.
+func (s *Sluzhba) dognatPravila() {
+	s.mu.Lock()
+	oshibka := s.pravilaOtstali
+	s.mu.Unlock()
+	if oshibka == nil {
+		return
+	}
+	if err := s.PeresobratRazresheniya(); err != nil {
+		log.Printf("правила брандмауэра всё ещё отстают от подъёма: %v", err)
+		return
+	}
+	log.Printf("правила брандмауэра догнали подъём")
+	s.mu.Lock()
+	s.pravilaOtstali = nil
+	snyat := s.oshib == oshibka && s.sost == protokol.SostPodnyat
+	if snyat {
+		s.oshib = nil
+	}
+	s.mu.Unlock()
+	if snyat {
+		s.izvestit("state", s.Status())
+	}
+}
+
 func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 	podryad := 0
 	// Тик идёт по МЕНЬШЕМУ из двух периодов, а проба живости отсчитывается
@@ -1778,6 +1830,7 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 			continue
 		}
 		sledZamer = time.Now().Add(s.period)
+		s.dognatPravila()
 		if _, err := s.zamerit(ctx, adres, sekret, teg); err != nil {
 			// Отменённый контекст это НЕ авария, а нас самих опускают. Считать
 			// его провалом значило бы поставить ne-neset поверх выключенного и

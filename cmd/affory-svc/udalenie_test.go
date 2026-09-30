@@ -90,6 +90,31 @@ func TestKatalogProgrammyUdalyaetsyaSnaruzhi(t *testing.T) {
 	t.Fatalf("каталог программы не удалён за 10 с: отложенное удаление не работает; осталось %v", ostalos(dir))
 }
 
+// L12 аудита 1.8.0: путь каталога шёл в командную строку cmd как есть, и
+// %ИМЯ% в пути cmd подменял значением переменной. Уборщик стирал бы по
+// другому пути, а наш каталог оставлял.
+func TestProtsentVPutiNeRaskryvaetsya(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Affory %USERNAME% %%")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "affory-svc.exe"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	naUborku(t, dir, sluzhbyNetVSisteme)
+
+	if err := udalitKatalogProgrammy(); err != nil {
+		t.Fatalf("запуск не запланирован: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("каталог с процентом в имени не удалён за 10 с; осталось %v", ostalos(dir))
+}
+
 // Одной попытки rmdir мало, и это не теория. Каталог программы держит не только
 // служба: там же лежит affory-ui.exe, а окно закрывается САМО и не мгновенно
 // (most.go зовёт app.Quit после того, как команда уже ушла). Успевает оно за три

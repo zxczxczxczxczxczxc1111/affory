@@ -3,9 +3,12 @@ package set
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
@@ -209,5 +212,62 @@ func TestAdresaZagruzokPopadayutVSpisok(t *testing.T) {
 	}
 	if !soderzhitStroku(stroki(a.Vse), "198.51.100.20") {
 		t.Fatalf("адреса хоста наборов нет в списке: %v", stroki(a.Vse))
+	}
+}
+
+// M7 аудита 1.8.0: мёртвый домен первым в наборе съедал общий срок, и живые
+// имена за ним отказывали мгновенно.
+func TestMedlennoeImyaNeValitOstalnye(t *testing.T) {
+	prezhniy := TaymautRezolva
+	TaymautRezolva = 200 * time.Millisecond
+	t.Cleanup(func() { TaymautRezolva = prezhniy })
+	zhivye := rezolverIz(map[string][]string{
+		"a.example": {"198.51.100.1"}, "b.example": {"198.51.100.2"},
+	})
+	r := func(ctx context.Context, set, host string) ([]netip.Addr, error) {
+		if host == "mertvyy.example" {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return zhivye(ctx, set, host)
+	}
+	// Общий срок меньше двух сроков имени: по очереди живые не успели бы.
+	ctx, otmena := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer otmena()
+	a, err := sobratAdresaS(ctx, r, []protokol.Server{
+		{Host: "mertvyy.example", Port: 443}, {Host: "a.example", Port: 443}, {Host: "b.example", Port: 443},
+	}, "")
+	var oshibka *OshibkaRazresheniya
+	if !errors.As(err, &oshibka) || !slices.Equal(oshibka.Imena, []string{"mertvyy.example"}) {
+		t.Fatalf("неразрешившиеся %v, ждали только мёртвый домен", err)
+	}
+	if want := []string{"198.51.100.1", "198.51.100.2"}; !slices.Equal(stroki(a.Vse), want) {
+		t.Fatalf("адреса %v, ждали %v", stroki(a.Vse), want)
+	}
+}
+
+func TestImenaSprashivayutsyaNeBolsheVosmiRazom(t *testing.T) {
+	var seychas, maks atomic.Int32
+	r := func(_ context.Context, _, host string) ([]netip.Addr, error) {
+		n := seychas.Add(1)
+		defer seychas.Add(-1)
+		for {
+			m := maks.Load()
+			if n <= m || maks.CompareAndSwap(m, n) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		return []netip.Addr{netip.MustParseAddr("198.51.100.1")}, nil
+	}
+	var servery []protokol.Server
+	for i := range 20 {
+		servery = append(servery, protokol.Server{Host: fmt.Sprintf("s%d.example", i), Port: 443})
+	}
+	if _, err := sobratAdresaS(context.Background(), r, servery, ""); err != nil {
+		t.Fatal(err)
+	}
+	if m := maks.Load(); m > potokovRezolva || m < 2 {
+		t.Fatalf("разом спрашивалось %d имён, ждали от 2 до %d", m, potokovRezolva)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
@@ -73,7 +74,80 @@ func (s *Sluzhba) rezolverSmenilsya() (netip.Addr, bool) {
 	if stalo == bylo {
 		return netip.Addr{}, false
 	}
+	// В конфиг мог уехать не первый DNS, а первый ответивший (M9 аудита
+	// 1.8.0). Пока он среди объявленных адаптерами, сеть та же: иначе
+	// молчащий первый DNS гонял бы переподъём по кругу.
+	if slices.Contains(s.dopolnitRezolvery(stalo), bylo) {
+		return netip.Addr{}, false
+	}
 	return stalo, true
+}
+
+// Худший случай выбора резолвера, когда молчат все: probRezolverovMaks
+// вопросов по srokProbyRezolvera.
+const (
+	srokProbyRezolvera = time.Second
+	probRezolverovMaks = 4
+)
+
+// dopolnitRezolvery отдаёт DNS физического канала: первым pervyy, тот же,
+// что у mestnyyBezTunnelya, дальше остальные объявленные адаптерами.
+func (s *Sluzhba) dopolnitRezolvery(pervyy netip.Addr) []netip.Addr {
+	s.mu.Lock()
+	indeks := s.tun.Indeks
+	s.mu.Unlock()
+	var krome []uint32
+	if indeks != 0 {
+		krome = []uint32{indeks}
+	}
+	spisok := []netip.Addr{pervyy}
+	vse, err := s.mestnyeRezolvery(krome...)
+	if err != nil {
+		// Первый уже прочитан: без остальных выбор беднее, но он есть.
+		log.Printf("список DNS адаптеров не прочитан, остаётся первый: %v", err)
+		return spisok
+	}
+	for _, r := range vse {
+		if !slices.Contains(spisok, r) {
+			spisok = append(spisok, r)
+		}
+	}
+	return spisok
+}
+
+// rezolverDlyaKonfiga берёт первый ответивший DNS физического канала (M9
+// аудита 1.8.0). Windows при молчащем первом DNS сама уходит на второй, а
+// ядро с одним первым оставалось без имён, и туннель не поднимался.
+//
+// Никто не ответил: первый, как было. Молчат все чаще в выдернутой сети,
+// чем при мёртвых DNS, и отказ здесь ронял бы подъём, который прежде доходил
+// до пробы и говорил о причине сам.
+func (s *Sluzhba) rezolverDlyaKonfiga() (netip.Addr, error) {
+	pervyy, err := s.mestnyyBezTunnelya()
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	spisok := s.dopolnitRezolvery(pervyy)
+	if len(spisok) == 1 {
+		// Выбирать не из чего, и вопрос только задержал бы подъём.
+		return pervyy, nil
+	}
+	for i, r := range spisok {
+		if i == probRezolverovMaks {
+			break
+		}
+		ctx, otmena := context.WithTimeout(context.Background(), srokProbyRezolvera)
+		err := s.sprositRezolver(ctx, r)
+		otmena()
+		if err == nil {
+			if i > 0 {
+				log.Printf("местный резолвер %s молчит, в конфиг идёт %s", pervyy, r)
+			}
+			return r, nil
+		}
+		log.Printf("DNS %s не ответил: %v", r, err)
+	}
+	return pervyy, nil
 }
 
 // perezapustitPodNovuyuSet пересобирает конфиг под новую сеть и отвечает, ушёл

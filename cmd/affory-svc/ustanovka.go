@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 )
@@ -58,6 +59,8 @@ func argumentStarta(podnyat bool) string {
 // сканированием при закрытии, индексатор. Проиграв её, установщик падал на
 // первом же File с «Невозможно записать», без единого повтора.
 func podgotovitUstanovku(katalog string) error {
+	// До остановки: штатная остановка пишет в файл «выключен».
+	otmetitPodnyatyyTunnel(sostoyanie.KatalogDannyh(), sostoyanie.Prochitat, time.Now())
 	if err := ostanovitSluzhbu(); err != nil {
 		return err
 	}
@@ -74,6 +77,59 @@ func podgotovitUstanovku(katalog string) error {
 		}
 	}
 	return errors.Join(set.VyklyuchitVesTrafik(), set.VernutIPv6())
+}
+
+// Туннель после обновления установщиком (L11 аудита 1.8.0). Самообновление
+// передаёт «был поднят» подменщику флагом, а у установщика две отдельные
+// команды: prepare-install видит службу живой, install ставит уже новую.
+// Между ними отметка лежит файлом в каталоге данных.
+const imyaOtmetkiPodnyat = "podnyat-posle-ustanovki"
+
+// srokOtmetkiPodnyat отсекает отметку оборванной установки: без него
+// следующая установка через неделю подняла бы туннель, которого человек
+// не просил.
+const srokOtmetkiPodnyat = 15 * time.Minute
+
+// otmetitPodnyatyyTunnel кладёт отметку, если туннель поднят. Отказ
+// только пишется в журнал: без отметки обновление пройдёт, туннель просто
+// останется опущенным, как было до 1.9.0.
+func otmetitPodnyatyyTunnel(katalog string, prochitat func() (sostoyanie.SostoyanieFayla, error), seychas time.Time) {
+	f, err := prochitat()
+	if err != nil {
+		log.Printf("состояние туннеля до установки не прочитано: %v", err)
+		return
+	}
+	if f.Sostoyanie != protokol.SostPodnyat {
+		return
+	}
+	telo := []byte(seychas.UTC().Format(time.RFC3339))
+	if err := os.WriteFile(filepath.Join(katalog, imyaOtmetkiPodnyat), telo, 0o600); err != nil {
+		log.Printf("отметка поднятого туннеля не записана: %v", err)
+	}
+}
+
+// zabratOtmetkuPodnyat отвечает, был ли туннель поднят до установки, и
+// убирает отметку в любом случае.
+func zabratOtmetkuPodnyat(katalog string, seychas time.Time) bool {
+	put := filepath.Join(katalog, imyaOtmetkiPodnyat)
+	telo, err := os.ReadFile(put)
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	if err != nil {
+		log.Printf("отметка поднятого туннеля не прочитана: %v", err)
+		return false
+	}
+	if err := os.Remove(put); err != nil {
+		log.Printf("отметка поднятого туннеля не убрана: %v", err)
+	}
+	kogda, err := time.Parse(time.RFC3339, string(telo))
+	if err != nil {
+		log.Printf("отметка поднятого туннеля испорчена: %v", err)
+		return false
+	}
+	vozrast := seychas.Sub(kogda)
+	return vozrast >= 0 && vozrast <= srokOtmetkiPodnyat
 }
 
 // zakrytKatalogProgrammy запирает каталог программы от записи обычным
@@ -225,6 +281,11 @@ func vosstanovlenieSluzhby() ([]mgr.RecoveryAction, uint32) {
 func ustanovit(putBinarya string, podnyat bool) error {
 	if err := sostoyanie.ZavestiKatalogDannyh(); err != nil {
 		return err
+	}
+	// Отметку забирает и самообновление: оно идёт с флагом, но оставленная
+	// оборванным установщиком отметка иначе дожила бы до следующей установки.
+	if zabratOtmetkuPodnyat(sostoyanie.KatalogDannyh(), time.Now()) {
+		podnyat = true
 	}
 	// Второй раз после prepare-install, и это не лишнее: самообновление идёт
 	// мимо установщика и зовёт одну эту команду.

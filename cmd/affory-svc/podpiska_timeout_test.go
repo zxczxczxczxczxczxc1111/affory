@@ -36,6 +36,17 @@ func TestRuchnoeObnovlenieOgranichenoDoTaymautaKanala(t *testing.T) {
 	}
 }
 
+// L14 аудита 1.8.0: три команды тянут подписку в пределах budzhetPodpiski,
+// и окно, ждущее меньше, рвало работающую команду.
+func TestOknoZhdyotPodpiskuDolsheByudzhetaSluzhby(t *testing.T) {
+	for _, imya := range []string{"setSubscription", "addSubscription", "setActiveSubscription"} {
+		if protokol.SrokOtveta(imya) <= budzhetPodpiski {
+			t.Errorf("%s: окно ждёт %v, а служба тянет подписку до %v",
+				imya, protokol.SrokOtveta(imya), budzhetPodpiski)
+		}
+	}
+}
+
 func TestUspeshnoeObnovlenieSbrositTolkoSvoyOtkaz(t *testing.T) {
 	for _, id := range []string{"active", "reserve"} {
 		t.Run(id, func(t *testing.T) {

@@ -88,6 +88,9 @@ var (
 	katalogiProgrammy = []string{obnovlenie.KatalogNovoy, obnovlenie.KatalogPredydushchey}
 )
 
+// peremennayaKataloga несёт путь каталога программы в команду уборщика.
+const peremennayaKataloga = "AFFORY_KATALOG_UBORKI"
+
 func udalitKatalogProgrammy() error {
 	dir := katalogDlyaUdaleniya()
 	// Каталог освобождается ДО планирования уборки: иначе уборщик отрабатывает
@@ -112,16 +115,23 @@ func udalitKatalogProgrammy() error {
 	// прекращается сразу, как каталога не станет, поэтому обычный случай не
 	// стал дольше ни на шаг. С чужими файлами в каталоге он отрабатывает все
 	// круги и уходит, оставив каталог.
+	//
+	// Путь каталога едет переменной окружения, а не текстом команды (L12
+	// аудита 1.8.0): cmd раскрывает %ИМЯ% в своей строке, и каталог
+	// с процентом в имени подменялся значением переменной. Значение
+	// переменной cmd раскрывает один раз и повторно не разбирает.
+	const kat = "%" + peremennayaKataloga + "%"
 	var fayly []string
 	for _, f := range append(append([]string{}, faylyProgrammy...), maskiProgrammy...) {
-		fayly = append(fayly, `"`+filepath.Join(dir, f)+`"`)
+		fayly = append(fayly, `"`+kat+`\`+f+`"`)
 	}
 	var katalogi []string
 	for _, k := range katalogiProgrammy {
-		katalogi = append(katalogi, fmt.Sprintf(`rmdir /s /q "%s" 2>nul`, filepath.Join(dir, k)))
+		katalogi = append(katalogi, fmt.Sprintf(`rmdir /s /q "%s\%s" 2>nul`, kat, k))
 	}
 	cmdExe := filepath.Join(sistemnyy, "cmd.exe")
 	cmd := exec.Command(cmdExe)
+	cmd.Env = append(os.Environ(), peremennayaKataloga+"="+dir)
 	// Рабочий каталог системный, а не родитель каталога программы: отвязанный
 	// процесс живёт до тридцати секунд и держал бы родителя всё это время.
 	cmd.Dir = sistemnyy
@@ -132,7 +142,7 @@ func udalitKatalogProgrammy() error {
 			`"%s" /c for /l %%i in (1,1,%d) do ("%s" -n 4 127.0.0.1 >nul & (%s) & del /f /q %s 2>nul & %s & rmdir "%s" 2>nul & if not exist "%s" exit)`,
 			cmdExe, popytokUdaleniya, filepath.Join(sistemnyy, "PING.EXE"),
 			proverkaNovoyUstanovki(sistemnyy, sluzhbaUborki),
-			strings.Join(fayly, " "), strings.Join(katalogi, " & "), dir, dir),
+			strings.Join(fayly, " "), strings.Join(katalogi, " & "), kat, kat),
 	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("удаление каталога программы не запланировано: %w", err)
