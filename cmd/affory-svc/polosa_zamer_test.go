@@ -228,4 +228,8 @@ func TestPolosaOtkazZalivkiNeLomaetPriyom(t *testing.T) {
 	if !strings.Contains(o.OtkazVverh, "405") {
 		t.Fatalf("причина отказа отдачи не названа: %q", o.OtkazVverh)
 	}
+	// Окно ставит перед причиной «отдача не измерена:» само (01.10.2026).
+	if strings.Contains(o.OtkazVverh, "не измерена") {
+		t.Fatalf("причина повторяет заголовок окна: %q", o.OtkazVverh)
+	}
 }

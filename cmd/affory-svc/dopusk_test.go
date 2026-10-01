@@ -14,8 +14,8 @@ import (
 
 // resheniyeOPravah is the DECISION, not a mirror of the code: the test compares
 // it against komandyDlyaAdmina, so a silent change on either side fails here.
-// Owner's call 03.09.2026: admin only where the blast radius is the whole
-// machine or the secrets leave it.
+// Решение владельца 01.10.2026: администратор остался только у installUpdate,
+// доводы в комментарии к komandyDlyaAdmina.
 //
 // Имена НЕ переписываются руками: их даёт vetkiDispetchera(t) разбором
 // диспетчера. Прежний granicaDopuska был вторым экземпляром imenaKomand(), и
@@ -62,17 +62,22 @@ var resheniyeOPravah = map[string]bool{
 	"addServer":         false, "removeServer": false,
 	// Пачка это те же addServer подряд, решение то же.
 	"addServers": false,
-	// Выгрузка ссылками отдаёт те же ключи, что exportProfile, только без
-	// пароля сверху, поэтому граница у неё не мягче.
-	"exportServers":   true,
+	// Ключи VPN не тот секрет, ради которого спрашивать UAC (01.10.2026), а
+	// файл выгрузки пишет само окно под правами человека.
+	"exportServers":   false,
 	"setSubscription": false, "refreshSubscription": false, "setRules": false,
 	// Подписки это тот же класс, что и setSubscription: адрес панели, а не
 	// маршрут всей машины. UAC ради переключения между своими панелями
 	// приучал бы жать «да» на запрос прав каждый день.
 	"listSubscriptions": false, "addSubscription": false,
 	"removeSubscription": false, "setActiveSubscription": false,
-	"setKillSwitch": true, "exportProfile": true, "importProfile": true,
-	"downloadUpdate": true, "installUpdate": true,
+	"setKillSwitch": false, "exportProfile": false, "importProfile": false,
+	// Качает только последний выпуск с GitHub и сверяет его с суммой выпуска.
+	"downloadUpdate": false,
+	// Ставит архив с диска, сверяя с .sha256 рядом: подложить можно оба файла,
+	// и без подтверждения любая программа ставила бы свою сборку с правами
+	// SYSTEM.
+	"installUpdate": true,
 }
 
 // Команда без прав администратора обязана получить отказ, а не выполниться.
@@ -144,7 +149,7 @@ func TestKazhdayaKomandaImeetResheniyeOPravah(t *testing.T) {
 func TestSAdminskimDopuskomKomandaProhodit(t *testing.T) {
 	s := podstavnaya(t, nil)
 	ctx := kanal.SDopuskom(context.Background(), kanal.Dopusk{Admin: true})
-	o := s.Obrabotat(ctx, protokol.Kadr{Id: 1, Imya: "setKillSwitch", Telo: json.RawMessage(`{"vkl":false}`)})
+	o := s.Obrabotat(ctx, protokol.Kadr{Id: 1, Imya: "installUpdate", Telo: json.RawMessage(`{}`)})
 	if o.Oshib != nil && o.Oshib.Kod == protokol.KodTrebuetsyaAdmin {
 		t.Fatal("админу отказано: проверка прав отвергает всех и ничего не доказывает")
 	}

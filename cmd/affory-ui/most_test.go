@@ -64,6 +64,32 @@ func TestOtkazNeObryvKanala(t *testing.T) {
 	}
 }
 
+// Служба не ответила вовремя (01.10.2026). Канал живёт дальше, но команда
+// обязана прийти отказом: до правки окно получало пустой кадр без ошибки и
+// считало команду сделанной, а выход из трея считал защиту снятой.
+func TestSrokOtvetaPriezzhaetOtkazom(t *testing.T) {
+	bylo := zvatKanal
+	t.Cleanup(func() { zvatKanal = bylo })
+	zvatKanal = func(*kanal.Klient, string, any) (protokol.Kadr, error) {
+		return protokol.Kadr{}, fmt.Errorf("%w: setKillSwitch за 5s", kanal.ErrSrokOtveta)
+	}
+	k := &kanal.Klient{}
+	m := &most{k: k}
+	s, err := m.Zvat("setKillSwitch", `{"vkl":false}`)
+	if err != nil {
+		t.Fatalf("вышедший срок пришёл ошибкой, а не кадром: %v", err)
+	}
+	if err := otkazVOtvete(s); err == nil || !strings.Contains(err.Error(), "не ответила вовремя") {
+		t.Fatalf("вышедший срок сошёл за успех: %q", s)
+	}
+	if !m.podklyuchen() {
+		t.Fatal("вышедший срок оборвал канал")
+	}
+	if err := m.SnyatRezhim(); err == nil {
+		t.Fatal("выход из трея счёл защиту снятой, хотя служба не ответила")
+	}
+}
+
 // О3 аудита 1.6.1: служба другой версии. Окно получает кадр с кодом
 // protocol-mismatch и рисует свой экран, а не сбой оболочки.
 func TestRaznyeVersiiPriezzhayutKadrom(t *testing.T) {

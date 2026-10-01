@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
 
@@ -74,7 +76,7 @@ func (s *Sluzhba) measureBandwidth(ctx context.Context, k protokol.Kadr) protoko
 	vhod := yadra.VhodPolosy{Adres: v.Adres, Proksi: proksi, Potokov: v.Potokov, Srok: srok}
 	vniz, err := yadra.ZamerPolosy(ctx, vhod)
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodPolosaNeIzmerena, err.Error())
+		return otkazIz(k, protokol.KodPolosaNeIzmerena, err)
 	}
 
 	otvetTelo := map[string]any{
@@ -104,7 +106,9 @@ func (s *Sluzhba) measureBandwidth(ctx context.Context, k protokol.Kadr) protoko
 			// Отказ ОДНОЙ стороны не уносит другую. Обычная мишень скачивания
 			// на POST отвечает 405, и потерять из-за этого измеренный приём
 			// значит заставить человека мерить дважды.
-			otvetTelo["otkaz_vverh"] = err.Error()
+			// Окно само пишет «отдача не измерена:», и начало ошибки ядра
+			// «полоса не измерена:» стояло бы на экране вторым разом подряд.
+			otvetTelo["otkaz_vverh"] = strings.TrimPrefix(sboi.DlyaCheloveka(err), yadra.ErrPolosaNeIzmerena.Error()+": ")
 			break
 		}
 		otvetTelo["mbit_vverh"] = vverh.Mbit

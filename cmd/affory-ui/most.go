@@ -429,7 +429,7 @@ func (m *most) Zvat(imya string, telo string) (string, error) {
 	if telo != "" {
 		syroe = json.RawMessage(telo)
 	}
-	otvet, err := k.Zvat(imya, syroe)
+	otvet, err := zvatKanal(k, imya, syroe)
 	if obryvKanala(otvet, err) {
 		// A dead pipe stays dead. Drop the client so the next call redials
 		// instead of reporting the same corpse forever.
@@ -438,6 +438,15 @@ func (m *most) Zvat(imya string, telo string) (string, error) {
 			m.naStatus(protokol.StatusOtvet{Sostoyanie: protokol.SostSluzhbaMolchit})
 		}
 		return "", err
+	}
+	if err != nil && otvet.Oshib == nil {
+		// Вышедший срок канал не рвёт (О2 аудита 1.6.1), но и успехом не
+		// является. До 01.10.2026 ошибка здесь терялась: ниже err перезаписывал
+		// json.Marshal, и окно получало пустой кадр без отказа, то есть «сделано».
+		// Хуже всех от этого было SnyatRezhim: выход из трея считал защиту снятой,
+		// когда служба просто не успела ответить.
+		otvet = protokol.Kadr{Tip: "otvet", Imya: imya,
+			Oshib: &protokol.Oshibka{Kod: kodObolochki, Tekst: err.Error()}}
 	}
 	// A refusal frame is an answer: the screen reads oshibka off the frame
 	// and shows the §9.1 screen for it. The pipe stays open.
@@ -509,8 +518,19 @@ func obryvKanala(otvet protokol.Kadr, err error) bool {
 	return err != nil && otvet.Oshib == nil && !errors.Is(err, kanal.ErrSrokOtveta)
 }
 
+// kodObolochki это KOD_OBOLOCHKI из frontend/src/ekrany/otkazy.ts: отказ,
+// который родился в окне, а не в службе. Экран рисует по нему свою общую
+// фразу, а текст ошибки мелким шрифтом под ней.
+const kodObolochki = "oshibka-obolochki"
+
 // podklyuchitsya это шов над kanal.Podklyuchitsya для тестов моста.
 var podklyuchitsya = kanal.Podklyuchitsya
+
+// zvatKanal это шов над kanal.Klient.Zvat: канал из тестов окна не собрать,
+// а проверять надо, что мост делает с его ответом.
+var zvatKanal = func(k *kanal.Klient, imya string, telo any) (protokol.Kadr, error) {
+	return k.Zvat(imya, telo)
+}
 
 // klient returns the live connection, dialing once if there is none.
 func (m *most) klient() (*kanal.Klient, error) {

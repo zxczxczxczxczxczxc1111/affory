@@ -18,14 +18,14 @@ const porogSvezhestiSnimka = 24 * 60 * 60
 func (s *Sluzhba) getServerHealth(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 	n, err := s.nabor()
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, err.Error())
+		return otkazIz(k, protokol.KodHealthSnapshotMissing, err)
 	}
 	if n.AdresAktivnoy() == "" {
 		return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, "подписка не задана, снимок брать негде")
 	}
 	adres, err := set.AdresSnimka(n.AdresAktivnoy())
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, err.Error())
+		return otkazIz(k, protokol.KodHealthSnapshotMissing, err)
 	}
 	sn, err := s.zagruzitSnimok(ctx, adres)
 	if err != nil {
@@ -33,7 +33,7 @@ func (s *Sluzhba) getServerHealth(ctx context.Context, k protokol.Kadr) protokol
 			return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, "рядом с подпиской нет файла состояния")
 		}
 		// Текст ошибки сети не несёт адреса: он собран в set без URL.
-		return otkaz(k.Id, k.Imya, protokol.KodHealthSnapshotMissing, err.Error())
+		return otkazIz(k, protokol.KodHealthSnapshotMissing, err)
 	}
 	vozrast := s.seychas().Unix() - sn.Vremya
 	if vozrast < 0 {

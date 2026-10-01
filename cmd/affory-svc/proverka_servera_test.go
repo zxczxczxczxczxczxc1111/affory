@@ -99,7 +99,7 @@ func TestKonfigProverkiServeraBezTunIBezSledov(t *testing.T) {
 	s.mu.Lock()
 	s.portProksiNash = 4242
 	s.mu.Unlock()
-	telo, _, _, _, err := s.sobratTunPolno(nil, false, false, true)
+	telo, _, _, _, _, err := s.sobratTunPolno(nil, false, false, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

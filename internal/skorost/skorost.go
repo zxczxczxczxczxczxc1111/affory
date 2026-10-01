@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 )
 
 type Provider struct {
@@ -174,7 +175,7 @@ func (r Runner) Run(ctx context.Context, c *http.Client, preferred string, progr
 		}
 		attempt := Attempt{Provider: p.ID, Name: p.Name}
 		if err != nil {
-			attempt.Error = err.Error()
+			attempt.Error = sboi.DlyaCheloveka(err)
 		} else {
 			result.Provider = p.ID
 			result.Name = p.Name

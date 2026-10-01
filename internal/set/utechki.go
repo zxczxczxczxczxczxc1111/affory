@@ -3,6 +3,8 @@ package set
 import (
 	"context"
 	"fmt"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 )
 
 // Проверка утечек (задача 6.3). Служба проверяет то, что может увидеть сама,
@@ -71,7 +73,7 @@ func (r *RezultatProverki) punktVyhoda(ctx context.Context, v VhodProverki) Punk
 	}
 	cherez, err := v.SprositVyhod(ctx, v.Endpoint, v.PortProksi)
 	if err != nil {
-		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("эндпоинт не ответил через VPN: %v", err)
+		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("эндпоинт не ответил через VPN: %s", sboi.DlyaCheloveka(err))
 		return p
 	}
 	r.AdresVyhoda = cherez
@@ -82,7 +84,7 @@ func (r *RezultatProverki) punktVyhoda(ctx context.Context, v VhodProverki) Punk
 		if cherez == v.AdresServera {
 			p.Itog, p.Tekst = ItogOk, fmt.Sprintf("интернет видит %s, это адрес сервера", cherez)
 		} else {
-			p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("через VPN %s, напрямую эндпоинт не ответил: %v", cherez, err)
+			p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("через VPN %s, напрямую эндпоинт не ответил: %s", cherez, sboi.DlyaCheloveka(err))
 		}
 		return p
 	}
@@ -108,7 +110,7 @@ func punktIPv6(v VhodProverki) PunktProverki {
 	est, err := v.IPv6Zaglushen()
 	switch {
 	case err != nil:
-		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("брандмауэр не ответил: %v", err)
+		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("брандмауэр не ответил: %s", sboi.DlyaCheloveka(err))
 	case est:
 		p.Itog, p.Tekst = ItogOk, "исходящий IPv6 закрыт правилом брандмауэра, мимо VPN по нему не уйти"
 	default:

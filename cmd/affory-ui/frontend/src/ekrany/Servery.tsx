@@ -4,6 +4,7 @@ import { slovoPosleChisla } from "../chisla";
 import { IkonkaKorzina, Karta, Knopka, Kolonka, MenyuUKursora, Neudacha, Pole, PoleTeksta, Razdel, Ryad, Shapka, Teg } from "./ui";
 import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
 import { Vygruzka, type VygruzkaOtvet } from "./Vygruzka";
+import { tekstOshibki } from "../ponyatno";
 
 // Servers tab (task 4.9). Pure over props like every screen: App fetches
 // listServers and hands the answer down whole; every button sends one named
@@ -104,23 +105,17 @@ export interface PodpiskaNaEkrane {
   otkaz?: string;
 }
 
-/** Замер одного сервера: два числа, потому что они про разное.
- *
- *  `tcping` это дорога до узла, мимо туннеля, и туннель для неё не нужен.
- *  `realping` это весь путь через туннель вместе с рукопожатием. Узел,
- *  отвечающий на TCP мгновенно и не несущий ни байта, по одной цифре
- *  неотличим от далёкого, но исправного. Отсутствие числа это отказ с
- *  текстом, а НЕ ноль: ноль читается как «мгновенно» и ставит мёртвый узел
- *  первым по задержке. */
+/** Пинг одного сервера (01.10.2026): одно число, то же, что строка «Задержка»
+ *  на главном экране и пинг в Discord, то есть один круг через сервер по
+ *  прогретому соединению. Прежние два числа (узел мимо туннеля и полный
+ *  запрос с рукопожатием) владелец снял: второе выходило втрое больше
+ *  привычного. Отсутствие числа это отказ с текстом, а НЕ ноль: ноль
+ *  читается как «мгновенно» и ставит мёртвый сервер первым. */
 export interface ZamerZaderzhki {
   versiya?: string;
   id: string;
-  tcping_ms?: number | null;
-  tcping_otkaz?: string;
-  realping_ms?: number | null;
-  realping_otkaz?: string;
-  /** hy2 и tuic ходят по UDP, узел по TCP для них не мерится. */
-  tcping_net?: boolean;
+  ping_ms?: number | null;
+  ping_otkaz?: string;
 }
 
 export interface ServeryProps {
@@ -387,7 +382,6 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
     if (!chitatBufer) return;
     otpravit(await chitatBufer(), "bufer");
   };
-  const tekstOshibki = (e: unknown) => (e instanceof Error ? e.message : String(e));
   const sEkrana = async () => {
     if (!qr) return;
     zadatOtkazQr(null);
@@ -536,9 +530,8 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
         uZagolovka={<KnopkaSpravki onClick={() => zadatSpravku(true)} />}
       >
         {!pervyyZapusk && servery.length > 0 && (
-          // Выгрузка просит прав администратора: ответ это все ключи машины.
-          // Отказ уходит общим баннером, у него есть «Повторить от
-          // администратора».
+          // С 01.10.2026 выгрузка прав администратора не просит (решение
+          // владельца). Отказ уходит общим баннером.
           <Knopka
             rang="vtoraya"
             testId="vygruzit"
@@ -693,8 +686,9 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
               placeholder="Поиск по имени или адресу"
               className="w-full"
             />
-            {/* Работает и при опущенном туннеле: tcping туннеля не требует, а
-                выбирать сервер человеку надо как раз до подключения. */}
+            {/* Работает и при выключенном VPN: служба поднимает для замера
+                своё ядро без туннеля, а выбирать сервер человеку надо как раз
+                до подключения. */}
             <Knopka
               rang="vtoraya"
               testId="zamerit-zaderzhki"
@@ -839,43 +833,22 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   );
 }
 
-/** Две задержки одной строкой. Отсутствие числа это ТЕКСТ отказа, не ноль.
+/** Пинг сервера одним числом. Отсутствие числа это отказ, не ноль.
  *
- *  Ноль на экране читается как «мгновенно» и ставит узел первым по задержке,
- *  то есть ровно наверх списка, что противоположно правде о мёртвом узле. */
-export function Zaderzhka({ zamer, compact = false }: { zamer?: ZamerZaderzhki; compact?: boolean }) {
+ *  Ноль на экране читается как «мгновенно» и ставит сервер первым по пингу,
+ *  то есть ровно наверх списка, что противоположно правде о мёртвом. Отказ
+ *  в строке короткий, причина целиком в подсказке: длинный текст в строке
+ *  сервера не помещается и наезжает на соседние (16.09.2026). */
+export function Zaderzhka({ zamer }: { zamer?: ZamerZaderzhki }) {
   if (!zamer) return null;
-  const uzel = zamer.tcping_net
-    ? "узел —"
-    : typeof zamer.tcping_ms === "number" ? `узел ${zamer.tcping_ms} мс` : zamer.tcping_otkaz || "узел не измерен";
-  const tunnel =
-    typeof zamer.realping_ms === "number"
-      ? `VPN ${zamer.realping_ms} мс`
-      : zamer.realping_otkaz || "VPN не измерен";
-  // «VPN отключён» это не отказ замера, а состояние: в сжатом виде оно
-  // печатается как «не измерен», всё прочее как «недоступен».
-  const tunnelKratko =
-    typeof zamer.realping_ms === "number"
-      ? `VPN ${zamer.realping_ms} мс`
-      : zamer.realping_otkaz && !zamer.realping_otkaz.includes("VPN отключён")
-        ? "VPN недоступен"
-        : "VPN не измерен";
+  const tekst = typeof zamer.ping_ms === "number" ? `${zamer.ping_ms} мс` : zamer.ping_otkaz ? "недоступен" : "не измерен";
   return (
     <span
       data-testid={`zaderzhka-${zamer.id}`}
-      className={compact ? "min-w-0 truncate" : "text-fg-muted shrink-0 text-xs"}
-      /* Число «VPN» здесь БОЛЬШЕ «Задержки» на главном экране, и это не
-         расхождение: там один круг по готовому соединению, здесь весь запрос
-         вместе с рукопожатием протокола. Без этой строки одно из двух чисел
-         выглядит враньём. */
-      title={`${uzel} · ${tunnel}\nузел: дорога до сервера мимо VPN\nVPN: весь запрос через него, вместе с рукопожатием, поэтому больше «Задержки» на главном экране`}
+      className="text-fg-muted shrink-0 text-xs tabular-nums"
+      title={zamer.ping_otkaz || undefined}
     >
-      {/* Сжатый вид это ОДНА строка. Двумя строками он стоял в строке
-          сервера высотой 52px рядом с названием, не помещался и наезжал на
-          соседние строки списка (16.09.2026). Длинный отказ узла в сжатом
-          виде не печатается вовсе: он длиннее строки, а целиком всё лежит в
-          подсказке. */}
-      {compact ? `${tunnelKratko} · ${zamer.tcping_net || typeof zamer.tcping_ms === "number" ? uzel : "узел не измерен"}` : `${uzel} · ${tunnel}`}
+      {tekst}
     </span>
   );
 }

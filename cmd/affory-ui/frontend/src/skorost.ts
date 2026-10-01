@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Kadr } from "./most";
+import { tekstOshibki } from "./ponyatno";
 
 export interface SpeedSnapshot {
   id: number;
@@ -91,7 +92,7 @@ export function useSkorost(request: Request, available: boolean) {
       } catch (e: unknown) {
         if (live && turn === epoch.current) {
           setSnapshot(null);
-          setError(e instanceof Error ? e.message : "Не удалось получить состояние замера");
+          setError(e instanceof Error ? tekstOshibki(e) : "Не удалось получить состояние замера");
         }
       } finally { busy = false; }
     };
@@ -119,7 +120,7 @@ export function useSkorost(request: Request, available: boolean) {
       if (!next) throw new Error("служба не поддерживает этот замер, обнови программу");
       setSnapshot(next);
     } catch (e: unknown) {
-      if (alive.current) setError(e instanceof Error ? e.message : "Не удалось выполнить замер");
+      if (alive.current) setError(e instanceof Error ? tekstOshibki(e) : "Не удалось выполнить замер");
     } finally { commandRunning.current = false; if (alive.current) setPending(false); }
   }, [request]);
   return { snapshot, error, pending, start: (provider: string) => void command("startSpeedTest", { provider }), cancel: () => void command("cancelSpeedTest", {}) };

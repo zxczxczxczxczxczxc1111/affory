@@ -88,7 +88,8 @@ export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, ne
     const selected = tekushchaya && !podnyat && vybran === s.id;
     // Замер другой подписки с таким же адресным ID не относится к её ключам.
     const m = tekushchaya ? zamerPoId.get(s.id) : undefined;
-    const latency = typeof m?.realping_ms === "number" ? `${m.realping_ms} мс` : m?.realping_otkaz && !m.realping_otkaz.includes("VPN отключён") ? "Недоступен" : "Не измерен";
+    // Пинг одним числом, как в Discord (01.10.2026). Причина отказа в подсказке.
+    const latency = typeof m?.ping_ms === "number" ? `${m.ping_ms} мс` : m?.ping_otkaz ? "Недоступен" : "Не измерен";
     return <li key={key} className={`group flex min-h-12 items-center rounded-lg ${active || selected ? "bg-accent-soft" : "hover:bg-surface-hover"}`}>
       <button type="button" disabled={disabled || !naVybor} onClick={() => g.podpiska ? naVybor?.(s.id, g.id) : naVybor?.(s.id)}
         aria-label={`Подключиться к ${s.imya}`} aria-pressed={active || selected}
@@ -96,7 +97,7 @@ export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, ne
         <IkServer className={`h-5 w-5 shrink-0 ${active ? "text-accent-ink" : "text-fg-muted"}`} />
         <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium" title={s.imya}>{s.imya}</span>
           <span className="text-fg-muted block truncate text-xs" title={`${g.imya} · ${s.host}:${s.port}`}>{s.transport}{zakreplen ? ` · ${g.imya}` : ""}</span></span>
-        <span className="text-fg-secondary shrink-0 text-xs tabular-nums" title={`VPN ${latency}${m?.realping_otkaz ? `: ${m.realping_otkaz}` : ""} · узел ${m?.tcping_net ? "—" : typeof m?.tcping_ms === "number" ? `${m.tcping_ms} мс` : m?.tcping_otkaz || "не измерен"}`}>{latency}</span>
+        <span className="text-fg-secondary shrink-0 text-xs tabular-nums" title={m?.ping_otkaz || undefined}>{latency}</span>
         {/* Отметка стоит только у выбранного. Пустой кружок в каждой строке
             ничего не сообщал: выбран ровно один, и это видно по нему одному.
             Место под отметку держится всегда, иначе колонка замера прыгает. */}

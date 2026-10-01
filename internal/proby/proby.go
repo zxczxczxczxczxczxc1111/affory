@@ -19,6 +19,8 @@ import (
 	"math"
 	"net"
 	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 )
 
 // Itog это ответ одной пробы. Nil-ошибка значит «прошло».
@@ -204,12 +206,12 @@ func korotko(err error) string {
 		case dnsErr.IsNotFound:
 			return "имя не найдено"
 		}
-		return dnsErr.Err
+		return sboi.DlyaCheloveka(err)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "нет ответа за отведённый срок"
 	}
-	return err.Error()
+	return sboi.DlyaCheloveka(err)
 }
 
 // Millisekundy печатает длительность по-русски.

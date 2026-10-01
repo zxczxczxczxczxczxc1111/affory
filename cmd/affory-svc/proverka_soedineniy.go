@@ -38,7 +38,7 @@ func (s *Sluzhba) listConnections(ctx context.Context, k protokol.Kadr) protokol
 	defer cancel()
 	rows, err := s.soedineniyaYadra(ctx, adres, secret)
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodYadroNeOtvechaet, "Не удалось проверить соединения: "+err.Error())
+		return otkaz(k.Id, k.Imya, protokol.KodYadroNeOtvechaet, "Не удалось проверить соединения: "+tekstIz(k.Imya, err))
 	}
 	current, currentSecret := s.dostupKKlash()
 	if current != adres || currentSecret != secret {

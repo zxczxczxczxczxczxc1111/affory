@@ -57,7 +57,7 @@ func (s *Sluzhba) checkExitIp(ctx context.Context, k protokol.Kadr) protokol.Kad
 	if !v.Podnyat {
 		adres, err := v.SprositVyhod(ctx, v.Endpoint, 0)
 		if err != nil {
-			return otkaz(k.Id, k.Imya, protokol.KodVyhodNeIzmeren, err.Error())
+			return otkazIz(k, protokol.KodVyhodNeIzmeren, err)
 		}
 		return otvet(k.Id, k.Imya, map[string]string{"adres": adres, "cherez": "napryamuyu"})
 	}
@@ -66,7 +66,7 @@ func (s *Sluzhba) checkExitIp(ctx context.Context, k protokol.Kadr) protokol.Kad
 	}
 	adres, err := v.SprositVyhod(ctx, v.Endpoint, v.PortProksi)
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodVyhodNeIzmeren, err.Error())
+		return otkazIz(k, protokol.KodVyhodNeIzmeren, err)
 	}
 	s.zapomnitAdresVyhoda(adres)
 	return otvet(k.Id, k.Imya, map[string]string{"adres": adres, "cherez": "tunnel"})

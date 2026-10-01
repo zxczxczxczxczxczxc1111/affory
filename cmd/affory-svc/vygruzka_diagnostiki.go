@@ -69,7 +69,7 @@ func (s *Sluzhba) exportDiagnostics(k protokol.Kadr) protokol.Kadr {
 	if telo.Id == "" {
 		id, err := nomerVygruzki()
 		if err != nil {
-			return otkaz(k.Id, k.Imya, protokol.KodVnutrennyayaOshibka, err.Error())
+			return otkazIz(k, protokol.KodVnutrennyayaOshibka, err)
 		}
 		v.id, v.dannye, v.kogda = id, s.sobratDiagnostiku(), time.Now()
 	} else if telo.Id != v.id || time.Since(v.kogda) > srokSnimkaVygruzki {

@@ -57,7 +57,7 @@ it("поиск раскрывает свёрнутую группу, выбор 
 });
 
 it("одинаковые ID из разных источников имеют независимые закрепления и замеры", () => {
-  render(<KatalogServerov {...props} podpiski={[props.podpiski[0], { ...props.podpiski[1], servery: [server("a")] }]} zaderzhki={[{ id: "a", realping_ms: 19 }]} />);
+  render(<KatalogServerov {...props} podpiski={[props.podpiski[0], { ...props.podpiski[1], servery: [server("a")] }]} zaderzhki={[{ id: "a", ping_ms: 19 }]} />);
   const group = within(screen.getByRole("region", { name: "B.example" }));
   expect(group.queryByText("19 мс")).toBeNull();
   fireEvent.click(group.getByRole("button", { name: "Закрепить a" }));

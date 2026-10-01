@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
@@ -73,10 +72,21 @@ func (s *Sluzhba) zagruzitPodpiskuStrategiey(ctx context.Context, adres string) 
 		// Обёртка, а не новая ошибка: код отказа и шаг разбираются у неё
 		// прежними errors.Is и errors.As. Человеку важно, что дорог пробовали
 		// две, иначе «подписка недоступна» читается как одна неудачная попытка.
-		return r, fmt.Errorf("%w; через VPN тоже не вышло", err)
+		return r, otkazObeihDorog{err}
 	}
 	return r, nil
 }
+
+// otkazObeihDorog помечает отказ, после которого пробовали и путь через VPN,
+// и прямой. Типом, а не хвостом строки: текст для человека собирается заново
+// (prichinaPodpiski), и искать в нём подстроку значило бы связать два места
+// по написанию.
+type otkazObeihDorog struct{ err error }
+
+func (o otkazObeihDorog) Error() string {
+	return o.err.Error() + "; через VPN тоже не вышло"
+}
+func (o otkazObeihDorog) Unwrap() error { return o.err }
 
 // zagruzitPutyom это одна дорога целиком: попытки, повторы и строка в журнале.
 func (s *Sluzhba) zagruzitPutyom(ctx context.Context, adres, put, proksi string, popytok int) (ssylki.Razbor, error) {

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -451,11 +452,17 @@ func TestVypuskBezArhivaPoHttpsOtvergaetsya(t *testing.T) {
 	}
 }
 
-func TestDownloadUpdateTrebuetAdmina(t *testing.T) {
+// С 01.10.2026 загрузка обновления идёт без прав администратора: от окна она
+// ничего не берёт и качает только последний выпуск. Сеть подменена отказом,
+// чтобы тест упирался в неё сразу, а не через двадцать секунд ожидания.
+func TestDownloadUpdateBezPrav(t *testing.T) {
 	s := sVersiey(t, "0.6.2")
-	o := s.Obrabotat(t.Context(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "downloadUpdate"})
-	if o.Oshib == nil || o.Oshib.Kod != protokol.KodTrebuetsyaAdmin {
-		t.Fatalf("без прав: %+v", o)
+	s.skachatFayl = func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
+		return nil, errors.New("тест: сети нет")
+	}
+	o := s.Obrabotat(neAdminom(t.Context()), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "downloadUpdate"})
+	if o.Oshib == nil || o.Oshib.Kod == protokol.KodTrebuetsyaAdmin {
+		t.Fatalf("без прав: %+v", o.Oshib)
 	}
 }
 
@@ -486,7 +493,7 @@ func TestZakrytyyRepozitoriyObyasnyaetsya(t *testing.T) {
 func TestOtkazProverkiVidenVStatuse(t *testing.T) {
 	s := sVersiey(t, "1.4.1")
 	s.skachatFayl = func(context.Context, string, int64, func(int64, int64)) ([]byte, error) {
-		return nil, errors.New("dial tcp 140.82.121.5:443: i/o timeout")
+		return nil, fmt.Errorf("dial tcp 140.82.121.5:443: %w", os.ErrDeadlineExceeded)
 	}
 	if _, err := s.proveritObnovlenie(context.Background()); err == nil {
 		t.Fatal("мёртвая сеть прошла как успех")
@@ -495,8 +502,9 @@ func TestOtkazProverkiVidenVStatuse(t *testing.T) {
 	if st.ObnovlenieOtkaz == "" {
 		t.Fatal("отказ проверки не доехал до статуса: окно покажет «новее нет» на молчащем сервере")
 	}
-	if !strings.Contains(st.ObnovlenieOtkaz, "i/o timeout") {
-		t.Fatalf("причина потерялась по дороге: %q", st.ObnovlenieOtkaz)
+	// Причина доезжает словами человека, а не текстом Go (01.10.2026).
+	if !strings.Contains(st.ObnovlenieOtkaz, "ответа не дождались") || strings.Contains(st.ObnovlenieOtkaz, "dial tcp") {
+		t.Fatalf("причина потерялась по дороге или пришла сырой: %q", st.ObnovlenieOtkaz)
 	}
 	if st.ObnovlenieProvereno != nil {
 		t.Fatal("отметка проверки поставлена на неудавшейся проверке")

@@ -261,7 +261,9 @@ func TestReklamaVstroennyyIOtkazSeti(t *testing.T) {
 	if !st.Vstroennyy || st.Pravil == 0 {
 		t.Fatalf("статус не описывает встроенный список: %+v", st)
 	}
-	if !strings.Contains(st.Otkaz, "network disabled") || strings.HasPrefix(st.Otkaz, "список рекламы") {
+	// Причина названа нашими словами, текст подставной ошибки остался в
+	// журнале службы (01.10.2026: английский хвост в окно не идёт).
+	if st.Otkaz != "список не скачан" || strings.HasPrefix(st.Otkaz, "список рекламы") {
 		t.Fatalf("причина отказа %q", st.Otkaz)
 	}
 

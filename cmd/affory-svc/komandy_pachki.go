@@ -29,7 +29,7 @@ func (s *Sluzhba) addServers(k protokol.Kadr) protokol.Kadr {
 	if err != nil {
 		// Все три отказа пачки это наши собственные фразы без куска входа,
 		// поэтому их можно отдавать как есть.
-		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed, err.Error())
+		return otkazIz(k, protokol.KodSubscriptionMalformed, err)
 	}
 
 	var dobavleno, obnovleno, uzheBylo int
@@ -55,7 +55,7 @@ func (s *Sluzhba) addServers(k protokol.Kadr) protokol.Kadr {
 			}
 			return nil
 		}); err != nil {
-			return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+			return otkazIz(k, kodSohraneniya(err), err)
 		}
 	}
 	return otvet(k.Id, k.Imya, map[string]any{
@@ -66,8 +66,8 @@ func (s *Sluzhba) addServers(k protokol.Kadr) protokol.Kadr {
 	})
 }
 
-// exportServers отдаёт ссылки на серверы набора. Требует администратора (см.
-// komandyDlyaAdmina): ответ это все ключи машины открытым текстом.
+// exportServers отдаёт ссылки на серверы набора, все ключи машины открытым
+// текстом. Администратора с 01.10.2026 не требует, см. komandyDlyaAdmina.
 //
 // ids пустой значит «все». Удержанные записи не выгружаются: подписка про них
 // уже не знает, и на другом устройстве они стали бы вечными.
@@ -82,7 +82,7 @@ func (s *Sluzhba) exportServers(k protokol.Kadr) protokol.Kadr {
 	}
 	n, err := s.nabor()
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+		return otkazIz(k, protokol.KodSecretsUnreadable, err)
 	}
 	nuzhny := make(map[string]bool, len(telo.Ids))
 	for _, id := range telo.Ids {

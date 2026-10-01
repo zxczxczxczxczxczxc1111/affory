@@ -31,7 +31,7 @@ import (
 func (s *Sluzhba) listServers(k protokol.Kadr) protokol.Kadr {
 	n, err := s.nabor()
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+		return otkazIz(k, protokol.KodSecretsUnreadable, err)
 	}
 	versii, err := s.versiiServerov(n.Servery)
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Sluzhba) addServer(k protokol.Kadr) protokol.Kadr {
 		n.Servery, srv = ssylki.DobavitProfil(n.Servery, srv)
 		return nil
 	}); err != nil {
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 	return otvet(k.Id, k.Imya, map[string]any{"server": dlyaEkrana(srv)})
 }
@@ -139,7 +139,7 @@ func (s *Sluzhba) removeServer(k protokol.Kadr) protokol.Kadr {
 		ostalos = len(spisok)
 		return nil
 	}); err != nil {
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 	return otvet(k.Id, k.Imya, map[string]any{"ostalos": ostalos})
 }
@@ -170,7 +170,7 @@ func (s *Sluzhba) setSubscription(ctx context.Context, k protokol.Kadr) protokol
 		serverov = len(n.Servery)
 		return nil
 	}); err != nil {
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 	if adres == "" {
 		return otvet(k.Id, k.Imya, map[string]any{"zadana": false, "serverov": serverov})
@@ -232,7 +232,7 @@ func otkazPodpiski(k protokol.Kadr, r ssylki.Razbor, err error) protokol.Kadr {
 	case errors.Is(err, errObnovlenieZameneno):
 		return otvet(k.Id, k.Imya, map[string]any{"obnovlenie_zameneno": true})
 	case errors.As(err, &nab):
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+		return otkazIz(k, protokol.KodSecretsUnreadable, err)
 	case errors.Is(err, errPodpiskaNeZadana):
 		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed, "подписка не задана")
 	case errors.Is(err, ssylki.ErrPodpiskaIstekla):
@@ -240,30 +240,28 @@ func otkazPodpiski(k protokol.Kadr, r ssylki.Razbor, err error) protokol.Kadr {
 		// причина, и, у некоторых панелей, код оплаты.
 		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionExpired, textyUvedomleniy(r))
 	case errors.Is(err, ssylki.ErrPodpiskaUstroystvo):
-		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaUstroystvo, err.Error()+", прежний список сохранён")
-	case errors.Is(err, ssylki.ErrNeSsylki):
-		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed,
-			"подписка отдала файл настроек другого приложения, а не список ссылок, прежний список сохранён")
+		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaUstroystvo, tekstOtkazaPodpiski(err))
+	case errors.Is(err, ssylki.ErrNeSsylki), errors.Is(err, ssylki.ErrPodpiskaVelika):
+		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed, tekstOtkazaPodpiski(err))
 	case errors.Is(err, ssylki.ErrPodpiskaPusta):
 		// Прежний список ОСТАЁТСЯ. Одна опечатка в публикации не должна
 		// оставлять запертую машину без единого адреса.
-		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed,
-			"подписка не отдала ни одного сервера, прежний список сохранён")
+		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed, tekstOtkazaPodpiski(err))
 	case errors.As(err, &sohr):
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 	// Шаг, на котором сорвалась загрузка, меняет совет: не успевший ответ и
 	// отказ панели по праву доступа лечатся по-разному, а до 22.09.2026 оба
 	// приезжали как «подписка недоступна, обнови подписку».
 	switch shagZagruzki(err) {
 	case sboi.Srok:
-		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaSrok, err.Error())
+		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaSrok, tekstOtkazaPodpiski(err))
 	case sboi.Dostup:
-		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaDostup, err.Error())
+		return otkaz(k.Id, k.Imya, protokol.KodPodpiskaDostup, tekstOtkazaPodpiski(err))
 	}
 	// Остальные шаги (dns, tcp, tls) ведут в одну сторону - проверить сеть и
 	// повторить, - поэтому код общий, а сам шаг назван в тексте отказа.
-	return otkaz(k.Id, k.Imya, protokol.KodSubscriptionUnreach, err.Error())
+	return otkaz(k.Id, k.Imya, protokol.KodSubscriptionUnreach, tekstOtkazaPodpiski(err))
 }
 
 func textyUvedomleniy(r ssylki.Razbor) string {
@@ -569,7 +567,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		}
 		log.Printf("правила брандмауэра отстали от переключения: %v", err)
 		s.izvestit("state", s.StatusS(&protokol.Oshibka{
-			Kod: protokol.KodFirewallFailed, Tekst: err.Error()}))
+			Kod: protokol.KodFirewallFailed, Tekst: tekstIz("подключение", err)}))
 	}
 
 	// Состояние могло смениться, пока мы ходили в ядро: человек нажал

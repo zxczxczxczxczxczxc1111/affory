@@ -51,7 +51,7 @@ func (s *Sluzhba) installUpdate(k protokol.Kadr) protokol.Kadr {
 	}
 	if len(k.Telo) > 0 {
 		if err := json.Unmarshal(k.Telo, &telo); err != nil {
-			return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+			return otkazIz(k, protokol.KodProtocolMismatch, err)
 		}
 	}
 	if telo.Put == "" {
@@ -389,7 +389,7 @@ func (s *Sluzhba) pokazatItogObnovleniya() {
 	}
 	log.Printf("обновление откачено: %s %s", i.Kod, i.Tekst)
 	s.mu.Lock()
-	s.oshib = &protokol.Oshibka{Kod: i.Kod, Tekst: i.Tekst}
+	s.oshib = oshibkaDlyaOkna("обновление", i.Kod, i.Tekst)
 	s.mu.Unlock()
 }
 

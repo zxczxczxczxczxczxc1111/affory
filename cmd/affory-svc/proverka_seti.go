@@ -7,6 +7,7 @@ import (
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/proby"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 )
 
 // Раздельная проверка слоёв сети (A3, 22.09.2026).
@@ -107,7 +108,7 @@ func (s *Sluzhba) sloyTunnelya(context.Context) sloyProverki {
 	}
 	adaptery, err := s.adaptery()
 	if err != nil {
-		return sloy("tunnel", "VPN на этом компьютере", proby.Itog{Podrobno: "список адаптеров недоступен: " + err.Error(), Dlitelnost: dlit()})
+		return sloy("tunnel", "VPN на этом компьютере", proby.Itog{Podrobno: "список адаптеров недоступен: " + sboi.DlyaCheloveka(err), Dlitelnost: dlit()})
 	}
 	for _, a := range adaptery {
 		if a.Indeks != tun.Indeks {
@@ -143,7 +144,7 @@ func (s *Sluzhba) sloyYadra(ctx context.Context) sloyProverki {
 	t, err := s.zamerit(ctx, adres, sekret, tegDlyaZamera())
 	if err != nil {
 		return sloy("yadro", "Связь с сервером", proby.Itog{
-			Podrobno: "сервер не ответил: " + err.Error(), Dlitelnost: s.seychas().Sub(nach)})
+			Podrobno: "сервер не ответил: " + sboi.DlyaCheloveka(err), Dlitelnost: s.seychas().Sub(nach)})
 	}
 	return sloy("yadro", "Связь с сервером", proby.Itog{Proshlo: true, Dlitelnost: t,
 		Podrobno: fmt.Sprintf("ответ за %s", proby.Millisekundy(t))})

@@ -123,14 +123,27 @@ describe("экраны отказов", () => {
     expect(screen.getByTestId("otkaz")).toHaveAttribute("data-kod", "kod-iz-budushchego");
   });
 
-  it("сбой оболочки: крупно наша фраза, техника в причине", () => {
-    // Текст приходит из Windows и по-английски. Крупно он читается как вывод
-    // отладчика, а человеку нужно сначала понять, что вообще случилось.
+  it("сбой оболочки: крупно наша фраза, английская техника только в подсказке", () => {
+    // Текст приходит из Windows и по-английски. На экране он читается как
+    // вывод отладчика (01.10.2026), поэтому остаётся только подсказкой.
     render(
       <Otkaz kod={KOD_OBOLOCHKI} tekst="connect: read pipe: The pipe has been ended."
              naDeystvie={() => undefined} />,
     );
-    expect(screen.getByTestId("otkaz-tekst")).toHaveTextContent(TEKST_OBOLOCHKI);
-    expect(screen.getByTestId("otkaz-prichina").textContent).toContain("The pipe has been ended");
+    const el = screen.getByTestId("otkaz-tekst");
+    expect(el).toHaveTextContent(TEKST_OBOLOCHKI);
+    expect(screen.queryByTestId("otkaz-prichina")).toBeNull();
+    expect(el).toHaveAttribute("title", "connect: read pipe: The pipe has been ended.");
+  });
+
+  it("сбой оболочки: наша часть причины остаётся, хвост уходит в подсказку", () => {
+    render(
+      <Otkaz kod={KOD_OBOLOCHKI} tekst="Архив не выбран: dialog: The operation was canceled by the user."
+             naDeystvie={() => undefined} />,
+    );
+    const p = screen.getByTestId("otkaz-prichina");
+    expect(p).toHaveTextContent("Архив не выбран");
+    expect(p.textContent).not.toContain("canceled");
+    expect(p).toHaveAttribute("title", "Архив не выбран: dialog: The operation was canceled by the user.");
   });
 });

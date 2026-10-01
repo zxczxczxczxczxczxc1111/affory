@@ -24,6 +24,7 @@ import {
 } from "./most";
 import { naladitVstavku } from "./vstavka";
 import { VERSIYA_PROTOKOLA, type HodObnovleniya, type OtkazStroki, type ProverkaSeti, type Rezhim, type RezultatProverki, type Statistika, type StatusOtvet } from "./protokol";
+import { tekstOshibki } from "./ponyatno";
 
 // The only place that talks to most.ts. Screens get whole StatusOtvet values
 // as props and never touch the bridge, so a shell swap is most.ts plus here.
@@ -124,11 +125,8 @@ function zameryIz(telo: unknown): ZamerZaderzhki[] {
     return [{
       id: o.id,
       versiya: tekst(o.versiya) || undefined,
-      tcping_ms: chislo(o.tcping_ms),
-      tcping_otkaz: tekst(o.tcping_otkaz),
-      realping_ms: chislo(o.realping_ms),
-      realping_otkaz: tekst(o.realping_otkaz),
-      tcping_net: o.tcping_net === true,
+      ping_ms: chislo(o.ping_ms),
+      ping_otkaz: tekst(o.ping_otkaz),
     }];
   });
 }
@@ -328,7 +326,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       // обновить не удалось. Стереть значит обменять устаревший список на
       // пустой. Общий баннер тоже не поднимается: путь можно ввести руками
       // или выбрать на ПК, и список запущенных программ этому не мешает.
-      zadatProtsessyOtkaz(e instanceof Error ? e.message : String(e));
+      zadatProtsessyOtkaz(tekstOshibki(e));
     });
   }, []);
 
@@ -551,7 +549,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
         }, 2000);
       })
       .catch((e: unknown) => {
-        zadatUstanovku({ sostoyanie: "otkaz", prichina: e instanceof Error ? e.message : String(e) });
+        zadatUstanovku({ sostoyanie: "otkaz", prichina: tekstOshibki(e) });
       });
   }, [vypolnit]);
 
@@ -1121,13 +1119,15 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
               // nothing is sent. The service verifies sha256, not the window.
               vybratArhiv()
                 .then((put) => { if (put) void vypolnit("installUpdate", { path: put }); })
-                .catch((e: unknown) => zadatOtkaz({ kod: "update-archive-invalid", tekst: e instanceof Error ? e.message : String(e) }))
+                .catch((e: unknown) => zadatOtkaz({ kod: KOD_OBOLOCHKI, tekst: `Архив не выбран: ${e instanceof Error ? e.message : String(e)}` }))
             }
             naUdalenie={(steret) =>
               // A declined UAC is a refusal like any other: the human sees the
               // system's own text and the program stays where it was.
+              // Код оболочки, а не admin-required: кнопка того отказа
+              // перезапускает ОКНО с правами, а удаление так и не повторяет.
               udalitProgrammu(steret).catch((e: unknown) =>
-                zadatOtkaz({ kod: "admin-required", tekst: e instanceof Error ? e.message : String(e) }),
+                zadatOtkaz({ kod: KOD_OBOLOCHKI, tekst: e instanceof Error ? e.message : String(e) }),
               )
             }
           />

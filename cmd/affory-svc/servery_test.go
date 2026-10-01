@@ -269,11 +269,11 @@ func TestIstekshayaPodpiskaDohoditTekstomPaneli(t *testing.T) {
 // П7 аудита 1.6.1: файл настроек вместо списка это ответ панели по существу,
 // а не недоступность, и прежний список остаётся.
 func TestPodpiskaSNastroykamiNazyvaetPrichinu(t *testing.T) {
-	o := otkazPodpiski(protokol.Kadr{}, ssylki.Razbor{}, ssylki.ErrNeSsylki)
+	o := otkazPodpiski(protokol.Kadr{}, ssylki.Razbor{}, otkazSOstatkom{err: ssylki.ErrNeSsylki, serverov: 3})
 	if o.Oshib == nil || o.Oshib.Kod != protokol.KodSubscriptionMalformed {
 		t.Fatalf("отказ %+v", o.Oshib)
 	}
-	if !strings.Contains(o.Oshib.Tekst, "файл настроек") || !strings.Contains(o.Oshib.Tekst, "прежний список сохранён") {
+	if !strings.Contains(o.Oshib.Tekst, "файл настроек") || !strings.Contains(o.Oshib.Tekst, "прежние серверы из неё сохранены") {
 		t.Fatalf("текст %q", o.Oshib.Tekst)
 	}
 }
@@ -282,11 +282,11 @@ func TestPodpiskaSNastroykamiNazyvaetPrichinu(t *testing.T) {
 // подписка» и не «недоступна».
 func TestLimitUstroystvSvoyKod(t *testing.T) {
 	err := fmt.Errorf("%w: на подписке заняты все места под устройства", ssylki.ErrPodpiskaUstroystvo)
-	o := otkazPodpiski(protokol.Kadr{}, ssylki.Razbor{}, err)
+	o := otkazPodpiski(protokol.Kadr{}, ssylki.Razbor{}, otkazSOstatkom{err: err, serverov: 3})
 	if o.Oshib == nil || o.Oshib.Kod != protokol.KodPodpiskaUstroystvo {
 		t.Fatalf("отказ %+v", o.Oshib)
 	}
-	if !strings.Contains(o.Oshib.Tekst, "места") || !strings.Contains(o.Oshib.Tekst, "прежний список сохранён") {
+	if !strings.Contains(o.Oshib.Tekst, "места") || !strings.Contains(o.Oshib.Tekst, "прежние серверы из неё сохранены") {
 		t.Fatalf("текст %q", o.Oshib.Tekst)
 	}
 }
@@ -322,8 +322,11 @@ func TestPustayaPodpiskaSohranyaetPrezhniySpisok(t *testing.T) {
 	if o.Oshib.Kod != protokol.KodSubscriptionMalformed {
 		t.Fatalf("код %s, ожидался subscription-malformed", o.Oshib.Kod)
 	}
-	if !strings.Contains(o.Oshib.Tekst, "прежний список сохранён") {
-		t.Fatalf("человеку не сказано, что список цел: %s", o.Oshib.Tekst)
+	// Подписка ни разу не загрузилась, поэтому честный хвост «серверов из
+	// неё пока нет». До 01.10.2026 здесь стояло «прежний список сохранён»
+	// при пустом списке, и окно обещало серверы, которых не было.
+	if !strings.Contains(o.Oshib.Tekst, "серверов из неё пока нет") {
+		t.Fatalf("человеку не сказано, что серверов нет: %s", o.Oshib.Tekst)
 	}
 
 	// Зеркало: недоступная подписка это ДРУГОЙ код. Без этого проверка выше

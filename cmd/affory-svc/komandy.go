@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -134,6 +135,10 @@ type Sluzhba struct {
 	zamerOtklika  func(ctx context.Context, cel string, portProksi int) (time.Duration, error)
 	otklik        time.Duration
 	otklikEst     bool
+	// Пинг списка серверов (01.10.2026): прибор и временное ядро без TUN, через
+	// вход замеров которого он ходит.
+	zamerPinga  func(ctx context.Context, cel string, proksi *url.URL) (time.Duration, error)
+	yadroZamera func(ctx context.Context) (vremennoeYadro, error)
 	// Проверки 6.3: эндпоинт и два шва для сети и брандмауэра.
 	adresProverki string
 	sprositVyhod  func(ctx context.Context, endpoint string, portProksi int) (string, error)
@@ -507,6 +512,8 @@ func NovayaSluzhba() *Sluzhba {
 	s.periodOtklika = periodOtklikaPoUmolchaniyu
 	s.adresOtklika = set.CelOtklikaPoUmolchaniyu
 	s.zamerOtklika = set.Otklik
+	s.zamerPinga = set.OtklikCherez
+	s.yadroZamera = s.podnyatYadroZamera
 	s.adresProverki = set.AdresProverkiPoUmolchaniyu
 	s.sprositVyhod = set.AdresVyhoda
 	s.ipv6Zaglushen = set.PravilaIPv6Est
@@ -671,6 +678,15 @@ func (s *Sluzhba) izvestit(imya string, telo any) {
 // The service owns the state. The UI never computes it from parts, because two
 // places computing the same truth is how they start disagreeing.
 func (s *Sluzhba) postavit(n protokol.Sostoyanie, oshib *protokol.Oshibka) {
+	// Заслон здесь, а не в Status: Status зовётся на каждый опрос окна, и
+	// журнал получил бы одну и ту же строку сотни раз.
+	//
+	// Текст правится НА МЕСТЕ, а не новым объектом: наблюдатель защиты
+	// снимает свою ошибку, узнавая её по указателю (s.oshib == oshibka), и
+	// подмена объекта оставила бы её висеть навсегда.
+	if oshib != nil {
+		oshib.Tekst = oshibkaDlyaOkna("состояние", oshib.Kod, oshib.Tekst).Tekst
+	}
 	s.mu.Lock()
 	if s.sost != n {
 		s.cancelSpeedLocked("подключение изменилось, запусти замер заново")
@@ -935,7 +951,7 @@ func (s *Sluzhba) PomnitPodnyatPosleObnovleniya() {
 func (s *Sluzhba) StatusS(oshib *protokol.Oshibka) protokol.StatusOtvet {
 	st := s.Status()
 	if oshib != nil {
-		st.Oshib = oshib
+		st.Oshib = oshibkaDlyaOkna("состояние", oshib.Kod, oshib.Tekst)
 	}
 	return st
 }
@@ -1036,7 +1052,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 	if err != nil {
 		log.Printf("подключение: набор серверов не прочитан: %v", err)
 		s.postavit(protokol.SostOtkaz, &protokol.Oshibka{
-			Kod: protokol.KodSecretsUnreadable, Tekst: err.Error()})
+			Kod: protokol.KodSecretsUnreadable, Tekst: tekstIz("подключение", err)})
 		return err
 	}
 	srv, err := n.VybrannyyServer()
@@ -1164,7 +1180,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 			log.Printf("подключение: туннель не поднялся: %v", err)
 			s.Disconnect()
 			s.postavit(protokol.SostOtkaz, &protokol.Oshibka{
-				Kod: kodPodyomaTunnelya(err), Tekst: err.Error()})
+				Kod: kodPodyomaTunnelya(err), Tekst: tekstIz("подключение", err)})
 			return err
 		}
 		// Отключение, успевшее ПОКА поднимался туннель. Проверка стоит до
@@ -1204,7 +1220,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 		if err := s.glushitIPv6(); err != nil {
 			s.Disconnect()
 			s.postavit(protokol.SostOtkaz, &protokol.Oshibka{
-				Kod: protokol.KodFirewallFailed, Tekst: err.Error()})
+				Kod: protokol.KodFirewallFailed, Tekst: tekstIz("подключение", err)})
 			return err
 		}
 
@@ -1218,7 +1234,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 			log.Printf("подключение: ядро не отвечает по управляющему порту: %v", err)
 			s.Disconnect()
 			s.postavit(protokol.SostOtkaz, &protokol.Oshibka{
-				Kod: protokol.KodYadroNeOtvechaet, Tekst: err.Error()})
+				Kod: protokol.KodYadroNeOtvechaet, Tekst: tekstIz("подключение", err)})
 			return err
 		}
 
@@ -1243,7 +1259,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 			log.Printf("подключение: выбор не доехал до ядра: %v", err)
 			s.Disconnect()
 			s.postavit(protokol.SostOtkaz, &protokol.Oshibka{
-				Kod: protokol.KodPereklyuchenieNeDoehalo, Tekst: err.Error()})
+				Kod: protokol.KodPereklyuchenieNeDoehalo, Tekst: tekstIz("подключение", err)})
 			return err
 		}
 
@@ -1362,7 +1378,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 					// «чинится следующим подъёмом» значило держать машину
 					// запертой при статусе «подключено» до случайного
 					// переподъёма.
-					oshibka := &protokol.Oshibka{Kod: protokol.KodFirewallFailed, Tekst: err.Error()}
+					oshibka := &protokol.Oshibka{Kod: protokol.KodFirewallFailed, Tekst: tekstIz("подключение", err)}
 					s.mu.Lock()
 					s.pravilaOtstali = oshibka
 					s.mu.Unlock()
@@ -1431,8 +1447,9 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 		// по 15s)» читалось как строка журнала, случайно попавшая на экран
 		// (владелец, 23.09.2026). Число попыток и срок остались - они говорят,
 		// что программа не сдалась после первой неудачи, - но словами.
-		Tekst: fmt.Sprintf("VPN включился, но данные через него не пошли. Попыток: %d, по %d секунд каждая. Причина: %v",
-			popytokPodyoma, int(zhdatPodyoma.Seconds()), poslednyaya),
+		// Причина понятной частью: полный текст пробы записан строкой выше.
+		Tekst: fmt.Sprintf("VPN включился, но данные через него не пошли. Попыток: %d, по %d секунд каждая. Причина: %s",
+			popytokPodyoma, int(zhdatPodyoma.Seconds()), sboi.DlyaCheloveka(poslednyaya)),
 	})
 	return fmt.Errorf("VPN не понёс трафик за %d попытки по %s: %w", popytokPodyoma, zhdatPodyoma, poslednyaya)
 }
@@ -1727,7 +1744,7 @@ func (s *Sluzhba) opustit() {
 	oshibkaIPv6 := s.oshibkaIPv6
 	s.mu.Unlock()
 	if oshibkaIPv6 != nil {
-		s.postavit(protokol.SostVyklyuchen, &protokol.Oshibka{Kod: protokol.KodFirewallFailed, Tekst: "Не удалось восстановить IPv6: " + oshibkaIPv6.Error()})
+		s.postavit(protokol.SostVyklyuchen, &protokol.Oshibka{Kod: protokol.KodFirewallFailed, Tekst: "Не удалось восстановить IPv6: " + tekstIz("IPv6", oshibkaIPv6)})
 	}
 	// Файл переживает процесс, поэтому написанное в нём после опускания это то,
 	// во что поверит следующий старт. Оставить там podnyat с индексом мёртвого

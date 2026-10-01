@@ -4,263 +4,190 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"net"
-	"net/netip"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
-	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
 
-// Команда measureDelays: задержка ПО КАЖДОМУ серверу, две цифры вместо одной.
+// Команда measureDelays: пинг по каждому серверу одним числом (01.10.2026).
 //
-// До неё клиент знал ровно одно число, задержку последней пробы urltest, одну
-// на всё подключение и обновляемую раз в три минуты. Выбирать сервер по такому
-// числу нельзя: оно про тот сервер, который уже выбран.
-//
-// Две цифры, а не одна, потому что они отвечают на разные вопросы. tcping это
-// дорога до узла, realping это весь путь через туннель вместе с рукопожатием.
-// Сервер, отвечающий на TCP мгновенно и не несущий ни байта, это обычный
-// случай (просроченный ключ, чужой sid у REALITY), и по одной цифре он
-// неотличим от далёкого, но исправного.
+// Число то же, что строка «Задержка» на главном экране и пинг в Discord: один
+// круг по прогретому соединению. Через какой сервер идти, называет логин
+// входа замеров у временного ядра.
 
-// TestZaderzhkiBezTunnelyaOtdayutTcpingANeOtkaz: главное свойство части Б.
-// tcping туннеля не требует, значит кнопка полезна ДО подключения, то есть
-// ровно тогда, когда человеку и надо выбрать, куда подключаться.
-func TestZaderzhkiBezTunnelyaOtdayutTcpingANeOtkaz(t *testing.T) {
-	l := zhivoyUzel(t)
-	s := podstavnayaSUzlom(t, l)
-
-	k := s.Obrabotat(context.Background(), protokol.Kadr{
-		Tip: "komanda", Id: 1, Imya: "measureDelays",
-	})
-	if k.Oshib != nil {
-		t.Fatalf("отказ при опущенном туннеле: %v", k.Oshib)
-	}
-	z := razobratZaderzhki(t, k)
-	if len(z) != 1 {
-		t.Fatalf("замеров не по числу серверов: %d", len(z))
-	}
-	if z[0].TcpingMs == nil {
-		t.Fatal("tcping не измерен, хотя узел жив и туннель для него не нужен")
-	}
-	if *z[0].TcpingMs < 0 {
-		t.Fatalf("tcping отрицательный: %d", *z[0].TcpingMs)
-	}
-	if z[0].RealpingMs != nil {
-		t.Fatalf("realping измерен без туннеля: %v", *z[0].RealpingMs)
-	}
-	if z[0].RealpingOtkaz == "" {
-		t.Fatal("realping не измерен и не объяснён: человеку нечего прочитать")
-	}
-}
-
-// С9 аудита 1.6.1. hy2 и tuic слушают UDP, и их TCP-порт ничего не говорит:
-// закрытый показал бы мёртвым исправный сервер, занятый чужой службой показал
-// бы живым мёртвый. Узел для них не мерится, окно рисует прочерк.
-func TestTcpingNeMeritsyaDlyaUDPProtokolov(t *testing.T) {
-	a := zhivoyUzel(t).Addr().(*net.TCPAddr)
-	s := podstavnaya(t, nil)
-	for _, tr := range []string{"hy2", "tuic"} {
-		z := s.zamerOdnogo(context.Background(), protokol.Server{Id: "u", Transport: tr, Host: a.IP.String(), Port: a.Port}, "", "")
-		b, err := json.Marshal(z)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if z.TcpingMs != nil || z.TcpingOtkaz != "" || !strings.Contains(string(b), `"tcping_net":true`) {
-			t.Fatalf("%s: узел замерен по TCP: %s", tr, b)
-		}
-	}
-}
-
-// TestZaderzhkiMolchashchiyUzelEtoOtkazANeNol: ноль вместо отказа поставил бы
-// мёртвый сервер ПЕРВЫМ по задержке, то есть ровно наверх списка.
-func TestZaderzhkiMolchashchiyUzelEtoOtkazANeNol(t *testing.T) {
-	l := zhivoyUzel(t)
-	adres := l.Addr().String()
-	l.Close()
-	s := podstavnayaSAdresom(t, adres)
-
-	k := s.Obrabotat(context.Background(), protokol.Kadr{
-		Tip: "komanda", Id: 1, Imya: "measureDelays",
-	})
-	if k.Oshib != nil {
-		t.Fatalf("вся команда отвергнута из-за одного мёртвого узла: %v", k.Oshib)
-	}
-	z := razobratZaderzhki(t, k)
-	if z[0].TcpingMs != nil {
-		t.Fatalf("мёртвый узел получил число: %v", *z[0].TcpingMs)
-	}
-	if z[0].TcpingOtkaz == "" {
-		t.Fatal("мёртвый узел без причины отказа")
-	}
-}
-
-// TestZaderzhkiSTunnelemZovutKlashPoTeguKazhdogo: realping идёт через ЯДРО, по
-// тегу конкретного исходящего, а не через отдельную пробу. Проба мимо ядра
-// мерила бы путь, которым трафик не пойдёт.
-func TestZaderzhkiSTunnelemZovutKlashPoTeguKazhdogo(t *testing.T) {
-	l := zhivoyUzel(t)
-	s := podstavnayaSUzlom(t, l)
-	s.mu.Lock()
-	s.portClash, s.sekretClash = 9090, "sekret"
-	s.mu.Unlock()
-
-	var sprosheno []string
-	s.zamerit = func(_ context.Context, _, _, teg string) (time.Duration, error) {
-		sprosheno = append(sprosheno, teg)
-		return 87 * time.Millisecond, nil
-	}
-
-	k := s.Obrabotat(context.Background(), protokol.Kadr{
-		Tip: "komanda", Id: 1, Imya: "measureDelays",
-	})
-	if k.Oshib != nil {
-		t.Fatalf("отказ при поднятом туннеле: %v", k.Oshib)
-	}
-	z := razobratZaderzhki(t, k)
-	if z[0].RealpingMs == nil || *z[0].RealpingMs != 87 {
-		t.Fatalf("realping не дошёл: %v", z[0].RealpingMs)
-	}
-	if z[0].TcpingMs != nil {
-		t.Fatal("TCP при включённом TUN не является независимым замером")
-	}
-	if len(sprosheno) != 1 || sprosheno[0] == "" {
-		t.Fatalf("ядро спрошено не по тегу сервера: %v", sprosheno)
-	}
-}
-
-// TestZaderzhkiOtkazYadraNeSpisyvaetsyaNaServer: если молчит Clash API, виноваты
-// МЫ, а не сервер. Свалить своё в «сервер плох» значит выкинуть исправный
-// сервер из списка по собственной вине.
-func TestZaderzhkiOtkazYadraNeSpisyvaetsyaNaServer(t *testing.T) {
-	l := zhivoyUzel(t)
-	s := podstavnayaSUzlom(t, l)
-	s.mu.Lock()
-	s.portClash, s.sekretClash = 9090, "sekret"
-	s.mu.Unlock()
-	s.zamerit = func(context.Context, string, string, string) (time.Duration, error) {
-		return 0, errors.New("clash_api не отвечает")
-	}
-
-	k := s.Obrabotat(context.Background(), protokol.Kadr{
-		Tip: "komanda", Id: 1, Imya: "measureDelays",
-	})
-	z := razobratZaderzhki(t, k)
-	if z[0].TcpingMs != nil || z[0].TcpingOtkaz == "" {
-		t.Fatal("TCP под TUN не должен выдавать локальное подтверждение за задержку узла")
-	}
-	if z[0].RealpingOtkaz == "" {
-		t.Fatal("отказ ядра не назван")
-	}
-}
-
-// Ключ, приехавший подпиской ПОСЛЕ подъёма, ядру неизвестен, и оно отвечает
-// 404. Человеку это надо сказать словами про переподключение: сам ключ
-// исправен, чинить в нём нечего. 12.09.2026 на живой машине такой ключ час
-// показывался как «сервер не принял рукопожатие».
-func TestZaderzhkiNovyyKlyuchPrositPereproverkiAneVinitServer(t *testing.T) {
-	l := zhivoyUzel(t)
-	s := podstavnayaSUzlom(t, l)
-	s.mu.Lock()
-	s.portClash, s.sekretClash = 9090, "sekret"
-	s.mu.Unlock()
-	s.zamerit = func(context.Context, string, string, string) (time.Duration, error) {
-		return 0, fmt.Errorf("%w: srv-1", yadra.ErrTegaNetVYadre)
-	}
-
-	k := s.Obrabotat(context.Background(), protokol.Kadr{
-		Tip: "komanda", Id: 1, Imya: "measureDelays",
-	})
-	z := razobratZaderzhki(t, k)
-	if !strings.Contains(z[0].RealpingOtkaz, "переподключ") {
-		t.Fatalf("отказ %q не говорит, что помогает переподключение", z[0].RealpingOtkaz)
-	}
-	if strings.Contains(z[0].RealpingOtkaz, "рукопожатие") {
-		t.Fatalf("отказ %q винит ключ, хотя ключ исправен", z[0].RealpingOtkaz)
-	}
-}
-
-type zamerServera struct {
-	Id            string `json:"id"`
-	TcpingMs      *int64 `json:"tcping_ms"`
-	TcpingOtkaz   string `json:"tcping_otkaz"`
-	RealpingMs    *int64 `json:"realping_ms"`
-	RealpingOtkaz string `json:"realping_otkaz"`
-}
-
-func razobratZaderzhki(t *testing.T, k protokol.Kadr) []zamerServera {
+// pingovayaSluzhba это служба с двумя серверами и подставным ядром замера.
+// ostanovleno считает остановки ядра: временное ядро обязано гаснуть всегда.
+func pingovayaSluzhba(t *testing.T, isklyucheny map[string]bool) (s *Sluzhba, ostanovleno func() int) {
 	t.Helper()
-	if k.Telo == nil {
-		t.Fatal("ответ без тела")
-	}
-	var o struct {
-		Zamery []zamerServera `json:"zamery"`
-	}
-	if err := json.Unmarshal(k.Telo, &o); err != nil {
-		t.Fatalf("ответ не разбирается: %v", err)
-	}
-	if len(o.Zamery) == 0 {
-		t.Fatal("ответ без замеров")
-	}
-	return o.Zamery
-}
-
-func zhivoyUzel(t *testing.T) net.Listener {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { l.Close() })
-	go func() {
-		for {
-			c, err := l.Accept()
-			if err != nil {
-				return
-			}
-			c.Close()
-		}
-	}()
-	return l
-}
-
-func podstavnayaSUzlom(t *testing.T, l net.Listener) *Sluzhba {
-	t.Helper()
-	return podstavnayaSAdresom(t, l.Addr().String())
-}
-
-func podstavnayaSAdresom(t *testing.T, adres string) *Sluzhba {
-	t.Helper()
-	host, port, err := net.SplitHostPort(adres)
-	if err != nil {
-		t.Fatal(err)
-	}
-	nomer, err := net.LookupPort("tcp", port)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := podstavnaya(t, nil)
-	srv := protokol.Server{
-		Id: "u1", Imya: "узел", Transport: "trojan",
-		Host: host, Port: nomer, Parol: "parol",
-	}
+	s = podstavnaya(t, nil)
 	if err := s.pravitNabor(func(n *Nabor) error {
-		n.Servery = []protokol.Server{srv}
-		n.Vybran = srv.Id
+		n.Servery = []protokol.Server{
+			{Id: "a", Imya: "первый", Transport: "trojan", Host: "192.0.2.1", Port: 443, Parol: "p"},
+			{Id: "b:2", Imya: "второй", Transport: "hy2", Host: "192.0.2.2", Port: 443, Parol: "p"},
+		}
+		n.Vybran = "a"
 		return nil
 	}); err != nil {
 		t.Fatalf("набор не записан: %v", err)
 	}
-	s.sobratAdresa = func() (set.Adresa, error) {
-		return adresaIz(netip.MustParseAddr(host)), nil
+	var mu sync.Mutex
+	n := 0
+	s.yadroZamera = func(context.Context) (vremennoeYadro, error) {
+		return vremennoeYadro{
+			zamer:       genkonfig.VhodZamera{Port: 10810, Parol: "sekret"},
+			isklyucheny: isklyucheny,
+			ostanovit: func() {
+				mu.Lock()
+				n++
+				mu.Unlock()
+			},
+		}, nil
 	}
-	// Умолчание боевого пути: настоящий tcping. Тесты, которым нужен туннель,
-	// подменяют только s.zamerit.
-	_ = yadra.Tcping
-	return s
+	return s, func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return n
+	}
+}
+
+func izmerit(t *testing.T, s *Sluzhba) map[string]zamerZaderzhki {
+	t.Helper()
+	k := s.Obrabotat(context.Background(), protokol.Kadr{Tip: "komanda", Id: 1, Imya: "measureDelays"})
+	if k.Oshib != nil {
+		t.Fatalf("замер отвергнут целиком: %+v", k.Oshib)
+	}
+	var o struct {
+		Zamery []zamerZaderzhki `json:"zamery"`
+	}
+	if err := json.Unmarshal(k.Telo, &o); err != nil {
+		t.Fatalf("ответ не разбирается: %v", err)
+	}
+	po := map[string]zamerZaderzhki{}
+	for _, z := range o.Zamery {
+		po[z.Id] = z
+	}
+	return po
+}
+
+// Главное свойство: каждый сервер меряется через СВОЙ логин входа замеров, с
+// паролем этого ядра, и число приходит в ping_ms.
+func TestPingIdyotCherezLoginSvoegoServera(t *testing.T) {
+	s, ostanovleno := pingovayaSluzhba(t, nil)
+	var mu sync.Mutex
+	loginy := map[string]string{}
+	s.zamerPinga = func(_ context.Context, _ string, proksi *url.URL) (time.Duration, error) {
+		parol, _ := proksi.User.Password()
+		mu.Lock()
+		loginy[proksi.User.Username()] = parol + "@" + proksi.Host
+		mu.Unlock()
+		return 61 * time.Millisecond, nil
+	}
+
+	po := izmerit(t, s)
+	for _, id := range []string{"a", "b:2"} {
+		z := po[id]
+		if z.PingMs == nil || *z.PingMs != 61 {
+			t.Fatalf("%s: пинг %v, ждали 61", id, z.PingMs)
+		}
+		if loginy[genkonfig.PolzovatelZamera(id)] != "sekret@127.0.0.1:10810" {
+			t.Fatalf("%s мерился не своим логином: %v", id, loginy)
+		}
+	}
+	if n := ostanovleno(); n != 1 {
+		t.Fatalf("временное ядро остановлено %d раз, ждали один", n)
+	}
+}
+
+// Мёртвый сервер это отказ с причиной, а НЕ ноль: ноль поставил бы его первым
+// по пингу, то есть ровно наверх списка.
+func TestPingMyortvyyServerEtoOtkazANeNol(t *testing.T) {
+	s, _ := pingovayaSluzhba(t, nil)
+	s.zamerPinga = func(_ context.Context, _ string, proksi *url.URL) (time.Duration, error) {
+		if proksi.User.Username() == genkonfig.PolzovatelZamera("a") {
+			return 0, errors.New("замер не прошёл: EOF")
+		}
+		return 40 * time.Millisecond, nil
+	}
+	po := izmerit(t, s)
+	if po["a"].PingMs != nil || po["a"].PingOtkaz == "" {
+		t.Fatalf("мёртвый сервер: %+v", po["a"])
+	}
+	if po["b:2"].PingMs == nil {
+		t.Fatal("отказ одного сервера унёс замер соседа")
+	}
+}
+
+// Сервер, которого ядро не приняло, не мерится и не прячется: человек видит
+// причину, а не вечный «не измерен».
+func TestPingIsklyuchyonnyyYadromServer(t *testing.T) {
+	s, _ := pingovayaSluzhba(t, map[string]bool{"b:2": true})
+	s.zamerPinga = func(context.Context, string, *url.URL) (time.Duration, error) {
+		return 40 * time.Millisecond, nil
+	}
+	po := izmerit(t, s)
+	if po["b:2"].PingMs != nil || !strings.Contains(po["b:2"].PingOtkaz, "ядро не принимает") {
+		t.Fatalf("исключённый сервер: %+v", po["b:2"])
+	}
+}
+
+// Часы Windows умеют отдать одно и то же время дважды. Ноль на экране это
+// «мгновенно», поэтому меньше миллисекунды не бывает.
+func TestPingNeBivaetNulevym(t *testing.T) {
+	s, _ := pingovayaSluzhba(t, nil)
+	s.zamerPinga = func(context.Context, string, *url.URL) (time.Duration, error) {
+		return 300 * time.Microsecond, nil
+	}
+	if z := izmerit(t, s)["a"]; z.PingMs == nil || *z.PingMs != 1 {
+		t.Fatalf("пинг меньше миллисекунды: %v", z.PingMs)
+	}
+}
+
+// Сборка временного ядра пинга несёт вход замеров с портом и паролем, которые
+// она же и вернула: иначе прибор стучался бы не туда. Проверке сервера этот
+// вход не положен (TestKonfigProverkiServeraBezTunIBezSledov).
+func TestSborkaPingaNesyotVhodZamerov(t *testing.T) {
+	s := podstavnaya(t, nil)
+	telo, _, _, _, zamer, err := s.sobratTunPolno(nil, true, true, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zamer.Port <= 0 || zamer.Parol == "" {
+		t.Fatalf("вход замеров не выдан: %+v", zamer)
+	}
+	var k struct {
+		Inbounds []struct {
+			Tag        string `json:"tag"`
+			ListenPort int    `json:"listen_port"`
+			Users      []struct {
+				Password string `json:"password"`
+			} `json:"users"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal(telo, &k); err != nil {
+		t.Fatal(err)
+	}
+	if len(k.Inbounds) != 1 || k.Inbounds[0].Tag != genkonfig.TegZamerVhod || k.Inbounds[0].ListenPort != zamer.Port {
+		t.Fatalf("входы сборки пинга: %+v", k.Inbounds)
+	}
+	if len(k.Inbounds[0].Users) == 0 || k.Inbounds[0].Users[0].Password != zamer.Parol {
+		t.Fatal("пароль входа не тот, что вернула сборка")
+	}
+}
+
+// Ядро для замера не поднялось: виноваты мы, а не серверы. Это отказ команды
+// с причиной, а не список из одних мёртвых серверов.
+func TestPingBezYadraEtoOtkazKomandy(t *testing.T) {
+	s := podstavnaya(t, nil)
+	k := s.Obrabotat(context.Background(), protokol.Kadr{Tip: "komanda", Id: 1, Imya: "measureDelays"})
+	if k.Oshib == nil || k.Oshib.Kod != protokol.KodYadroNeOtvechaet {
+		t.Fatalf("отказ ядра замера: %+v", k.Oshib)
+	}
+	if !strings.Contains(k.Oshib.Tekst, "пинг не измерен") {
+		t.Fatalf("текст не говорит, что не вышло: %q", k.Oshib.Tekst)
+	}
 }

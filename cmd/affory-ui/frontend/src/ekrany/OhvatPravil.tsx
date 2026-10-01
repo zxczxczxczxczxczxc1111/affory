@@ -4,6 +4,7 @@ import { obyasnitMarshrut, opisatPraviloSoedineniya, type ReshenieProby } from "
 import { imyaMarshruta, type KatalogServisov, type PravilaTrafika } from "../trafik";
 import { Flazhok, Knopka, Pole, Svorachivaemyy } from "./ui";
 import { ProverkaPrilozheniya } from "./ProverkaPrilozheniya";
+import { tekstOshibki } from "../ponyatno";
 
 export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,bezRu=false,killSwitch=false,reklamaVkl=false,disabled,naSbros,proverit,proveritPrilozhenie,vybratFayl,zamenit}:{
   vid:"apps"|"sites"; trafik:PravilaTrafika; katalog?:KatalogServisov; chernovik:boolean;
@@ -34,7 +35,7 @@ export function OhvatPravil({vid,trafik,katalog,chernovik,ozhidayut=false,bezRu=
     const ticket=++epoch.current;
     setBusy(true);setError("");setResult(null);
     try {const snapshot=await proverit({...host?{domen:host}:{},...path?{put:path}:{}});if(ticket===epoch.current)setResult(snapshot);}
-    catch(e:unknown){if(ticket===epoch.current)setError(e instanceof Error?e.message:String(e));}
+    catch(e:unknown){if(ticket===epoch.current)setError(tekstOshibki(e));}
     finally{if(ticket===epoch.current)setBusy(false);}
   };
   return <section aria-label="Охват и проверка правил" className="border-border flex flex-col gap-3 border-t pt-4 text-[13px]">

@@ -170,6 +170,38 @@ func TestKatalogProgrammyZapiraetsyaSSoderzhimym(t *testing.T) {
 	}
 }
 
+// Папка журналов читается пользователями машины, а запись у них не появляется
+// (01.10.2026: кнопка «Открыть папку с журналами» не открывалась ни у кого).
+// Файл внутри получает те же права: журналы службы пишутся в уже созданные
+// файлы, и права одной папки их бы не открыли.
+func TestZhurnalyChitayutsyaPolzovatelyami(t *testing.T) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		t.Skip("нужен повышенный процесс: список доступа иначе не переписать")
+	}
+	dir := filepath.Join(t.TempDir(), "log")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fayl := filepath.Join(dir, "sluzhba.log")
+	if err := os.WriteFile(fayl, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := otkrytZhurnaly(dir); err != nil {
+		t.Fatalf("папка журналов не открыта: %v", err)
+	}
+	hotim := "S-1-5-18 S-1-5-32-544 S-1-5-32-545"
+	for _, put := range []string{dir, fayl} {
+		if s := strings.Join(sidyKataloga(t, put), " "); s != hotim {
+			t.Errorf("%s: записи %s, ждали %s", put, s, hotim)
+		}
+	}
+	for _, d := range sidyZhurnalov {
+		if d.sid == "S-1-5-32-545" && d.prava&(windows.FILE_WRITE_DATA|windows.FILE_APPEND_DATA|windows.DELETE) != 0 {
+			t.Errorf("пользователи получили запись в журналы: %#x", d.prava)
+		}
+	}
+}
+
 // Общий каталог не трогаем: запереть `D:\Games` значит отнять его у человека.
 func TestObshchiyKatalogNeZapiraetsya(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "Games")

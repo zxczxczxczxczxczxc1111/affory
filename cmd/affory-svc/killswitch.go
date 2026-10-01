@@ -88,7 +88,7 @@ func (s *Sluzhba) SetKillSwitch(vkl bool) error {
 		// Состояние спрашивается ЗАНОВО: между входом и этой строкой стоит
 		// переподъём, и снимок с порога успел устареть.
 		s.postavit(s.vnutriSost(), &protokol.Oshibka{
-			Kod: kodRezhima(err), Tekst: err.Error()})
+			Kod: kodRezhima(err), Tekst: tekstIz("подключение", err)})
 		return err
 	}
 	return s.zapomnitZashchitu(true)
@@ -212,7 +212,7 @@ func (s *Sluzhba) osvoboditSetPodZamkom() error {
 	}
 	s.otpechatokZamka, s.dnsPodZamkom = "", netip.Addr{}
 	if err := s.vyklyuchitVes(); err != nil {
-		s.postavit(s.vnutriSost(), &protokol.Oshibka{Kod: kodRezhima(err), Tekst: "Не удалось восстановить сеть: " + err.Error()})
+		s.postavit(s.vnutriSost(), &protokol.Oshibka{Kod: kodRezhima(err), Tekst: "Не удалось восстановить сеть: " + tekstIz("защита", err)})
 		return err
 	}
 	s.mu.Lock()

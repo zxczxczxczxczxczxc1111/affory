@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
@@ -102,15 +103,20 @@ func (s *Sluzhba) obnovitPodpiskuPoId(ctx context.Context, id string) (ssylki.Ra
 	r, err := s.zagruzitPodpisku(ctx, adres)
 	if err != nil {
 		zapisatOperatsiyu("otkaz", err)
+		// Технический текст только сюда: человеку уходит prichinaPodpiski, а
+		// разбирать жалобу без исходной ошибки нечем. Адреса в тексте нет,
+		// загрузчик вычищает его сам (ssylki.bezAdresa).
+		log.Printf("подписка %s: %v", diagnostika.Obezlichit(adres), err)
 		muNabor.Lock()
 		defer muNabor.Unlock()
 		if s.obnovleniyaPodpisok[id] != pokolenie {
 			return ssylki.Razbor{}, 0, errObnovlenieZameneno
 		}
+		ostatok := -1
 		if ctx.Err() == nil {
-			s.otmetitOtkazPodpiski(id, adres, err)
+			ostatok = s.otmetitOtkazPodpiski(id, adres, err)
 		}
-		return r, 0, err
+		return r, 0, otkazSOstatkom{err: err, serverov: ostatok}
 	}
 	serverov := 0
 	for i := range r.Servery {

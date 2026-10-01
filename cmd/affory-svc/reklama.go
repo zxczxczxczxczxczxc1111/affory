@@ -97,7 +97,7 @@ func (s *Sluzhba) raspisanieReklamy(ctx context.Context) {
 		}
 		if err := s.obespechitFaylReklamy(); err != nil {
 			log.Printf("встроенный список рекламы не выложен: %v", err)
-			s.zapomnitOtkazReklamy(err.Error())
+			s.zapomnitOtkazReklamy(tekstIz("реклама", err))
 		}
 		u, _ := reklama.Privesti(r.Uroven)
 		srok := reklama.SleduyushchiyZahod(s.metaReklamy(), u, s.seychas())
@@ -114,7 +114,7 @@ func (s *Sluzhba) raspisanieReklamy(ctx context.Context) {
 				return
 			}
 			log.Printf("список рекламы не обновлён, остаётся прежний: %v", err)
-			s.zapomnitOtkazReklamy(err.Error())
+			s.zapomnitOtkazReklamy(tekstIz("реклама", err))
 			// Отказ по падению числа правил ждёт свой срок, остальные час.
 			otkazDo = s.seychas().Add(otstupReklamy)
 			if povtor.After(otkazDo) {
@@ -217,6 +217,7 @@ const predelPrichinyReklamy = 300
 
 // zapomnitOtkazReklamy: голая причина, без префикса. Фразу вокруг строит окно.
 func (s *Sluzhba) zapomnitOtkazReklamy(prichina string) {
+	prichina = tekstDlyaOkna("реклама", prichina)
 	if r := []rune(prichina); len(r) > predelPrichinyReklamy {
 		prichina = string(r[:predelPrichinyReklamy]) + "…"
 	}
@@ -468,7 +469,7 @@ func (s *Sluzhba) reklamaDlyaKonfiga(n Nabor, bezReklamy bool) *genkonfig.Reklam
 	}
 	if err := s.obespechitFaylReklamy(); err != nil {
 		log.Printf("список рекламы не выложен, подъём без блокировки: %v", err)
-		s.zapomnitOtkazReklamy(err.Error())
+		s.zapomnitOtkazReklamy(tekstIz("реклама", err))
 		return nil
 	}
 	return &genkonfig.Reklama{Fayl: putReklamy(), Razresheno: r.Razresheno, Svoi: s.svoiHostyReklamy(n)}

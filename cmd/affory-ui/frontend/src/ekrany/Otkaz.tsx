@@ -2,6 +2,7 @@ import {
   KOD_OBOLOCHKI, TEKST_BEZ_KODA, TEKST_OBOLOCHKI, TEKST_SLUZHBY_DOSLOVNO,
   podpisDeystviya, tekstOtkaza, type Deystvie,
 } from "./otkazy";
+import { ponyatno } from "../ponyatno";
 
 // One refusal, one screen. Pure over props: the code names the text and the
 // action, App decides what the action does. An unknown code still renders,
@@ -39,17 +40,27 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
   // английский, потому что приходит из Windows. Крупно он и есть тот самый
   // отчёт о сбое, которого правило избегает.
   const nash = kod === KOD_OBOLOCHKI ? TEKST_OBOLOCHKI : z?.tekst;
-  const doslovno = (TEKST_SLUZHBY_DOSLOVNO.has(kod)
-    || (z === undefined && kod !== KOD_OBOLOCHKI)) && tekst;
+  // Сообщение панели подписки идёт как есть: оно может быть и по-английски, и
+  // в нём бывает код оплаты.
+  const panel = TEKST_SLUZHBY_DOSLOVNO.has(kod) && !!tekst;
+  const neizvesten = z === undefined && kod !== KOD_OBOLOCHKI && !!tekst;
+  // Английский хвост Windows и Go отрезается (01.10.2026), целиком текст
+  // остаётся в подсказке у причины: окно своего журнала не ведёт, и без неё
+  // разбирать сбой оболочки было бы не по чему.
+  const chistyy = tekst ? ponyatno(tekst) : "";
   // Нечем сказать вообще: ни строки по коду, ни текста от отправителя. Тогда
   // общая фраза, но НЕ код: код это имя для нас, а не ответ человеку.
-  const osnovnoy = doslovno ? tekst : (nash ?? TEKST_BEZ_KODA);
+  const osnovnoy = panel ? tekst : neizvesten ? (chistyy || TEKST_BEZ_KODA) : (nash ?? TEKST_BEZ_KODA);
+  const prichina = panel || neizvesten ? "" : chistyy;
   const podpis = podpisDeystviya[deystvie];
   // Служба и окно про одно и то же говорят своими словами, и на экране это
   // читалось как две строки об одном: «эта команда только для администратора
   // машины», а под ней «команда доступна только администратору этой машины».
   // Повтор не рисуем, а живой текст (например, отказ от запроса прав) рисуем.
-  const povtor = (tekst ?? "").trim() === (osnovnoy ?? "").trim();
+  const povtor = prichina.trim() === (osnovnoy ?? "").trim();
+  // Если от причины ничего не осталось, сырой текст висит подсказкой на
+  // главной строке, иначе он пропал бы с экрана совсем.
+  const skrytyy = tekst && tekst !== osnovnoy && (!prichina || povtor) ? tekst : undefined;
 
   return (
     <section
@@ -76,9 +87,9 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
           Регистр правится ПОКАЗОМ, а не таблицей §9.1: та сверяется с
           спекой построчно, и трогать в ней написание значило бы чинить
           внешний вид в контракте. */}
-      <p className="text-foreground pr-8 text-base font-medium first-letter:uppercase" data-testid="otkaz-tekst">{osnovnoy}</p>
-      {!doslovno && tekst && !povtor && (
-        <p className="text-fg-secondary text-sm" data-testid="otkaz-prichina">{tekst}</p>
+      <p className="text-foreground pr-8 text-base font-medium first-letter:uppercase" data-testid="otkaz-tekst" title={skrytyy}>{osnovnoy}</p>
+      {prichina && !povtor && (
+        <p className="text-fg-secondary text-sm" data-testid="otkaz-prichina" title={tekst !== prichina ? tekst : undefined}>{prichina}</p>
       )}
       {deystvie === "pokazat-vinovnika" && (
         <p className="text-fg-secondary text-sm">

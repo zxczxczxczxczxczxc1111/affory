@@ -79,6 +79,10 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	// проверки не доходил, а проверка кандидата зовётся уже из перезапуска.
 	// Тесты, которым судья нужен, ставят свой сами (см. kandidat_test.go).
 	s.proveritKonfig = nil
+	// Настоящий замер пинга поднимает sing-box. Тесты пинга ставят своё ядро.
+	s.yadroZamera = func(context.Context) (vremennoeYadro, error) {
+		return vremennoeYadro{}, errors.New("core disabled in service fixture")
+	}
 	s.storozhit = func(ctx context.Context, imya, konfig string, sob func(protokol.Sostoyanie)) error {
 		<-ctx.Done()
 		return ctx.Err()

@@ -20,12 +20,12 @@ type teloProfilya struct {
 	Profil string `json:"profil,omitempty"`
 }
 
-// trebuetAdmina это отдельная проверка поверх допуска канала.
+// trebuetAdmina это отдельная проверка поверх допуска канала. Зовёт её только
+// диспетчер по таблице komandyDlyaAdmina.
 //
-// Канал пускает INTERACTIVE намеренно, чтобы интерфейс не требовал админа на
-// каждый запуск. Но экспорт отдаёт ВСЕ ключи и адрес подписки, а импорт уводит
-// весь трафик машины на чужой выход, и не-админ по RDP либо вторая учётка
-// получали бы и то и другое.
+// До 01.10.2026 экспорт и импорт профиля звали её ещё и сами. Владелец снял
+// подтверждение со всего, кроме архива с диска, и вторая проверка внутри
+// команды держала бы запрос прав там, где таблица его уже не требует.
 func (s *Sluzhba) trebuetAdmina(ctx context.Context, k protokol.Kadr) *protokol.Kadr {
 	// Отсутствие допуска трактуется как НЕ админ. Контекст без значения бывает
 	// только там, где проверку не проводили, и толковать это в пользу
@@ -39,9 +39,6 @@ func (s *Sluzhba) trebuetAdmina(ctx context.Context, k protokol.Kadr) *protokol.
 }
 
 func (s *Sluzhba) eksportProfilya(ctx context.Context, k protokol.Kadr) protokol.Kadr {
-	if o := s.trebuetAdmina(ctx, k); o != nil {
-		return *o
-	}
 	var t teloProfilya
 	if err := json.Unmarshal(k.Telo, &t); err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, "тело команды не разбирается")
@@ -49,7 +46,7 @@ func (s *Sluzhba) eksportProfilya(ctx context.Context, k protokol.Kadr) protokol
 
 	telo, err := s.sekretyChitat()
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+		return otkazIz(k, protokol.KodSecretsUnreadable, err)
 	}
 	if len(telo) == 0 {
 		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable,
@@ -67,9 +64,6 @@ func (s *Sluzhba) eksportProfilya(ctx context.Context, k protokol.Kadr) protokol
 }
 
 func (s *Sluzhba) importProfilya(ctx context.Context, k protokol.Kadr) protokol.Kadr {
-	if o := s.trebuetAdmina(ctx, k); o != nil {
-		return *o
-	}
 	var t teloProfilya
 	if err := json.Unmarshal(k.Telo, &t); err != nil {
 		return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, "тело команды не разбирается")
@@ -95,7 +89,7 @@ func (s *Sluzhba) importProfilya(ctx context.Context, k protokol.Kadr) protokol.
 	oshibPeresborki := s.zamenitNaborBlobom(telo)
 	if oshibPeresborki != nil && !errors.Is(oshibPeresborki, errPravilaOtstali) {
 		// Записать не смогли вовсе: набор не тронут, опускать нечего.
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, oshibPeresborki.Error())
+		return otkazIz(k, protokol.KodSecretsUnreadable, oshibPeresborki)
 	}
 
 	// Туннель опускается ПОСЛЕ пересборки, и порядок здесь не вкусовой. Импорт

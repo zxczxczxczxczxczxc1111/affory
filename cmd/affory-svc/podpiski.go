@@ -258,23 +258,12 @@ func (n *Nabor) OtmetitObnovlenie(id string, kogda time.Time) {
 func (s *Sluzhba) listSubscriptions(k protokol.Kadr) protokol.Kadr {
 	n, err := s.nabor()
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
-	}
-	// Ключи активной лежат в рабочем списке, а не в её записи, поэтому её
-	// серверы считаются оттуда. Одно число в двух местах разъехалось бы.
-	vRabochem := 0
-	for _, srv := range n.Servery {
-		if srv.IzPodpiski {
-			vRabochem++
-		}
+		return otkazIz(k, protokol.KodSecretsUnreadable, err)
 	}
 	spisok := make([]map[string]any, 0, len(n.Podpiski))
 	for _, z := range n.Podpiski {
 		aktivnaya := z.Id == n.Aktivnaya
-		serverov := len(z.Servery)
-		if aktivnaya {
-			serverov = vRabochem
-		}
+		serverov := n.serverovPodpiski(z.Id)
 		istochnik := z.Servery
 		if aktivnaya {
 			istochnik = nil
@@ -339,9 +328,9 @@ func (s *Sluzhba) addSubscription(ctx context.Context, k protokol.Kadr) protokol
 		return nil
 	}); err != nil {
 		if errors.Is(err, errSlishkomMnogoPodpisok) {
-			return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed, err.Error())
+			return otkazIz(k, protokol.KodSubscriptionMalformed, err)
 		}
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 
 	r, serverov, err := s.obnovitPodpiskuPoId(ctx, IdPodpiski(adres))
@@ -369,7 +358,7 @@ func (s *Sluzhba) removeSubscription(k protokol.Kadr) protokol.Kadr {
 		n.UbratPodpisku(telo.Id)
 		return nil
 	}); err != nil {
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 	if !nashli {
 		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed, "такой подписки нет")
@@ -404,7 +393,7 @@ func (s *Sluzhba) setActiveSubscription(ctx context.Context, k protokol.Kadr) pr
 		zamenyId = n.PereklyuchitAktivnuyu(telo.Id, adresKlash != "")
 		return nil
 	}); err != nil {
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 	if !nashli {
 		return otkaz(k.Id, k.Imya, protokol.KodSubscriptionMalformed, "такой подписки нет")
@@ -412,7 +401,7 @@ func (s *Sluzhba) setActiveSubscription(ctx context.Context, k protokol.Kadr) pr
 	if !pusto {
 		n, err := s.nabor()
 		if err != nil {
-			return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+			return otkazIz(k, protokol.KodSecretsUnreadable, err)
 		}
 		return otvet(k.Id, k.Imya, map[string]any{"aktivnaya": telo.Id, "serverov": len(n.Servery), "server_ids": zamenyId})
 	}
@@ -527,20 +516,47 @@ func (s *Sluzhba) obnovitVsePodpiski(ctx context.Context) (ssylki.Razbor, int, e
 // держать набор запертым на время похода значило бы подвесить любую команду
 // человека на чужую панель.
 // Вызывается под muNabor после проверки поколения сетевого запроса.
-func (s *Sluzhba) otmetitOtkazPodpiski(id, adres string, prichina error) {
+//
+// Отдаёт, сколько серверов у подписки осталось от прошлых обновлений, или -1,
+// если набор не прочитался: отказ и число берутся из одного чтения, иначе
+// строка подписки и текст отказа могли бы сказать про разные состояния.
+func (s *Sluzhba) otmetitOtkazPodpiski(id, adres string, prichina error) int {
 	if id == "" || prichina == nil {
-		return
+		return -1
 	}
+	ostatok := -1
 	// Меняется только текст ошибки. Пересборка брандмауэра здесь не нужна
 	// и задерживала возврат уже завершившегося сетевого запроса.
 	n, err := s.nabor()
 	if err == nil {
 		if z := n.zapisPodpiski(id); z != nil && z.Adres == adres {
-			z.Otkaz = prichina.Error()
+			ostatok = n.serverovPodpiski(id)
+			z.Otkaz = prichinaPodpiski(prichina)
 			err = s.zapisatNabor(n)
 		}
 	}
 	if err != nil {
 		log.Printf("причина отказа подписки не записана: %v", err)
 	}
+	return ostatok
+}
+
+// serverovPodpiski считает ключи одной подписки. Ключи активной лежат в
+// рабочем списке, а не в её записи, поэтому её серверы считаются оттуда.
+// Одна функция на экран и на текст отказа: одно число в двух местах
+// разъехалось бы.
+func (n *Nabor) serverovPodpiski(id string) int {
+	if id == n.Aktivnaya {
+		vRabochem := 0
+		for _, srv := range n.Servery {
+			if srv.IzPodpiski {
+				vRabochem++
+			}
+		}
+		return vRabochem
+	}
+	if z := n.zapisPodpiski(id); z != nil {
+		return len(z.Servery)
+	}
+	return 0
 }

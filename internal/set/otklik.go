@@ -38,19 +38,25 @@ func Otklik(ctx context.Context, cel string, portProksi int) (time.Duration, err
 	if portProksi <= 0 {
 		return 0, fmt.Errorf("локальный прокси не поднят, через VPN мерить нечем")
 	}
+	return OtklikCherez(ctx, cel, &url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", portProksi)})
+}
+
+// OtklikCherez это тот же замер через заданный прокси. Пинг списка серверов
+// (01.10.2026) ходит через вход замеров ядра, и логин в адресе прокси называет
+// сервер, через который пойдёт запрос.
+func OtklikCherez(ctx context.Context, cel string, proksi *url.URL) (time.Duration, error) {
 	if cel == "" {
 		cel = CelOtklikaPoUmolchaniyu
 	}
 	do, otm := context.WithTimeout(ctx, srokOtklika)
 	defer otm()
 
-	u := &url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", portProksi)}
 	// Keep-alive включён НАМЕРЕННО, в этом весь замер: второй запрос обязан
 	// пойти по соединению первого. Транспорт живёт ровно один замер и
 	// закрывается здесь же: транспорт, собранный на вызов и брошенный, уносит
 	// соединение в свой пул простоя и хоронит его там (разбор у klientKlash в
 	// internal/yadra).
-	tr := &http.Transport{Proxy: http.ProxyURL(u), MaxIdleConns: 1, IdleConnTimeout: srokOtklika}
+	tr := &http.Transport{Proxy: http.ProxyURL(proksi), MaxIdleConns: 1, IdleConnTimeout: srokOtklika}
 	defer tr.CloseIdleConnections()
 	kl := &http.Client{Transport: tr}
 

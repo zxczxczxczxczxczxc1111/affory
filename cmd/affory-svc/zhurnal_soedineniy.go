@@ -35,7 +35,7 @@ func (s *Sluzhba) setJournal(k protokol.Kadr) protokol.Kadr {
 	}
 	if len(k.Telo) > 0 {
 		if err := json.Unmarshal(k.Telo, &telo); err != nil {
-			return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+			return otkazIz(k, protokol.KodProtocolMismatch, err)
 		}
 	}
 	s.SetJournal(telo.Vkl)
@@ -44,12 +44,12 @@ func (s *Sluzhba) setJournal(k protokol.Kadr) protokol.Kadr {
 
 func (s *Sluzhba) clearJournal(k protokol.Kadr) protokol.Kadr {
 	if err := s.zhurnalSoed.Ochistit(); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodZhurnalNeStyort, err.Error())
+		return otkazIz(k, protokol.KodZhurnalNeStyort, err)
 	}
 	// Подробный журнал входит в то же обещание: кнопка называется «Очистить
 	// журнал», а не «очистить один из журналов».
 	if err := s.zhurnalDiag.Ochistit(); err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodZhurnalNeStyort, err.Error())
+		return otkazIz(k, protokol.KodZhurnalNeStyort, err)
 	}
 	return otvet(k.Id, k.Imya, s.Status())
 }

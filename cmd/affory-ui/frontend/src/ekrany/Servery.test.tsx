@@ -102,10 +102,10 @@ describe("серверы: список", () => {
 
   it("полоса подписки названа её узлом: две подписки перестают быть сплошным столбцом", () => {
     risovat(spisok([server(1), server(2, { iz_podpiski: false })]), VYKL, vi.fn(), [
-      { id: "p1", uzel: "hi.affory.space", aktivnaya: true, serverov: 6 },
-      { id: "p2", uzel: "zxc123.affory.space", aktivnaya: false, serverov: 8 },
+      { id: "p1", uzel: "vpn.example.net", aktivnaya: true, serverov: 6 },
+      { id: "p2", uzel: "zapas.example.net", aktivnaya: false, serverov: 8 },
     ]);
-    expect(screen.getByRole("group", { name: "Из подписки hi.affory.space" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Из подписки vpn.example.net" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Добавлены вручную" })).toBeTruthy();
   });
 
@@ -325,7 +325,7 @@ describe("серверы: из буфера и с экрана", () => {
   });
 
   // Отказ всей вставки показывается в форме словами службы. Баннер для кода
-  // subscription-malformed сказал бы «подписка отдала непонятное» про текст,
+  // subscription-malformed сказал бы «подписка не подошла» про текст,
   // который никакая подписка не присылала.
   it("отказ всей вставки остаётся в форме, а не уходит баннером", () => {
     const na = vi.fn((_k: string, _t: unknown, _o?: (telo: unknown) => void, naOtkaz?: (o: { kod: string; tekst: string }) => void) => {
@@ -451,7 +451,7 @@ describe("серверы: четыре состояния", () => {
         naKomandu={vi.fn()}
       />,
     );
-    expect(screen.getByText(/прежние серверы не читаются/i)).toBeTruthy();
+    expect(screen.getByText(/файл с серверами не открылся/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /повтор/i }));
     expect(obnovit).toHaveBeenCalledTimes(1);
     // Отказ это ответ, а не ожидание: строка «загружается» уходит.
@@ -499,11 +499,9 @@ describe("серверы: замер задержки", () => {
   // пробы urltest, одну на всё подключение. Выбирать сервер по нему нельзя:
   // оно про тот сервер, который УЖЕ выбран.
   //
-  // Чисел два. tcping это дорога до узла, и туннель для него не нужен, значит
-  // кнопка полезна ДО подключения, то есть тогда, когда и надо выбирать.
-  // realping это весь путь через туннель вместе с рукопожатием. Узел,
-  // отвечающий на TCP мгновенно и не несущий ни байта, по одной цифре
-  // неотличим от далёкого, но исправного.
+  // С 01.10.2026 число одно: пинг через сервер по прогретому соединению, то
+  // же, что строка «Задержка» и пинг в Discord. Меряется и при выключенном
+  // VPN: служба поднимает для замера своё ядро без туннеля.
   it("кнопка шлёт measureDelays", () => {
     const na = vi.fn();
     render(<Servery {...svoystva({ naKomandu: na })} />);
@@ -511,59 +509,19 @@ describe("серверы: замер задержки", () => {
     expect(na).toHaveBeenCalledWith("measureDelays", {});
   });
 
-  it("две задержки видны в строке своими числами", () => {
-    render(
-      <Servery
-        {...svoystva({
-          zaderzhki: [{ id: "s1", tcping_ms: 31, realping_ms: 92 }],
-        })}
-      />,
-    );
-    const r = screen.getByTestId("zaderzhka-s1");
-    expect(r).toHaveTextContent("31");
-    expect(r).toHaveTextContent("92");
+  it("пинг виден в строке одним числом", () => {
+    render(<Servery {...svoystva({ zaderzhki: [{ id: "s1", ping_ms: 47 }] })} />);
+    expect(screen.getByTestId("zaderzhka-s1")).toHaveTextContent(/^47 мс$/);
   });
 
-  it("неизмеренный realping это слово, а не ноль", () => {
-    // Ноль на экране читается как «мгновенно» и ставит узел первым по
-    // задержке, то есть наверх списка. Ровно наоборот тому, что есть.
-    render(
-      <Servery
-        {...svoystva({
-          zaderzhki: [{ id: "s1", tcping_ms: 31, realping_otkaz: "VPN отключён: через него мерить нечего" }],
-        })}
-      />,
-    );
+  it("мёртвый сервер это слово, а не ноль, и причина в подсказке", () => {
+    // Ноль на экране читается как «мгновенно» и ставит сервер первым по
+    // пингу, то есть наверх списка. Ровно наоборот тому, что есть.
+    render(<Servery {...svoystva({ zaderzhki: [{ id: "s1", ping_otkaz: "сервер не ответил вовремя" }] })} />);
     const r = screen.getByTestId("zaderzhka-s1");
-    expect(r).toHaveTextContent("31");
+    expect(r).toHaveTextContent("недоступен");
     expect(r).not.toHaveTextContent(/\b0\b/);
-    expect(r).toHaveTextContent(/VPN отключён|не измерен/);
-  });
-
-  it("молчащий узел показан отказом, а не пустым местом", () => {
-    render(
-      <Servery
-        {...svoystva({
-          zaderzhki: [{ id: "s1", tcping_otkaz: "узел не отвечает" }],
-        })}
-      />,
-    );
-    expect(screen.getByTestId("zaderzhka-s1")).toHaveTextContent(/узел не отвечает/);
-  });
-
-  it("узел hy2 и tuic показан прочерком, а не отказом", () => {
-    // С9 аудита 1.6.1. Эти протоколы ходят по UDP, их TCP-порт ничего не
-    // говорит, и служба узел не мерит.
-    render(
-      <Servery
-        {...svoystva({
-          zaderzhki: [{ id: "s1", tcping_net: true, realping_ms: 92 }],
-        })}
-      />,
-    );
-    const r = screen.getByTestId("zaderzhka-s1");
-    expect(r).toHaveTextContent("узел —");
-    expect(r).not.toHaveTextContent("не измерен");
+    expect(r).toHaveAttribute("title", "сервер не ответил вовремя");
   });
 
   it("без замера строка задержки не появляется вовсе", () => {

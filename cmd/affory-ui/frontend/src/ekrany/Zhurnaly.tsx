@@ -1,14 +1,15 @@
 import { useState } from "react";
 import type { StatusOtvet } from "../protokol";
 import { Knopka, Tumbler } from "./ui";
+import { tekstOshibki } from "../ponyatno";
 
 export function Zhurnaly({ status, disabled, naKomandu, naPapku, naDiagnostiku, zanyatyeKomandy = {} }: {
   status: StatusOtvet;
   disabled: boolean;
   naKomandu: (komanda: string, telo: unknown) => void;
   naPapku?: () => Promise<void>;
-  /** О6 аудита 1.6.1: папка журналов открыта только администраторам, а файл
-   *  диагностики собирает служба и пишет оболочка. */
+  /** Файл диагностики собирает служба и пишет оболочка (О6 аудита 1.6.1).
+   *  Папку журналов с 01.10.2026 читают все пользователи машины. */
   naDiagnostiku?: () => Promise<string>;
   zanyatyeKomandy?: Record<string, boolean>;
 }) {
@@ -21,14 +22,14 @@ export function Zhurnaly({ status, disabled, naKomandu, naPapku, naDiagnostiku, 
     if (!naPapku || opening) return;
     setOpening(true); setError("");
     try { await naPapku(); }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e: unknown) { setError(tekstOshibki(e)); }
     finally { setOpening(false); }
   };
   const sohranit = async () => {
     if (!naDiagnostiku || sohranyayu) return;
     zadatSohranyayu(true); zadatOtkazDiag(""); zadatItogDiag("");
     try { zadatItogDiag(await naDiagnostiku()); }
-    catch (e: unknown) { zadatOtkazDiag(e instanceof Error ? e.message : String(e)); }
+    catch (e: unknown) { zadatOtkazDiag(tekstOshibki(e)); }
     finally { zadatSohranyayu(false); }
   };
   return <div className="border-border flex flex-col gap-4 border-t p-4" data-testid="zhurnaly">

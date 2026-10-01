@@ -3,6 +3,7 @@ import { type OhvatPrilozheniya, type ProveritPrilozhenie } from "../ohvat";
 import { imyaMarshruta, type PraviloPrilozheniya } from "../trafik";
 import { Knopka } from "./ui";
 import { Vybor } from "./Vybor";
+import { tekstOshibki } from "../ponyatno";
 
 const fileText={est:"Файл найден",net:"Файл не найден",nedostupen:"Не удалось прочитать сведения о файле",ne_proveren:"Файл не проверен",papka:"Указана папка, а не файл приложения"};
 const nameOf=(path:string)=>path.split(/[/\\]/).pop() || path;
@@ -26,14 +27,14 @@ export function ProverkaPrilozheniya({rules,draft,disabled,connectionBusy=false,
     if(!proverit || !selected || draft || disabled || busy || picking)return;
     const ticket=++epoch.current;setBusy(true);setError("");setResult(null);setNotice("");
     try{const response=await proverit(path);if(ticket===epoch.current)setResult(response);}
-    catch(e:unknown){if(ticket===epoch.current)setError(e instanceof Error?e.message:String(e));}
+    catch(e:unknown){if(ticket===epoch.current)setError(tekstOshibki(e));}
     finally{if(ticket===epoch.current)setBusy(false);}
   };
   const replace=async()=>{
     if(!vybratFayl || !zamenit || !selected || disabled || busy || picking)return;
     const ticket=++epoch.current;setPicking(true);setError("");
     try{const next=await vybratFayl();if(ticket!==epoch.current || !next)return;if(zamenit(path,next)){setPath(next);setResult(null);setNotice("Новый файл выбран. Примени изменения, чтобы сохранить правило.");}else{setNotice("Этот файл уже выбран.");}}
-    catch(e:unknown){if(ticket===epoch.current)setError(e instanceof Error?e.message:String(e));}
+    catch(e:unknown){if(ticket===epoch.current)setError(tekstOshibki(e));}
     finally{if(ticket===epoch.current)setPicking(false);}
   };
   return <section aria-label="Работающие программы под правилом" className="border-border flex flex-col gap-3 border-t pt-4">

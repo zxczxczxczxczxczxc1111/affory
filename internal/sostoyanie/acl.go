@@ -21,7 +21,28 @@ import (
 // account is "СИСТЕМА"; icacls with English names fails there with a message
 // about an invalid parameter, and the failure looks like a bug in our code.
 func ZavestiKatalogDannyh() error {
-	return zavestiKatalog(KatalogDannyh())
+	if err := zavestiKatalog(KatalogDannyh()); err != nil {
+		return err
+	}
+	return otkrytZhurnaly(KatalogZhurnalov())
+}
+
+// otkrytZhurnaly даёт пользователям машины ЧТЕНИЕ папки журналов (01.10.2026).
+//
+// До этого журналы лежали под тем же замком, что и ключи (О6 аудита 1.6.1), и
+// кнопка «Открыть папку с журналами» не работала ни у кого: папку открывает
+// Проводник, а он идёт с обычным токеном даже у администратора, у которого
+// окно запущено с повышением. Владелец решил открыть чтение: в журналах нет
+// ключей, а адреса серверов человек и так видит в окне. Писать по-прежнему
+// может только служба. Остальной каталог данных остаётся запертым.
+func otkrytZhurnaly(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("папка журналов не создана: %w", err)
+	}
+	if err := zakrytDerevo(dir, sidyZhurnalov); err != nil {
+		return fmt.Errorf("права папки журналов не выставлены: %w", err)
+	}
+	return nil
 }
 
 // ErrKatalogObshchiy означает, что каталог программы не отдельный наш, а общий
@@ -70,6 +91,10 @@ var (
 	sidyProgrammy = append(append([]dostupSida{}, sidyDannyh...),
 		dostupSida{"S-1-5-32-545", chtenieIZapusk, windows.TRUSTEE_IS_GROUP}, // BUILTIN\Users
 		dostupSida{"S-1-15-2-1", chtenieIZapusk, windows.TRUSTEE_IS_GROUP},   // ALL APPLICATION PACKAGES
+	)
+	// Журналы читают пользователи машины, пишет только служба (otkrytZhurnaly).
+	sidyZhurnalov = append(append([]dostupSida{}, sidyDannyh...),
+		dostupSida{"S-1-5-32-545", chtenieIZapusk, windows.TRUSTEE_IS_GROUP}, // BUILTIN\Users
 	)
 )
 

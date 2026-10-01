@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { slovoPosleChisla } from "../chisla";
 import { Karta, Knopka, PoleTeksta, Segment } from "./ui";
+import { tekstOshibki } from "../ponyatno";
 
 // Выгрузка серверов (26.09.2026): ссылки из exportServers, чтобы перенести
 // ключи на другой ПК или телефон строкой или QR.
@@ -39,7 +40,7 @@ export function Vygruzka({ vygruzka, zakryt, skopirovat, kodyQr }: {
       await skopirovat(tekst);
       zadatSoobshchenie("скопировано");
     } catch (e: unknown) {
-      zadatSoobshchenie(`не скопировалось: ${e instanceof Error ? e.message : String(e)}`);
+      zadatSoobshchenie(`не скопировалось: ${tekstOshibki(e)}`);
     }
   };
   const pokazatQr = async () => {
@@ -51,7 +52,7 @@ export function Vygruzka({ vygruzka, zakryt, skopirovat, kodyQr }: {
       zadatKody(await kodyQr(vygruzka.tekst));
       zadatSoobshchenie(null);
     } catch (e: unknown) {
-      zadatSoobshchenie(e instanceof Error ? e.message : String(e));
+      zadatSoobshchenie(tekstOshibki(e));
     }
   };
 

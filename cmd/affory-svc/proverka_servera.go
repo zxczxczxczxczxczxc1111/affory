@@ -96,7 +96,7 @@ func (s *Sluzhba) proveritServerBezTun(ctx context.Context) error {
 	ctx, otm := context.WithTimeout(ctx, srokProverkiServera)
 	defer otm()
 
-	telo, portClash, sekret, _, err := s.sobratTunPolno(nil, true, true, true)
+	telo, portClash, sekret, _, _, err := s.sobratTunPolno(nil, true, true, true, false)
 	if err != nil {
 		return fmt.Errorf("%w: конфиг не собран: %v", errProverkaNeSostoyalas, err)
 	}

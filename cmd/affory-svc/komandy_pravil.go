@@ -88,7 +88,7 @@ var reDomen = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z
 func (s *Sluzhba) listRules(k protokol.Kadr) protokol.Kadr {
 	n, err := s.nabor()
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+		return otkazIz(k, protokol.KodSecretsUnreadable, err)
 	}
 	return otvet(k.Id, k.Imya, teloPravil(n.Pravila, s.pravilaOzhidayut(n.Pravila), false))
 }
@@ -142,9 +142,9 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 		return nil
 	}); err != nil {
 		if errors.Is(err, errPraviloNegodno) {
-			return otkaz(k.Id, k.Imya, protokol.KodPraviloNegodno, err.Error())
+			return otkazIz(k, protokol.KodPraviloNegodno, err)
 		}
-		return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+		return otkazIz(k, kodSohraneniya(err), err)
 	}
 	// Горячей перезагрузки правил у ядра нет: как и setRouteMode, ответ
 	// говорит, что новое применится со следующего подъёма, а не молчит.
@@ -163,13 +163,16 @@ func (s *Sluzhba) setRules(ctx context.Context, k protokol.Kadr) protokol.Kadr {
 			// единого своего действия.
 			if errors.Is(err, errKandidatNegoden) {
 				vernuli := s.vernutPravila(bylo)
-				tekst := "Правила не применены: " + err.Error() + ". VPN продолжает работать по прежним правилам"
+				// Понятная часть ошибки, а не err.Error(): вывод ядра английский
+				// и стоял бы ПЕРЕД главной фразой, и заслон отрезал бы её вместе
+				// с ним.
+				tekst := "Правила не применены: " + tekstIz(k.Imya, err) + ". VPN продолжает работать по прежним правилам"
 				if !vernuli {
 					tekst += ". Вернуть прежние правила не удалось, проверь список"
 				}
 				return otkaz(k.Id, k.Imya, protokol.KodPravilaNePrinyaty, tekst)
 			}
-			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.vnutriOshib()), "Правила сохранены. Переподключение не завершено: "+err.Error())
+			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.vnutriOshib()), "Правила сохранены. Переподключение не завершено: "+tekstIz(k.Imya, err))
 		}
 		// После подъёма, а не до: кэш сбрасывается, когда новое ядро уже
 		// отвечает, иначе Windows успела бы запомнить ответ старого.

@@ -2,8 +2,10 @@ package set
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -96,6 +98,36 @@ func TestOtklikNeSchitaetOtkazUdachey(t *testing.T) {
 
 	if _, err := Otklik(context.Background(), "http://cel.invalid/generate_204", port); err == nil {
 		t.Fatal("отказ 407 принят за успешный замер")
+	}
+}
+
+// Пинг списка серверов называет сервер логином прокси (01.10.2026). Логин
+// обязан доехать до прокси на ОБОИХ кругах: без него второй круг ядро отбило
+// бы правилом reject, и замер упал бы на исправном сервере.
+func TestOtklikCherezNesyotLogin(t *testing.T) {
+	var mu sync.Mutex
+	var loginy []string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		loginy = append(loginy, r.Header.Get("Proxy-Authorization"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(s.Close)
+	proksi, err := url.Parse(s.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proksi.User = url.UserPassword("z6e6c", "p")
+
+	if _, err := OtklikCherez(context.Background(), "http://cel.invalid/generate_204", proksi); err != nil {
+		t.Fatalf("замер не прошёл: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	zhdyom := "Basic " + base64.StdEncoding.EncodeToString([]byte("z6e6c:p"))
+	if len(loginy) != 2 || loginy[0] != zhdyom || loginy[1] != zhdyom {
+		t.Fatalf("логин дошёл не на оба круга: %q", loginy)
 	}
 }
 

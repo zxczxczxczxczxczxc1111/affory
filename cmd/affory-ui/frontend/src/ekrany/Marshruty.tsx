@@ -12,6 +12,7 @@ import { naydennyePuti } from "../programmy";
 import { sleduyushchayaVkladka } from "./klavishi-vkladok";
 import { OhvatPravil } from "./OhvatPravil";
 import { Reklama } from "./Reklama";
+import { tekstOshibki } from "../ponyatno";
 
 // Раздел правил: слева режим по умолчанию и счёт правил, справа вкладки (три,
 // и четвёртая «Реклама» у службы, которая её знает). Боковая область и вкладки
@@ -205,7 +206,7 @@ export function Marshruty({
       knopkaDobavit.current?.focus();
       setNotice(status.sostoyanie === "vyklyuchen" ? "Правила сохранены" : "Правила применены");
     } catch (error: unknown) {
-      setApplyError(error instanceof Error ? error.message : String(error));
+      setApplyError(tekstOshibki(error));
     } finally {
       inFlight.current = false; setApplying(false);
     }
@@ -296,7 +297,7 @@ export function Marshruty({
       if (epoch === pickerEpoch.current && chosen) setPath(chosen);
     } catch (error: unknown) {
       if (epoch === pickerEpoch.current)
-        setPickerError(error instanceof Error ? error.message : String(error));
+        setPickerError(tekstOshibki(error));
     } finally {
       if (epoch === pickerEpoch.current) setPicking(false);
     }

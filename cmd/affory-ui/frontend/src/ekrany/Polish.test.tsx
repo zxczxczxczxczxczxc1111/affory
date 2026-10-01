@@ -105,16 +105,20 @@ it("application rules show names without letter avatars and still route the proc
   expect(send).toHaveBeenCalledWith("setRules", expect.objectContaining({ trafik: expect.objectContaining({ prilozheniya: [{ ...trafik.prilozheniya[0], marshrut: "vpn" }] }) }));
 });
 
-it("server checks remain available without VPN and never confuse node latency with VPN latency", () => {
-  // A fast TCP handshake does not get to impersonate the entire tunnel.
+it("server checks remain available without VPN and show one ping, like Discord", () => {
+  // С 01.10.2026 одно число: пинг через сервер, как «Задержка» и Discord.
   const check = vi.fn();
   render(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} naProverit={check}
     servery={[{ id: "s", imya: "Test server", host: "example.org", port: 443, transport: "hy2", iz_podpiski: false }]}
-    zaderzhki={[{ id: "s", tcping_ms: 4, realping_ms: 148 }]} />);
+    zaderzhki={[{ id: "s", ping_ms: 48 }]} />);
   fireEvent.click(screen.getByRole("button", { name: "Проверить серверы" }));
   expect(check).toHaveBeenCalledOnce();
-  // В компактной строке только VPN; проверка узла остаётся в деталях.
-  const zaderzhka = screen.getByText("148 мс");
-  expect(zaderzhka).toHaveAttribute("title", "VPN 148 мс · узел 4 мс");
-  expect(screen.queryByText("4 мс")).toBeNull();
+  expect(screen.getByText("48 мс")).not.toHaveAttribute("title");
+});
+
+it("failed ping reads as unavailable, with the reason in the tooltip", () => {
+  render(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} naProverit={vi.fn()}
+    servery={[{ id: "s", imya: "Test server", host: "example.org", port: 443, transport: "hy2", iz_podpiski: false }]}
+    zaderzhki={[{ id: "s", ping_otkaz: "сервер не ответил вовремя" }]} />);
+  expect(screen.getByText("Недоступен")).toHaveAttribute("title", "сервер не ответил вовремя");
 });

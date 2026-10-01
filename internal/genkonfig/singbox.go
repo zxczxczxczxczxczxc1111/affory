@@ -41,6 +41,7 @@ func SingBox(v Vhod) ([]byte, error) {
 	kandidaty := v.kandidaty()
 	ishodyashchie := make([]any, 0, len(kandidaty)+3)
 	tegi := make([]string, 0, len(kandidaty))
+	idy := make([]string, 0, len(kandidaty))
 	vybrannyy := ""
 	for _, s := range kandidaty {
 		// Кандидат с транспортом, которого ядро не несёт, ПРОПУСКАЕТСЯ, а не
@@ -62,6 +63,7 @@ func SingBox(v Vhod) ([]byte, error) {
 		}
 		ishodyashchie = append(ishodyashchie, o)
 		tegi = append(tegi, teg)
+		idy = append(idy, s.Id)
 		if s.Id == v.Server.Id {
 			vybrannyy = teg
 		}
@@ -86,7 +88,7 @@ func SingBox(v Vhod) ([]byte, error) {
 		// Селектор, а не ядро: с появлением нескольких кандидатов «ядра»
 		// как единственного выхода больше нет.
 		"final": trafikFinal(v),
-		"rules": pravila(v),
+		"rules": append(pravilaZamera(v, idy), pravila(v)...),
 	}
 	if r := razdelNaborov(v); r != nil {
 		marshrut["rule_set"] = r
@@ -123,7 +125,7 @@ func SingBox(v Vhod) ([]byte, error) {
 			"final":    trafikDNSFinal(v),
 			"strategy": "ipv4_only",
 		},
-		"inbounds":     vhodyashchie(v),
+		"inbounds":     vhodyashchie(v, idy),
 		"outbounds":    ishodyashchie,
 		"route":        marshrut,
 		"experimental": eksperimentalnoe,
@@ -145,12 +147,18 @@ func SingBox(v Vhod) ([]byte, error) {
 // а два порта это два способа промахнуться настройкой. Слушает СТРОГО петлю:
 // на 0.0.0.0 это открытый прокси для всей подсети, то есть чужой трафик под
 // нашим адресом.
-func vhodyashchie(v Vhod) []any {
+func vhodyashchie(v Vhod, idy []string) []any {
 	vh := []any{}
+	// Вход для замеров сеть машины не трогает, поэтому живёт и без TUN. Стоит
+	// последним: туннель остаётся первым входом, как был.
+	zamer, estZamer := vhodZamera(v, idy)
 	if v.BezTun {
 		// Проверка сервера меряет исходящий через clash API, входы ей не нужны.
 		// Поднятый здесь TUN отнял бы у человека сеть ровно на ту проверку,
 		// ради которой его не поднимают.
+		if estZamer {
+			vh = append(vh, zamer)
+		}
 		return vh
 	}
 	vh = append(vh,
@@ -195,6 +203,9 @@ func vhodyashchie(v Vhod) []any {
 			"type": "mixed", "tag": TegProksiVhod,
 			"listen": "127.0.0.1", "listen_port": v.PortProksi,
 		})
+	}
+	if estZamer {
+		vh = append(vh, zamer)
 	}
 	return vh
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -145,7 +144,7 @@ func (s *Sluzhba) inspectApplication(ctx context.Context, k protokol.Kadr) proto
 	}
 	n, err := s.nabor()
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+		return otkazIz(k, protokol.KodSecretsUnreadable, err)
 	}
 	if n.Pravila.Trafik == nil {
 		return otkaz(k.Id, k.Imya, protokol.KodPraviloNegodno, "Правила приложений ещё не загружены")
@@ -169,7 +168,7 @@ func (s *Sluzhba) inspectApplication(ctx context.Context, k protokol.Kadr) proto
 	}
 	views, err := tracker.watcher.Views(session)
 	if err != nil {
-		return otkaz(k.Id, k.Imya, protokol.KodYadroNeOtvechaet, fmt.Sprintf("Не удалось проверить запущенные программы: %v", err))
+		return otkaz(k.Id, k.Imya, protokol.KodYadroNeOtvechaet, "Не удалось проверить запущенные программы: "+tekstIz(k.Imya, err))
 	}
 	o := sobratOhvat(rules[index], rules, views)
 	o.Reviziya = reviziyaPravil(n.Pravila)

@@ -374,7 +374,7 @@ func (s *Sluzhba) proveritObnovlenie(ctx context.Context) (*protokol.ObnovlenieO
 		// показывало бы «проверено 20.09, новее нет» на проверке, которая с
 		// тех пор падает каждый час.
 		s.mu.Lock()
-		s.obnovlenieOtkaz = err.Error()
+		s.obnovlenieOtkaz = tekstIz("проверка обновлений", err)
 		s.mu.Unlock()
 		return nil, err
 	}
@@ -422,7 +422,7 @@ func (s *Sluzhba) checkUpdate(ctx context.Context, k protokol.Kadr) protokol.Kad
 		// `update-check-failed`, и по нему видно, что человек жал кнопку
 		// трижды, но не видно, обо что он бился.
 		log.Printf("проверка обновления по команде не удалась: %v", err)
-		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeProvereno, err.Error())
+		return otkazIz(k, protokol.KodObnovlenieNeProvereno, err)
 	}
 	return otvet(k.Id, k.Imya, s.Status())
 }
@@ -438,7 +438,7 @@ func (s *Sluzhba) downloadUpdate(ctx context.Context, k protokol.Kadr) protokol.
 	v, err := s.posledniyVypuskUporno(do)
 	if err != nil {
 		log.Printf("загрузка обновления не началась, выпуск не прочитан: %v", err)
-		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeProvereno, err.Error())
+		return otkazIz(k, protokol.KodObnovlenieNeProvereno, err)
 	}
 	if !novee(v.Versiya, versiyaProgrammy) {
 		return otkaz(k.Id, k.Imya, protokol.KodObnovlenieNeSkachano, fmt.Sprintf("последний выпуск %s, это не новее %s", v.Versiya, versiyaProgrammy))

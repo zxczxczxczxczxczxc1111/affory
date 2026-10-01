@@ -88,6 +88,10 @@ func otkazUstroystva(h http.Header) error {
 // работать: код разбирается по виду только там, где совет от него зависит.
 type OtkazZagruzki struct {
 	Vid sboi.Vid
+	// Kod это код ответа, когда ответ всё-таки пришёл, и ноль, если загрузка
+	// сорвалась раньше. По нему человеку отличают «по ссылке ничего нет» от
+	// «сервер сломался у себя»: лечится одно ссылкой, другое ожиданием.
+	Kod int
 	err error
 }
 
@@ -98,10 +102,20 @@ func (o OtkazZagruzki) Unwrap() error { return o.err }
 // подставных загрузчиков: тест обязан уметь построить тот же отказ, иначе
 // проверяется не то, что приезжает из сети.
 func OtkazSVidom(vid sboi.Vid, err error) error {
+	return otkazSKodom(vid, 0, err)
+}
+
+// OtkazOtveta это отказ по коду пришедшего ответа. Наружу по той же причине,
+// что и OtkazSVidom.
+func OtkazOtveta(kod int, err error) error {
+	return otkazSKodom(sboi.PoKoduOtveta(kod), kod, err)
+}
+
+func otkazSKodom(vid sboi.Vid, kod int, err error) error {
 	if vid == sboi.Neyasno {
 		return err
 	}
-	return OtkazZagruzki{Vid: vid, err: fmt.Errorf("%w (%s)", err, vid.Opisanie())}
+	return OtkazZagruzki{Vid: vid, Kod: kod, err: fmt.Errorf("%w (%s)", err, vid.Opisanie())}
 }
 
 // Потолок тела. Подписка на тысячу серверов это примерно двести килобайт, так
@@ -218,7 +232,7 @@ func razobratStroki(telo []byte, izPodpiski bool) Razbor {
 				Tekst:  strings.TrimPrefix(err.Error(), ErrUvedomleniePodpiski.Error()+": "),
 			})
 		default:
-			r.Otkazy = append(r.Otkazy, OtkazStroki{Stroka: nomer, Prichina: bezSsylki(err, stroka)})
+			r.Otkazy = append(r.Otkazy, OtkazStroki{Stroka: nomer, Prichina: prichinaStroki(err, stroka)})
 		}
 	}
 
@@ -340,7 +354,7 @@ func (z *Zagruzchik) Zagruzit(ctx context.Context, adres string) (Razbor, error)
 	if otvet.StatusCode != http.StatusOK {
 		// Только код. Тело чужое, и печатать его целиком значит однажды
 		// напечатать в журнал то, что панель туда положила.
-		return Razbor{}, OtkazSVidom(sboi.PoKoduOtveta(otvet.StatusCode),
+		return Razbor{}, OtkazOtveta(otvet.StatusCode,
 			fmt.Errorf("%w: код ответа %d", ErrPodpiskaNedostupna, otvet.StatusCode))
 	}
 
@@ -418,6 +432,17 @@ func bezSsylki(err error, stroka string) string {
 	}
 
 	return zamenitKuski(tekst, kandidaty, "<ссылка>")
+}
+
+// prichinaStroki это причина отказа строки для окна: без самой ссылки и без
+// английского хвоста разборщика («ss: illegal base64 data at input byte 7»).
+// Если от причины ничего нашего не осталось, говорится главное: ссылка не
+// разобрана, а номер строки окно ставит рядом само.
+func prichinaStroki(err error, stroka string) string {
+	if p := sboi.ObrezatTehniku(bezSsylki(err, stroka)); p != "" {
+		return p
+	}
+	return "ссылка не разобрана"
 }
 
 // zamenitKuski заменяет каждый кусок секрета меткой. Общая для отказов

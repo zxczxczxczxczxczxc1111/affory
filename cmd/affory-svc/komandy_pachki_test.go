@@ -81,11 +81,12 @@ func TestPachkaOtkazCelikom(t *testing.T) {
 	}
 }
 
-func TestVygruzkaTolkoAdminu(t *testing.T) {
+// С 01.10.2026 выгрузка серверов списком не спрашивает прав администратора.
+func TestVygruzkaBezPrav(t *testing.T) {
 	s := podstavnaya(t, nil)
 	o := s.Obrabotat(neAdminom(context.Background()), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "exportServers", Telo: []byte(`{}`)})
-	if o.Oshib == nil || o.Oshib.Kod != protokol.KodTrebuetsyaAdmin {
-		t.Fatalf("выгрузка без прав: %+v", o.Oshib)
+	if o.Oshib != nil {
+		t.Fatalf("выгрузка без прав отказала: %+v", o.Oshib)
 	}
 }
 

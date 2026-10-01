@@ -33,7 +33,7 @@ func (s *Sluzhba) setDiagnostics(k protokol.Kadr) protokol.Kadr {
 	}
 	if len(k.Telo) > 0 {
 		if err := json.Unmarshal(k.Telo, &telo); err != nil {
-			return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+			return otkazIz(k, protokol.KodProtocolMismatch, err)
 		}
 	}
 	s.SetDiagnostics(telo.Vkl)

@@ -129,7 +129,7 @@ var slovaDrayvera = []string{"wintun", "tun device"}
 
 // ErrDrayverNeVstal значит: ядро пожаловалось на драйвер TUN-адаптера, и
 // таймаут ожидания вызван им, а не занятым именем адаптера.
-var ErrDrayverNeVstal = errors.New("драйвер адаптера не установился")
+var ErrDrayverNeVstal = errors.New("драйвер VPN не установился")
 
 // ZhalobaNaDrayver отдаёт последнюю жалобу ядра на драйвер TUN-адаптера.
 // Пустая строка означает «ядро про драйвер не жаловалось», а не «драйвер цел».

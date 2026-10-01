@@ -404,6 +404,18 @@ func profili() map[string]Vhod {
 	// набора ядро читает на самом деле, поэтому тест подкладывает настоящий.
 	itog["с блокировкой рекламы"] = vhodSReklamoy([]string{"mc.yandex.ru"})
 
+	// Пинг по каждому серверу (01.10.2026): вход с логинами и правила
+	// inbound плюс auth_user. Имена полей users и auth_user ловит только check,
+	// и без TUN тоже: при выключенном VPN замер идёт через такое ядро.
+	sZamerom := mnogo
+	sZamerom.PortProksi = 10809
+	sZamerom.Zamer = &VhodZamera{Port: 10810, Parol: "s3kr3t"}
+	itog["вход замеров"] = sZamerom
+	zamerBezTun := mnogo
+	zamerBezTun.BezTun = true
+	zamerBezTun.Zamer = &VhodZamera{Port: 10810, Parol: "s3kr3t"}
+	itog["вход замеров без tun"] = zamerBezTun
+
 	return itog
 }
 
@@ -417,8 +429,9 @@ func TestInvariant8ProfiliProhodyatCheck(t *testing.T) {
 	// Число проверяется ЯВНО. По «PASS на каждом имени» нельзя отличить
 	// сделанное от несделанного: молча потерянный профиль тоже даёт зелёный.
 	// 21 с 26.09.2026: добавлен reality поверх grpc. 22 с 28.09.2026: tls-tcp.
-	// 23 с 28.09.2026: блокировка рекламы.
-	const skolkoZhdyom = 23
+	// 23 с 28.09.2026: блокировка рекламы. 25 с 01.10.2026: вход замеров с
+	// туннелем и без.
+	const skolkoZhdyom = 25
 	if n := len(profili()); n != skolkoZhdyom {
 		t.Fatalf("профилей %d, а ожидалось %d: профиль потерян или добавлен молча", n, skolkoZhdyom)
 	}

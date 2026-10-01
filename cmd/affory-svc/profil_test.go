@@ -32,25 +32,28 @@ func neAdminom(ctx context.Context) context.Context {
 	return kanal.SDopuskom(ctx, kanal.Dopusk{Admin: false})
 }
 
-func TestEksportTolkoAdminu(t *testing.T) {
-	// The pipe admits INTERACTIVE by design. These two commands hand over every
-	// key and the subscription URL, so they check separately.
+// С 01.10.2026 профиль выгружается и загружается без прав администратора:
+// владелец снял подтверждение со всего, кроме архива обновления с диска.
+// Таблицу стережёт dopusk_test.go, а эти два теста ловят проверку, спрятанную
+// внутри самой команды: она пережила снятие строки из таблицы.
+func TestEksportBezPrav(t *testing.T) {
 	s := sPamyatyu(t, []byte(`{"servery":[]}`))
 	o := s.Obrabotat(neAdminom(context.Background()), protokol.Kadr{
 		Tip: "cmd", Id: 1, Imya: "exportProfile", Telo: []byte(`{"parol":"x"}`),
 	})
-	if o.Oshib == nil || o.Oshib.Kod != protokol.KodTrebuetsyaAdmin {
-		t.Fatalf("не-админ получил профиль: %v", o.Oshib)
+	if o.Oshib != nil {
+		t.Fatalf("выгрузка профиля без прав отказала: %+v", o.Oshib)
 	}
 }
 
-func TestImportTolkoAdminu(t *testing.T) {
+func TestImportBezPrav(t *testing.T) {
 	s := sPamyatyu(t, nil)
 	o := s.Obrabotat(neAdminom(context.Background()), protokol.Kadr{
 		Tip: "cmd", Id: 1, Imya: "importProfile", Telo: []byte(`{"parol":"x","profil":"AAA"}`),
 	})
-	if o.Oshib == nil || o.Oshib.Kod != protokol.KodTrebuetsyaAdmin {
-		t.Fatalf("не-админ увёл трафик машины: %v", o.Oshib)
+	// Профиль битый, отказ будет, но не по правам.
+	if o.Oshib == nil || o.Oshib.Kod == protokol.KodTrebuetsyaAdmin {
+		t.Fatalf("загрузка профиля без прав: %+v", o.Oshib)
 	}
 }
 
@@ -62,9 +65,10 @@ func TestBezDopuskaEtoNeAdmin(t *testing.T) {
 	s := sPamyatyu(t, []byte(`{"servery":[]}`))
 	// Голый Background НАРОЧНО: этот тест про то, что отсутствие сведений о
 	// допуске трактуется как «не админ». Подставить сюда ctxAdmina значило бы
-	// проверять обратное утверждение.
+	// проверять обратное утверждение. Команда installUpdate, потому что с
+	// 01.10.2026 права нужны только ей.
 	o := s.Obrabotat(context.Background(), protokol.Kadr{
-		Tip: "cmd", Id: 1, Imya: "exportProfile", Telo: []byte(`{"parol":"x"}`),
+		Tip: "cmd", Id: 1, Imya: "installUpdate", Telo: []byte(`{"path":"C:\\nichego.zip"}`),
 	})
 	if o.Oshib == nil || o.Oshib.Kod != protokol.KodTrebuetsyaAdmin {
 		t.Fatalf("контекст без допуска сошёл за админский: %v", o.Oshib)

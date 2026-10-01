@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
 
@@ -30,7 +32,51 @@ func otvet(id uint64, imya string, telo any) protokol.Kadr {
 
 func otkaz(id uint64, imya, kod, tekst string) protokol.Kadr {
 	return protokol.Kadr{Tip: "otvet", Id: id, Imya: imya,
-		Oshib: &protokol.Oshibka{Kod: kod, Tekst: tekst}}
+		Oshib: oshibkaDlyaOkna(imya, kod, tekst)}
+}
+
+// otkazIz это отказ по ошибке: человеку её понятная часть, журналу целиком.
+func otkazIz(k protokol.Kadr, kod string, err error) protokol.Kadr {
+	return otkaz(k.Id, k.Imya, kod, tekstIz(k.Imya, err))
+}
+
+// tekstIz отдаёт понятную часть ошибки и пишет полную в журнал службы. Журнал
+// команд пишет только код отказа, так что без этой строки технический текст
+// не сохранялся нигде, кроме окна (разбор 01.10.2026).
+func tekstIz(gde string, err error) string {
+	if err == nil {
+		return ""
+	}
+	log.Printf("%s: %v", gde, err)
+	return sboi.DlyaCheloveka(err)
+}
+
+// tekstyDoslovno это коды, чей текст написан не нами и идёт человеку как есть:
+// сообщение панели подписки может быть и по-английски, и резать его нельзя.
+var tekstyDoslovno = map[string]bool{protokol.KodSubscriptionExpired: true}
+
+// oshibkaDlyaOkna это последний заслон перед окном: всё, что собрано через
+// Sprintf или err.Error() в обход tekstIz, теряет здесь английский хвост.
+// Обрезанное целиком уходит в журнал, чтобы заслон не прятал подробности.
+func oshibkaDlyaOkna(gde, kod, tekst string) *protokol.Oshibka {
+	if tekstyDoslovno[kod] {
+		return &protokol.Oshibka{Kod: kod, Tekst: tekst}
+	}
+	return &protokol.Oshibka{Kod: kod, Tekst: tekstDlyaOkna(gde+" ("+kod+")", tekst)}
+}
+
+// tekstDlyaOkna режет английский хвост у готовой строки, когда самой ошибки
+// под рукой уже нет. Обрезанное целиком уходит в журнал.
+func tekstDlyaOkna(gde, tekst string) string {
+	chisto := sboi.ObrezatTehniku(tekst)
+	if chisto == strings.TrimRight(tekst, " .:;,") {
+		return tekst
+	}
+	log.Printf("%s: %s", gde, tekst)
+	if chisto == "" {
+		return sboi.ZapasnoyTekst
+	}
+	return chisto
 }
 
 // Obrabotat never panics and never blocks forever. The half that panics here is
@@ -38,14 +84,23 @@ func otkaz(id uint64, imya, kod, tekst string) protokol.Kadr {
 // has no internet at all.
 // komandyDlyaAdmina это ГРАНИЦА привилегий, и она одна на всю службу.
 //
-// Решено 03.09.2026. ОТМЕНЯЕТ прежнюю границу от 01.09.2026, где
-// админа требовали десять команд. Администратор остаётся ровно там, где
-// действие меняет машину целиком или выносит секреты за её пределы:
+// Решено 01.10.2026 владельцем, ОТМЕНЯЕТ границу от 03.09.2026: подтверждение
+// правами администратора осталось на ОДНОЙ команде. Довод владельца: ключи
+// VPN не тот секрет, ради которого стоит спрашивать UAC на каждой выгрузке,
+// и даже их кража ничего страшного не делает. Сняты:
 //
-//   - setKillSwitch правит правила брандмауэра всей машины;
-//   - installUpdate и downloadUpdate подменяют файлы программы;
-//   - exportProfile и importProfile выносят наружу и заносят внутрь ключи;
-//   - exportServers (26.09.2026) отдаёт все ключи ссылками открытым текстом.
+//   - exportProfile, importProfile, exportServers: файл пишет и читает само
+//     окно под правами человека, служба только отдаёт и принимает содержимое,
+//     поэтому записать её руками файл в чужое место нельзя;
+//   - setKillSwitch: правила брандмауэра служба ставит свои, набор фиксирован;
+//     чужая программа может разве что включить или снять защиту;
+//   - downloadUpdate: от окна не берёт ничего, качает только последний выпуск
+//     с GitHub и сверяет его с суммой из самого выпуска.
+//
+// Остался installUpdate: он ставит архив С ДИСКА и сверяет его с .sha256,
+// который лежит рядом, то есть подложить можно оба файла сразу. Без
+// подтверждения любая программа ставила бы свою сборку службой с правами
+// SYSTEM, и это уже не про ключи.
 //
 // Всё остальное это работа с собственным набором серверов на собственной
 // машине: добавить сервер, сменить подписку, выбрать сервер, поправить правила
@@ -54,22 +109,16 @@ func otkaz(id uint64, imya, kod, tekst string) protokol.Kadr {
 // администратора вовсе. Программа, которая на первом шаге просит того, чего у
 // человека нет, это программа, которую удаляют.
 //
-// Довод «другая программа от тебя» при этом не отброшен, он переехал: канал
-// остаётся под INTERACTIVE, и чужой процесс по-прежнему не запрёт машину, не
-// подменит файлы и не унесёт профиль. Увести трафик своим сервером он теперь
-// может, и это принятая цена за программу, которой пользуются.
+// Канал остаётся под INTERACTIVE: команды шлёт только тот, кто сидит за
+// машиной. Увести трафик своим сервером, унести ключи или переключить защиту
+// чужая программа под тем же человеком может, и это принятая цена.
 //
 // Таблица, а не проверка в каждом обработчике: проверок было две на двенадцать
 // команд, и заметить это чтением не удалось никому. Полноту таблицы стережёт
 // TestKazhdayaKomandaImeetResheniyeOPravah, который берёт имена разбором
 // диспетчера, а не рукописным списком.
 var komandyDlyaAdmina = map[string]bool{
-	"setKillSwitch":  true,
-	"exportProfile":  true,
-	"importProfile":  true,
-	"exportServers":  true,
-	"installUpdate":  true,
-	"downloadUpdate": true,
+	"installUpdate": true,
 }
 
 func (s *Sluzhba) Obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr {
@@ -164,13 +213,13 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		}
 		if len(k.Telo) > 0 {
 			if err := json.Unmarshal(k.Telo, &telo); err != nil {
-				return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+				return otkazIz(k, protokol.KodProtocolMismatch, err)
 			}
 		}
 		if err := s.SetKillSwitch(telo.Vkl); err != nil {
 			// kodRezhima, а не firewall-failed насмерть: молчащий резолвер и
 			// выключенный брандмауэр это разные причины с разными экранами.
-			return otkaz(k.Id, k.Imya, kodRezhima(err), err.Error())
+			return otkazIz(k, kodRezhima(err), err)
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 
@@ -180,7 +229,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		}
 		if len(k.Telo) > 0 {
 			if err := json.Unmarshal(k.Telo, &telo); err != nil {
-				return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+				return otkazIz(k, protokol.KodProtocolMismatch, err)
 			}
 		}
 		// Interface autostart, not the tunnel. The registry is the only
@@ -203,7 +252,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 			// записи набора: настройка не легла туда, где она живёт. Своего кода
 			// у «настройка не записалась» в §9.1 нет, а заводить его в этой
 			// задаче нельзя, коды это отдельная полоса.
-			return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+			return otkazIz(k, kodSohraneniya(err), err)
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 
@@ -213,7 +262,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		}
 		if len(k.Telo) > 0 {
 			if err := json.Unmarshal(k.Telo, &telo); err != nil {
-				return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+				return otkazIz(k, protokol.KodProtocolMismatch, err)
 			}
 		}
 		// The tunnel, not the interface: the service acts on this at boot.
@@ -222,7 +271,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		// успех при непрошедшей записи это галочка на экране и невыполненное
 		// обещание поднять туннель при следующем старте.
 		if err := s.SetConnectOnStart(telo.Vkl); err != nil {
-			return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+			return otkazIz(k, kodSohraneniya(err), err)
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 
@@ -233,7 +282,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		}
 		if len(k.Telo) > 0 {
 			if err := json.Unmarshal(k.Telo, &telo); err != nil {
-				return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+				return otkazIz(k, protokol.KodProtocolMismatch, err)
 			}
 		}
 		// Негодная пара это отказ ЗДЕСЬ, а не молчание. Полоса влияет только на
@@ -244,7 +293,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		// kodSohraneniya по тому же доводу, что у соседних настроек: своего кода
 		// у «настройка не записалась» в §9.1 нет.
 		if err := s.SetPolosa(telo.Vverh, telo.Vniz); err != nil {
-			return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+			return otkazIz(k, kodSohraneniya(err), err)
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 
@@ -270,14 +319,14 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		if telo.Server != "" {
 			peresobrat, err := s.serverTrebuetPodyoma(telo.Server)
 			if err != nil {
-				return otkaz(k.Id, k.Imya, kodPereklyucheniya(err), err.Error())
+				return otkazIz(k, kodPereklyucheniya(err), err)
 			}
 			if peresobrat {
 				s.Disconnect()
 			}
 			if adres, _ := s.dostupKKlash(); adres != "" {
 				if err := s.setServer(ctx, telo.Server); err != nil {
-					return otkaz(k.Id, k.Imya, kodPereklyucheniya(err), err.Error())
+					return otkazIz(k, kodPereklyucheniya(err), err)
 				}
 				return otvet(k.Id, k.Imya, s.Status())
 			}
@@ -309,10 +358,10 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		if telo.Server != "" {
 			doKomandy, err := s.nabor()
 			if err != nil {
-				return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, err.Error())
+				return otkazIz(k, protokol.KodSecretsUnreadable, err)
 			}
 			if err := s.zapomnitVybor(telo.Server); err != nil {
-				return otkaz(k.Id, k.Imya, protokol.KodSelectedServerGone, err.Error())
+				return otkazIz(k, protokol.KodSelectedServerGone, err)
 			}
 			vybranDo, rezhimDo := doKomandy.Vybran, doKomandy.Rezhim
 			vernut = func() {
@@ -344,7 +393,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return otvet(k.Id, k.Imya, s.Status())
 			}
-			return otkaz(k.Id, k.Imya, kodPodklyucheniya(err, s.vnutriOshib()), err.Error())
+			return otkazIz(k, kodPodklyucheniya(err, s.vnutriOshib()), err)
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 
@@ -358,7 +407,7 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 			return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, "тело команды не разбирается")
 		}
 		if err := s.setServer(ctx, telo.Id); err != nil {
-			return otkaz(k.Id, k.Imya, kodPereklyucheniya(err), err.Error())
+			return otkazIz(k, kodPereklyucheniya(err), err)
 		}
 		return otvet(k.Id, k.Imya, s.Status())
 
@@ -374,12 +423,12 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		}
 		if err := s.setAutoMember(telo.Id, telo.Uchastvuet); err != nil {
 			if errors.Is(err, errServerNeNayden) {
-				return otkaz(k.Id, k.Imya, protokol.KodSelectedServerGone, err.Error())
+				return otkazIz(k, protokol.KodSelectedServerGone, err)
 			}
 			if errors.Is(err, errPoslednyyVAvto) {
-				return otkaz(k.Id, k.Imya, protokol.KodTeloNegodno, err.Error())
+				return otkazIz(k, protokol.KodTeloNegodno, err)
 			}
-			return otkaz(k.Id, k.Imya, kodSohraneniya(err), err.Error())
+			return otkazIz(k, kodSohraneniya(err), err)
 		}
 		return s.listServers(k)
 
@@ -393,9 +442,9 @@ func (s *Sluzhba) obrabotat(ctx context.Context, k protokol.Kadr) protokol.Kadr 
 		trebuetPodyoma, err := s.setRouteMode(ctx, telo.Rezhim)
 		if err != nil {
 			if errors.Is(err, ErrChuzhoyRezhim) {
-				return otkaz(k.Id, k.Imya, protokol.KodProtocolMismatch, err.Error())
+				return otkazIz(k, protokol.KodProtocolMismatch, err)
 			}
-			return otkaz(k.Id, k.Imya, kodSmenyMarshruta(err), err.Error())
+			return otkazIz(k, kodSmenyMarshruta(err), err)
 		}
 		// Признак приходит ОТ КОМАНДЫ, а не считается здесь по живому ядру.
 		// Прежний счёт (adresYadra != "") отвечал «нужен переподъём» ровно

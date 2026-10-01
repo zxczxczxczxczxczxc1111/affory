@@ -560,9 +560,9 @@ describe("ни один отказ не пропадает молча", () => {
     most.otvechatTelom("listServers", list);
     most.otvechatTelom("listSubscriptions", { podpiski: [{ id: "source", uzel: "panel.example", aktivnaya: true }] });
     most.otvechatTelom("measureDelays", { zamery: [
-      { id: "a", versiya: "a1", realping_ms: 111 },
-      { id: "b", versiya: "b1", realping_ms: 222 },
-      { id: "manual", versiya: "m1", realping_ms: 333 },
+      { id: "a", versiya: "a1", ping_ms: 111 },
+      { id: "b", versiya: "b1", ping_ms: 222 },
+      { id: "manual", versiya: "m1", ping_ms: 333 },
     ] });
     render(<App />);
     await screen.findByRole("button", { name: "Подключиться к a" });
@@ -612,7 +612,7 @@ describe("ни один отказ не пропадает молча", () => {
     const most = mostProby();
     most.otvechatOtkazom("listServers", "secrets-unreadable");
     render(<App />);
-    await screen.findByText(/прежние серверы не читаются/i);
+    await screen.findByText(/файл с серверами не открылся/i);
     expect(screen.getByRole("button", { name: /повтор/i })).toBeTruthy();
   });
 

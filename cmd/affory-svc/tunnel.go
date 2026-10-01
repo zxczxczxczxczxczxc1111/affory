@@ -125,7 +125,7 @@ func (s *Sluzhba) peredPerezapuskomYadra(st protokol.Sostoyanie) {
 	}
 	if err := s.obespechitFaylReklamy(); err != nil {
 		log.Printf("список рекламы перед перезапуском ядра не выложен: %v", err)
-		s.zapomnitOtkazReklamy(err.Error())
+		s.zapomnitOtkazReklamy(tekstIz("реклама", err))
 	}
 }
 
@@ -148,7 +148,7 @@ func (s *Sluzhba) peredPerezapuskomYadra(st protokol.Sostoyanie) {
 // переписать отпечаток правил (и pravilaOzhidayut ответил бы «уже применено»
 // про непринятое) и назвать ядру серверы, которых оно не несёт.
 func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, int, string, error) {
-	telo, portClash, sekret, _, err := s.sobratTunPolno(isklyucheny, suhaya, false, false)
+	telo, portClash, sekret, _, _, err := s.sobratTunPolno(isklyucheny, suhaya, false, false, false)
 	return telo, portClash, sekret, err
 }
 
@@ -159,17 +159,21 @@ func (s *Sluzhba) sobratTun(isklyucheny map[string]bool, suhaya bool) ([]byte, i
 // прокси, без наборов и рекламы. Проверке нужны только исходящие и clash API, а
 // загрузка набора или выкладка списка рекламы растянули бы её на сеть, которой
 // она не касается. Такая сборка всегда сухая.
-func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy, bezTun bool) ([]byte, int, string, bool, error) {
+//
+// sZamerom добавляет вход для пинга по каждому серверу (01.10.2026), пятое
+// значение отвечает его портом и паролем. Только вместе с bezTun: пинг меряется
+// временным ядром, а проверке сервера входы не нужны вовсе.
+func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy, bezTun, sZamerom bool) ([]byte, int, string, bool, genkonfig.VhodZamera, error) {
 	if bezTun {
 		suhaya, bezReklamy = true, true
 	}
 	n, err := s.nabor()
 	if err != nil {
-		return nil, 0, "", false, err
+		return nil, 0, "", false, genkonfig.VhodZamera{}, err
 	}
 	vybrannyy, err := n.VybrannyyServer()
 	if err != nil {
-		return nil, 0, "", false, err
+		return nil, 0, "", false, genkonfig.VhodZamera{}, err
 	}
 	if len(isklyucheny) > 0 {
 		ostavshiesya := make([]protokol.Server, 0, len(n.Servery))
@@ -183,12 +187,12 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 
 	kandidaty, err := s.kandidatySIsklyucheniem()
 	if err != nil {
-		return nil, 0, "", false, err
+		return nil, 0, "", false, genkonfig.VhodZamera{}, err
 	}
 
 	resolver, err := s.rezolverDlyaKonfiga()
 	if err != nil {
-		return nil, 0, "", false, fmt.Errorf("локальный резолвер не определён: %w", err)
+		return nil, 0, "", false, genkonfig.VhodZamera{}, fmt.Errorf("локальный резолвер не определён: %w", err)
 	}
 	// Подсеть туннеля выбирается по живой системе, а не берётся константой:
 	// 172.19.0.1 это адрес посреди пула Docker Desktop, и на машине с парой
@@ -199,15 +203,26 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 	}
 	puti, err := s.putiProtsessov()
 	if err != nil {
-		return nil, 0, "", false, err
+		return nil, 0, "", false, genkonfig.VhodZamera{}, err
 	}
 	portClash, err := yadra.VydatPort()
 	if err != nil {
-		return nil, 0, "", false, fmt.Errorf("порт для clash_api не выдан: %w", err)
+		return nil, 0, "", false, genkonfig.VhodZamera{}, fmt.Errorf("порт для clash_api не выдан: %w", err)
 	}
 	sekret, err := sluchaynyySekret()
 	if err != nil {
-		return nil, 0, "", false, err
+		return nil, 0, "", false, genkonfig.VhodZamera{}, err
+	}
+	// Вход замеров только у временного ядра пинга: боевой конфиг от него не
+	// зависит. Пароль это секрет clash_api: живёт столько же и известен тому же,
+	// кто и так может переключать серверы ядра.
+	var zamer *genkonfig.VhodZamera
+	if bezTun && sZamerom {
+		portZamera, err := yadra.VydatPort()
+		if err != nil {
+			return nil, 0, "", false, genkonfig.VhodZamera{}, fmt.Errorf("порт для входа замеров не выдан: %w", err)
+		}
+		zamer = &genkonfig.VhodZamera{Port: portZamera, Parol: sekret}
 	}
 
 	// Режим «весь трафик» это часть конфига ядра, а не только брандмауэра.
@@ -228,7 +243,7 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 	}
 	tracker, err := s.trackerDlyaKonfiga(trafik)
 	if err != nil {
-		return nil, 0, "", false, err
+		return nil, 0, "", false, genkonfig.VhodZamera{}, err
 	}
 	// Вне s.mu: выкладка файла берёт muReklama, а под ним s.mu.
 	rk := s.reklamaDlyaKonfiga(n, bezReklamy)
@@ -257,6 +272,7 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 		PutiProtsessov: puti,
 		ClashApi:       genkonfig.ClashApi{Adres: "127.0.0.1", Port: portClash, Sekret: sekret},
 		PortProksi:     portVhoda,
+		Zamer:          zamer,
 		VesTrafik:      vesTrafik,
 		// Только наборы с файлом на диске: ядро поднимается с initial_path, а
 		// не с сети, и неудача загрузки остаётся неудачей загрузки.
@@ -273,7 +289,7 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 		Reklama:     rk,
 	})
 	if err != nil {
-		return nil, 0, "", false, fmt.Errorf("конфиг туннеля не собран: %w", err)
+		return nil, 0, "", false, genkonfig.VhodZamera{}, fmt.Errorf("конфиг туннеля не собран: %w", err)
 	}
 	if !suhaya {
 		s.mu.Lock()
@@ -286,7 +302,10 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 		s.mu.Unlock()
 		s.zapomnitServeryYadra(n.Servery)
 	}
-	return telo, portClash, sekret, rk != nil, nil
+	if zamer == nil {
+		return telo, portClash, sekret, rk != nil, genkonfig.VhodZamera{}, nil
+	}
+	return telo, portClash, sekret, rk != nil, *zamer, nil
 }
 
 // portDlyaKonfiga отдаёт порт локального входа для собираемого конфига.
@@ -380,7 +399,7 @@ func (s *Sluzhba) sobratTunProverennyy(put string, suhaya bool) (int, string, er
 	isklyucheny := map[string]bool{}
 	bezReklamy, prichinaBloka := false, ""
 	for {
-		telo, portClash, sekret, sReklamoy, err := s.sobratTunPolno(isklyucheny, suhaya, bezReklamy, false)
+		telo, portClash, sekret, sReklamoy, _, err := s.sobratTunPolno(isklyucheny, suhaya, bezReklamy, false, false)
 		if err != nil {
 			return 0, "", err
 		}
