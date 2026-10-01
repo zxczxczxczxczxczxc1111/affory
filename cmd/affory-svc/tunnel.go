@@ -198,7 +198,10 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 	// 172.19.0.1 это адрес посреди пула Docker Desktop, и на машине с парой
 	// созданных сетей он оказывается шлюзом чужой сети (см. set/podset_tun.go).
 	podsetTun, ushli := set.SvobodnayaPodsetTun()
-	if ushli {
+	// У ядра без TUN подсети нет вовсе. Строка про неё на каждый замер пинга
+	// при поднятом VPN (обычная подсеть занята боевым туннелем) читалась бы в
+	// журнале как переподъём туннеля, которого не было (02.10.2026).
+	if ushli && !bezTun {
 		log.Printf("обычная подсеть туннеля занята, взята %s", podsetTun)
 	}
 	puti, err := s.putiProtsessov()
