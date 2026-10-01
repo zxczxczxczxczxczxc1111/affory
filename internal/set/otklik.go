@@ -45,9 +45,23 @@ func Otklik(ctx context.Context, cel string, portProksi int) (time.Duration, err
 // (01.10.2026) ходит через вход замеров ядра, и логин в адресе прокси называет
 // сервер, через который пойдёт запрос.
 func OtklikCherez(ctx context.Context, cel string, proksi *url.URL) (time.Duration, error) {
+	return LuchshiyOtklikCherez(ctx, cel, proksi, 1)
+}
+
+// LuchshiyOtklikCherez меряет krugov кругов по одному прогретому соединению и
+// отдаёт лучший.
+//
+// Для списка серверов, где число одно и разовое. «Задержка» на главном экране
+// обновляется сама и выброс в ней тут же сменяется следующим замером, а в
+// списке он стоит до следующего нажатия. В приёмке 1.9.2 один круг hy2 дал
+// 300 мс при «Задержке» 79 у того же сервера, то есть ровно то, на что
+// владелец жаловался в прежнем списке (02.10.2026). Лучший круг из нескольких
+// это обычный «min» у ping: он про путь, а не про случайную паузу.
+func LuchshiyOtklikCherez(ctx context.Context, cel string, proksi *url.URL, krugov int) (time.Duration, error) {
 	if cel == "" {
 		cel = CelOtklikaPoUmolchaniyu
 	}
+	krugov = max(krugov, 1)
 	do, otm := context.WithTimeout(ctx, srokOtklika)
 	defer otm()
 
@@ -63,17 +77,28 @@ func OtklikCherez(ctx context.Context, cel string, proksi *url.URL) (time.Durati
 	if err := krug(do, kl, cel); err != nil {
 		return 0, err
 	}
-	nachalo := time.Now()
-	if err := krug(do, kl, cel); err != nil {
-		return 0, err
+	var luchshiy time.Duration
+	for i := range krugov {
+		nachalo := time.Now()
+		if err := krug(do, kl, cel); err != nil {
+			// Круг, уже измеренный, правдив и без следующих: оборванное потом
+			// соединение не делает его выдумкой.
+			if i > 0 {
+				break
+			}
+			return 0, err
+		}
+		proshlo := time.Since(nachalo)
+		// Ноль на экране читается как «мгновенно». Через туннель он
+		// невозможен, но часы Windows умеют отдавать одно и то же время дважды.
+		if proshlo <= 0 {
+			proshlo = time.Nanosecond
+		}
+		if i == 0 || proshlo < luchshiy {
+			luchshiy = proshlo
+		}
 	}
-	proshlo := time.Since(nachalo)
-	// Ноль на экране читается как «мгновенно». Через туннель он невозможен, но
-	// часы Windows умеют отдавать одно и то же время дважды.
-	if proshlo <= 0 {
-		proshlo = time.Nanosecond
-	}
-	return proshlo, nil
+	return luchshiy, nil
 }
 
 // krug это один запрос HEAD и полное дочитывание ответа.

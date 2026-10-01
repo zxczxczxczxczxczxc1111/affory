@@ -515,7 +515,9 @@ func NovayaSluzhba() *Sluzhba {
 	s.periodOtklika = periodOtklikaPoUmolchaniyu
 	s.adresOtklika = set.CelOtklikaPoUmolchaniyu
 	s.zamerOtklika = set.Otklik
-	s.zamerPinga = set.OtklikCherez
+	s.zamerPinga = func(ctx context.Context, cel string, proksi *url.URL) (time.Duration, error) {
+		return set.LuchshiyOtklikCherez(ctx, cel, proksi, krugovPinga)
+	}
 	s.yadroZamera = s.podnyatYadroZamera
 	s.adresProverki = set.AdresProverkiPoUmolchaniyu
 	s.sprositVyhod = set.AdresVyhoda

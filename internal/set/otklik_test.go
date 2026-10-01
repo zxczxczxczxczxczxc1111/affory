@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -67,6 +68,37 @@ func TestOtklikMeryaetVtoroyKrug(t *testing.T) {
 	}
 	if n := schyot(); n != 2 {
 		t.Fatalf("кругов сделано %d, а нужно ровно два", n)
+	}
+}
+
+// Список серверов берёт лучший из трёх кругов: разовая пауза на одном круге
+// не становится пингом сервера (в приёмке 1.9.2 так вышло 300 мс при
+// «Задержке» 79). Прогревочный круг в число не попадает по-прежнему.
+func TestLuchshiyOtklikNeBeryotVybros(t *testing.T) {
+	port, schyot, adresa := podstavnoyProksi(t, func(n int, w http.ResponseWriter) {
+		switch n {
+		case 1, 2:
+			time.Sleep(300 * time.Millisecond)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	proksi := &url.URL{Scheme: "http", Host: "127.0.0.1:" + strconv.Itoa(port)}
+
+	d, err := LuchshiyOtklikCherez(context.Background(), "http://cel.invalid/generate_204", proksi, 3)
+	if err != nil {
+		t.Fatalf("замер не прошёл: %v", err)
+	}
+	if d > 150*time.Millisecond {
+		t.Fatalf("в число попал выброс: %v", d)
+	}
+	if n := schyot(); n != 4 {
+		t.Fatalf("кругов сделано %d, а нужно прогрев и три замера", n)
+	}
+	a := adresa()
+	for _, x := range a[1:] {
+		if x != a[0] {
+			t.Fatalf("круги шли по разным соединениям: %q", a)
+		}
 	}
 }
 

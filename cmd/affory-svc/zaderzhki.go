@@ -45,6 +45,11 @@ const odnovremennyhZamerov = 4
 // уложиться раньше: опоздавший ответ окно уже не прочитает.
 const srokObhoda = 75 * time.Second
 
+// Кругов на сервер после прогрева, в число идёт лучший (см.
+// set.LuchshiyOtklikCherez). Каждый круг это один путь туда и обратно, так что
+// три стоят около трёх пингов и укладываются в срок прибора с запасом.
+const krugovPinga = 3
+
 // Срок подъёма временного ядра: от старта до ответа clash_api.
 const srokYadraZamera = 15 * time.Second
 
