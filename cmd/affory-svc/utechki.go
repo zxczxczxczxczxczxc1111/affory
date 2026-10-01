@@ -88,17 +88,33 @@ func (s *Sluzhba) zapomnitAdresVyhoda(adres string) {
 
 // obnovitAdresVyhoda дёргается подъёмом и сменой несущего (§5: по кнопке и при
 // смене сервера, не по таймеру). В фоне и молча: экран узнает через stats.
+//
+// Попыток несколько: сразу после переподъёма ядро ещё рвёт первые соединения
+// через локальный прокси («forcibly closed», приёмка 1.9.2 в госте), а
+// единственная неудача оставляла адрес на экране пустым до кнопки.
 func (s *Sluzhba) obnovitAdresVyhoda() {
-	v := s.vhodProverki(false)
-	if !v.Podnyat || v.PortProksi == 0 {
-		return
+	var err error
+	for popytka := range popytokAdresaVyhoda {
+		if popytka > 0 && !podozhdat(s.fonCtx, pauzaAdresaVyhoda) {
+			return
+		}
+		v := s.vhodProverki(false)
+		if !v.Podnyat || v.PortProksi == 0 {
+			return
+		}
+		ctx, otm := context.WithTimeout(s.fonCtx, 20*time.Second)
+		adres, e := v.SprositVyhod(ctx, v.Endpoint, v.PortProksi)
+		otm()
+		if e == nil {
+			s.zapomnitAdresVyhoda(adres)
+			return
+		}
+		err = e
 	}
-	ctx, otm := context.WithTimeout(s.fonCtx, 20*time.Second)
-	defer otm()
-	adres, err := v.SprositVyhod(ctx, v.Endpoint, v.PortProksi)
-	if err != nil {
-		log.Printf("адрес выхода не обновлён: %v", err)
-		return
-	}
-	s.zapomnitAdresVyhoda(adres)
+	log.Printf("адрес выхода не обновлён: %v", err)
 }
+
+const popytokAdresaVyhoda = 3
+
+// Var ради теста: честно ждущий секунды тест через месяц закомментируют.
+var pauzaAdresaVyhoda = 2 * time.Second

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -167,5 +168,47 @@ func TestProverkaUtechekSmotritVoVremyaPodyoma(t *testing.T) {
 	s.mu.Unlock()
 	if v := s.vhodProverki(false); v.Podnyat {
 		t.Fatal("вход проверки поверил состоянию: ядра нет, спрашивать через него нечем")
+	}
+}
+
+// Сразу после переподъёма ядро рвёт первые запросы через прокси. Адрес выхода
+// обязан дойти до экрана со следующей попытки, а не ждать кнопки.
+func TestAdresVyhodaPovtoryaetsyaPosleObryva(t *testing.T) {
+	bylo := pauzaAdresaVyhoda
+	pauzaAdresaVyhoda = time.Millisecond
+	t.Cleanup(func() { pauzaAdresaVyhoda = bylo })
+	s := sluzhbaDlyaProverok(t, true)
+	zvonkov := 0
+	s.sprositVyhod = func(context.Context, string, int) (string, error) {
+		zvonkov++
+		if zvonkov < 3 {
+			return "", errors.New("wsarecv: An existing connection was forcibly closed by the remote host.")
+		}
+		return "192.0.2.10", nil
+	}
+	s.obnovitAdresVyhoda()
+	s.mu.Lock()
+	adres := s.adresVyhoda
+	s.mu.Unlock()
+	if adres != "192.0.2.10" || zvonkov != 3 {
+		t.Fatalf("адрес %q после %d попыток", adres, zvonkov)
+	}
+}
+
+// Туннель опустили между попытками: спрашивать дальше через него нечем.
+func TestAdresVyhodaNeSprashivaetsyaPosleOpuskaniya(t *testing.T) {
+	bylo := pauzaAdresaVyhoda
+	pauzaAdresaVyhoda = time.Millisecond
+	t.Cleanup(func() { pauzaAdresaVyhoda = bylo })
+	s := sluzhbaDlyaProverok(t, true)
+	zvonkov := 0
+	s.sprositVyhod = func(context.Context, string, int) (string, error) {
+		zvonkov++
+		s.opustit()
+		return "", errors.New("сеть пропала")
+	}
+	s.obnovitAdresVyhoda()
+	if zvonkov != 1 {
+		t.Fatalf("после опускания туннеля спросили ещё %d раз", zvonkov-1)
 	}
 }
