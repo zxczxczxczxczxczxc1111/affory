@@ -65,6 +65,19 @@ type vremennoeYadro struct {
 }
 
 func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.Kadr {
+	ctx, otm := context.WithTimeout(ctx, srokObhoda)
+	defer otm()
+	// Замеры идут по одному. Конфиг временного ядра лежит одним файлом, и
+	// второй замер разом с первым (окно и консоль) переписывал бы его под
+	// первым ядром. Ожидание входит в тот же срок обхода: окно ждёт ответа
+	// не дольше srokZamera.
+	select {
+	case s.vorotaPinga <- struct{}{}:
+		defer func() { <-s.vorotaPinga }()
+	case <-ctx.Done():
+		return otkazIz(k, protokol.KodYadroNeOtvechaet, errors.New("пинг не измерен: прежний замер так и не закончился"))
+	}
+
 	n, err := s.nabor()
 	if err != nil {
 		return otkazIz(k, protokol.KodSecretsUnreadable, err)
@@ -75,8 +88,6 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, "не удалось определить версии серверов")
 	}
 
-	ctx, otm := context.WithTimeout(ctx, srokObhoda)
-	defer otm()
 	y, err := s.yadroZamera(ctx)
 	if err != nil {
 		return otkazIz(k, protokol.KodYadroNeOtvechaet, fmt.Errorf("пинг не измерен: %w", err))

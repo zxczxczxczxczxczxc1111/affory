@@ -191,3 +191,67 @@ func TestPingBezYadraEtoOtkazKomandy(t *testing.T) {
 		t.Fatalf("текст не говорит, что не вышло: %q", k.Oshib.Tekst)
 	}
 }
+
+// Окно и консоль разом: временное ядро одно в каждый момент, потому что
+// конфиг у него один файл, и оба замера доходят до чисел.
+func TestPingDvaZameraRazomPoOcheredi(t *testing.T) {
+	s := podstavnaya(t, nil)
+	if err := s.pravitNabor(func(n *Nabor) error {
+		n.Servery = []protokol.Server{{Id: "a", Imya: "первый", Transport: "trojan", Host: "192.0.2.1", Port: 443, Parol: "p"}}
+		n.Vybran = "a"
+		return nil
+	}); err != nil {
+		t.Fatalf("набор не записан: %v", err)
+	}
+	var mu sync.Mutex
+	zhivyh, bolshe := 0, 0
+	s.yadroZamera = func(context.Context) (vremennoeYadro, error) {
+		mu.Lock()
+		zhivyh++
+		bolshe = max(bolshe, zhivyh)
+		mu.Unlock()
+		return vremennoeYadro{
+			zamer: genkonfig.VhodZamera{Port: 10810, Parol: "sekret"},
+			ostanovit: func() {
+				mu.Lock()
+				zhivyh--
+				mu.Unlock()
+			},
+		}, nil
+	}
+	s.zamerPinga = func(context.Context, string, *url.URL) (time.Duration, error) {
+		time.Sleep(50 * time.Millisecond)
+		return 40 * time.Millisecond, nil
+	}
+
+	// Кадры собираются в горутинах, а разбираются здесь: t.Fatalf из чужой
+	// горутины тест не останавливает.
+	var gruppa sync.WaitGroup
+	kadry := make([]protokol.Kadr, 2)
+	for i := range kadry {
+		gruppa.Add(1)
+		go func() {
+			defer gruppa.Done()
+			kadry[i] = s.Obrabotat(context.Background(), protokol.Kadr{Tip: "komanda", Id: uint64(i + 1), Imya: "measureDelays"})
+		}()
+	}
+	gruppa.Wait()
+
+	if bolshe != 1 {
+		t.Fatalf("временных ядер разом %d, а конфиг у них один файл", bolshe)
+	}
+	for i, k := range kadry {
+		if k.Oshib != nil {
+			t.Fatalf("замер %d отвергнут: %+v", i, k.Oshib)
+		}
+		var o struct {
+			Zamery []zamerZaderzhki `json:"zamery"`
+		}
+		if err := json.Unmarshal(k.Telo, &o); err != nil || len(o.Zamery) != 1 {
+			t.Fatalf("замер %d не разбирается: %v, %s", i, err, k.Telo)
+		}
+		if z := o.Zamery[0]; z.PingMs == nil || *z.PingMs != 40 {
+			t.Fatalf("замер %d не дошёл до числа: %+v", i, z)
+		}
+	}
+}

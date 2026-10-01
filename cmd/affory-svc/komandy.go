@@ -139,6 +139,8 @@ type Sluzhba struct {
 	// вход замеров которого он ходит.
 	zamerPinga  func(ctx context.Context, cel string, proksi *url.URL) (time.Duration, error)
 	yadroZamera func(ctx context.Context) (vremennoeYadro, error)
+	// Одно место на замер пинга, см. measureDelays.
+	vorotaPinga chan struct{}
 	// Проверки 6.3: эндпоинт и два шва для сети и брандмауэра.
 	adresProverki string
 	sprositVyhod  func(ctx context.Context, endpoint string, portProksi int) (string, error)
@@ -502,6 +504,7 @@ func NovayaSluzhba() *Sluzhba {
 		// На одну просьбу: две подряд значат ровно то же, что одна.
 		vneocherednaya: make(chan struct{}, 1),
 		tolchokVosst:   make(chan struct{}, 1),
+		vorotaPinga:    make(chan struct{}, 1),
 	}
 	s.period = periodNablyudeniyaPoUmolchaniyu
 	s.periodNesushchego = periodNesushchegoPoUmolchaniyu
