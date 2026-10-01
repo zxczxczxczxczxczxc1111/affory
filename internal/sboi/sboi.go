@@ -112,6 +112,12 @@ func Klassifitsirovat(err error) Vid {
 	}
 	var operatsiya *net.OpError
 	if errors.As(err, &operatsiya) {
+		// Предупреждение TLS с той стороны crypto/tls отдаёт как OpError с
+		// операцией «remote error»: до порта достучались, сорвалось
+		// рукопожатие (02.10.2026).
+		if operatsiya.Op == "remote error" {
+			return TLS
+		}
 		return TCP
 	}
 	return Neyasno

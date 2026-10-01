@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"syscall"
@@ -40,6 +42,31 @@ func TestKlassifikatsiyaPoTipamOshibok(t *testing.T) {
 		if got := Klassifitsirovat(s.err); got != s.zhdu {
 			t.Errorf("%s: получил %q, жду %q", s.imya, got, s.zhdu)
 		}
+	}
+}
+
+// Сервер отверг рукопожатие предупреждением TLS. Ошибка собирается настоящим
+// рукопожатием, а не руками: crypto/tls отдаёт её как *net.OpError «remote
+// error», и по одному типу она читалась бы как «не достучались до порта»
+// (02.10.2026).
+func TestOtkazRukopozhatiyaSToyStoronyEtoTLS(t *testing.T) {
+	// Версии расходятся на первом же сообщении клиента, до сертификата, так
+	// что проверка сертификата у клиента остаётся включённой.
+	server := httptest.NewUnstartedServer(http.NotFoundHandler())
+	server.TLS = &tls.Config{MinVersion: tls.VersionTLS13}
+	server.StartTLS()
+	defer server.Close()
+
+	klient := server.Client()
+	perenos := klient.Transport.(*http.Transport)
+	perenos.TLSClientConfig.MaxVersion = tls.VersionTLS12
+	otvet, err := klient.Get(server.URL)
+	if err == nil {
+		otvet.Body.Close()
+		t.Fatal("рукопожатие прошло, хотя версии не сходятся")
+	}
+	if got := Klassifitsirovat(err); got != TLS {
+		t.Fatalf("отказ рукопожатия %v прочитан как %q", err, got)
 	}
 }
 

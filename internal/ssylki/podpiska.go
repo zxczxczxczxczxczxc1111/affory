@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -109,6 +110,30 @@ func OtkazSVidom(vid sboi.Vid, err error) error {
 // что и OtkazSVidom.
 func OtkazOtveta(kod int, err error) error {
 	return otkazSKodom(sboi.PoKoduOtveta(kod), kod, err)
+}
+
+// vidObryva это шаг сбоя запроса, у которого не пришло ни байта ответа.
+//
+// Соединение, которое открылось и оборвалось (EOF или сброс на чтении), по
+// типу шага не называет: EOF не называл вовсе, и человек видел общее
+// «подписка не загрузилась», а сброс читался как «не отвечает на
+// подключение», хотя подключение было. Замерено в госте 02.10.2026: порт
+// принимал соединение и рвал его на рукопожатии, ровно как фильтр
+// провайдера. У https такой обрыв это сорванное рукопожатие, у http
+// соединение, закрытое без ответа. Отказ в самом подключении (dial) и срок
+// остаются как есть.
+func vidObryva(err error, shema string) sboi.Vid {
+	vid := sboi.Klassifitsirovat(err)
+	var op *net.OpError
+	oborvano := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		(errors.As(err, &op) && (op.Op == "read" || op.Op == "write"))
+	if !oborvano || (vid != sboi.Neyasno && vid != sboi.TCP) {
+		return vid
+	}
+	if shema == "https" {
+		return sboi.TLS
+	}
+	return sboi.TCP
 }
 
 func otkazSKodom(vid sboi.Vid, kod int, err error) error {
@@ -342,7 +367,7 @@ func (z *Zagruzchik) Zagruzit(ctx context.Context, adres string) (Razbor, error)
 		if errors.Is(err, ErrPonizhenieTLS) {
 			return Razbor{}, ErrPonizhenieTLS
 		}
-		return Razbor{}, OtkazSVidom(sboi.Klassifitsirovat(err),
+		return Razbor{}, OtkazSVidom(vidObryva(err, zapros.URL.Scheme),
 			fmt.Errorf("%w: %s", ErrPodpiskaNedostupna, bezAdresa(err, adres)))
 	}
 	defer otvet.Body.Close()

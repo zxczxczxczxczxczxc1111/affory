@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/ssylki"
 )
 
@@ -362,6 +364,37 @@ func TestPotolokEtoOtkazANeUsechenie(t *testing.T) {
 	z := ssylki.NovyyZagruzchik()
 	if _, err := z.Zagruzit(context.Background(), s.URL); !errors.Is(err, ssylki.ErrPodpiskaVelika) {
 		t.Fatalf("тело больше потолка усечено молча: %v", err)
+	}
+}
+
+// Порт принимает соединение и рвёт его, не ответив ни байта: так ведёт себя
+// фильтр провайдера на рукопожатии. До 02.10.2026 шаг не назывался вовсе, и
+// человек видел общее «подписка не загрузилась».
+func TestObryvDoOtvetaNazyvaetShag(t *testing.T) {
+	slushatel, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("порт не открылся: %v", err)
+	}
+	defer slushatel.Close()
+	go func() {
+		for {
+			c, err := slushatel.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+
+	for _, s := range []struct {
+		shema string
+		zhdu  sboi.Vid
+	}{{"https", sboi.TLS}, {"http", sboi.TCP}} {
+		_, err := ssylki.NovyyZagruzchik().Zagruzit(context.Background(), s.shema+"://"+slushatel.Addr().String()+"/sub")
+		var o ssylki.OtkazZagruzki
+		if !errors.As(err, &o) || o.Vid != s.zhdu {
+			t.Errorf("%s: обрыв до ответа прочитан как %q (%v), жду %q", s.shema, o.Vid, err, s.zhdu)
+		}
 	}
 }
 
