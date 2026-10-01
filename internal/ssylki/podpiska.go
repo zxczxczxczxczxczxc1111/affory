@@ -507,6 +507,19 @@ func zamenitAdres(tekst, adres string) string {
 	return tekst
 }
 
+// otvetOkonchatelnyy отвечает, ответил ли сервер подписки отказом, который
+// повтор не изменит: 4xx, кроме 408 (не дождался запроса) и 429 (просит
+// подождать). Ссылка без подписки ждала пять заходов и 16 с там, где 404
+// пришёл с первого раза, и каждый заход ещё раз светил адрес (приёмка 1.9.2
+// в госте, 02.10.2026). 5xx повторяются: сервер сломан сейчас, а не навсегда.
+func otvetOkonchatelnyy(err error) bool {
+	var o OtkazZagruzki
+	if !errors.As(err, &o) {
+		return false
+	}
+	return o.Kod >= 400 && o.Kod < 500 && o.Kod != http.StatusRequestTimeout && o.Kod != http.StatusTooManyRequests
+}
+
 // ZagruzitSPovtorami повторяет попытку с нарастающей паузой.
 //
 // Служба стартует Automatic, то есть раньше, чем поднимается сеть. Без повторов
@@ -527,7 +540,7 @@ func (z *Zagruzchik) ZagruzitSPovtorami(ctx context.Context, adres string, popyt
 			return Razbor{}, err
 		}
 		r, err := z.Zagruzit(ctx, adres)
-		if err == nil || !errors.Is(err, ErrPodpiskaNedostupna) {
+		if err == nil || !errors.Is(err, ErrPodpiskaNedostupna) || otvetOkonchatelnyy(err) {
 			return r, err
 		}
 		posledn = err

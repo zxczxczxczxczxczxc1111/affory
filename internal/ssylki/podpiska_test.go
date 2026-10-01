@@ -512,6 +512,32 @@ func TestPovtorovNetNaSoderzhatelnomOtkaze(t *testing.T) {
 	}
 }
 
+// Сервер подписки ответил 4xx: повтор не изменит ответа, а каждый заход ещё
+// раз светит адрес. 408, 429 и 5xx повторяются: там сервер просит подождать
+// или сломан сейчас (02.10.2026).
+func TestPovtorovNetNaOkonchatelnomKodeOtveta(t *testing.T) {
+	for _, s := range []struct {
+		kod     int
+		zahodov int
+	}{{404, 1}, {403, 1}, {410, 1}, {408, 3}, {429, 3}, {503, 3}} {
+		var popytok int
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			popytok++
+			w.WriteHeader(s.kod)
+		}))
+		z := ssylki.NovyyZagruzchik()
+		z.Spat = func(time.Duration) {}
+		_, err := z.ZagruzitSPovtorami(context.Background(), srv.URL, 3)
+		srv.Close()
+		if !errors.Is(err, ssylki.ErrPodpiskaNedostupna) {
+			t.Fatalf("код %d: ожидалась недоступность, пришло %v", s.kod, err)
+		}
+		if popytok != s.zahodov {
+			t.Errorf("код %d: заходов %d, ожидалось %d", s.kod, popytok, s.zahodov)
+		}
+	}
+}
+
 func TestOtmenaKonteksta(t *testing.T) {
 	ctx, otmena := context.WithCancel(context.Background())
 	otmena()
