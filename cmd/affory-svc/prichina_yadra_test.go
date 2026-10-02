@@ -244,8 +244,15 @@ func TestPereklyucheniePrichinaOtYadraZamera(t *testing.T) {
 	if !strings.Contains(o.Oshib.Tekst, sboi.SrokSertifikata.Tekst()) {
 		t.Errorf("в тексте отказа нет причины: %q", o.Oshib.Tekst)
 	}
-	if got := d.sprosheno(); len(got) != 1 || got[0] != genkonfig.TegKandidata("nl") {
-		t.Errorf("жалобы ядра замера спрошены про %v, ждали один %s", got, genkonfig.TegKandidata("nl"))
+	got := d.sprosheno()
+	if len(got) == 0 {
+		t.Error("жалобы ядра замера не спрошены вовсе")
+	}
+	for _, teg := range got {
+		if teg != genkonfig.TegKandidata("nl") {
+			t.Errorf("жалобы ядра замера спрошены про %v, ждали только %s", got, genkonfig.TegKandidata("nl"))
+			break
+		}
 	}
 	if n := d.ostanovok.Load(); n != 1 {
 		t.Errorf("ядро замера остановлено %d раз, ждали 1", n)

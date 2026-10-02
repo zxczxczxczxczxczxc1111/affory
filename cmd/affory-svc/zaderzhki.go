@@ -127,9 +127,17 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 
 	// Причину замер не видит: на CONNECT ядро отвечает «соединение
 	// установлено» раньше, чем звонит серверу, и замеру достаётся обрыв.
-	// Ядро пишет её в журнал строкой с тегом сервера. Остановка ждёт, пока
-	// весь вывод ядра дочитан, поэтому жалобы спрашиваются после неё: иначе
-	// строка последнего сервера могла бы ещё не доехать.
+	// Ядро пишет её в журнал строкой с тегом сервера, но уже после обрыва, а
+	// остановка это Kill: сначала строки ждём (dozhdatsyaZhalob). Остановка
+	// ждёт, пока весь вывод ядра дочитан, поэтому окончательно жалобы
+	// спрашиваются после неё.
+	var otkazavshie []string
+	for _, z := range zamery {
+		if z.PingMs == nil && !y.isklyucheny[z.Id] {
+			otkazavshie = append(otkazavshie, genkonfig.TegKandidata(z.Id))
+		}
+	}
+	s.dozhdatsyaZhalob(ctx, y.konfig, otkazavshie, nachalo)
 	ostanovit()
 	for i := range zamery {
 		if zamery[i].PingMs != nil || y.isklyucheny[zamery[i].Id] {

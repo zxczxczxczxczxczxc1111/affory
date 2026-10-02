@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,11 @@ import (
 func pingovayaSluzhba(t *testing.T, isklyucheny map[string]bool) (s *Sluzhba, ostanovleno func() int) {
 	t.Helper()
 	s = podstavnaya(t, nil)
+	// Ожидание строки ядра (dozhdatsyaZhalob) судит свой тест; остальным
+	// секунда на каждый замер с отказом ни к чему.
+	srokBylo := srokStrokiYadra
+	srokStrokiYadra = 10 * time.Millisecond
+	t.Cleanup(func() { srokStrokiYadra = srokBylo })
 	if err := s.pravitNabor(func(n *Nabor) error {
 		n.Servery = []protokol.Server{
 			{Id: "a", Imya: "первый", Transport: "trojan", Host: "192.0.2.1", Port: 443, Parol: "p"},
@@ -145,6 +151,7 @@ func TestPingNazyvaetPrichinuIzZhurnalaYadra(t *testing.T) {
 	}
 	nachalo := time.Now()
 	var sprosheno []string
+	posleOstanovki := 0
 	s.zhalobaVyhoda = func(konfig, teg string, posle time.Time) (yadra.ZhalobaYadra, bool) {
 		sprosheno = append(sprosheno, teg)
 		if konfig != `C:\x\sing-box.zamer.json` {
@@ -153,8 +160,8 @@ func TestPingNazyvaetPrichinuIzZhurnalaYadra(t *testing.T) {
 		if posle.Before(nachalo) {
 			t.Errorf("жалобы берутся с %v, раньше замера %v: прошлое выдалось бы за нынешнее", posle, nachalo)
 		}
-		if ostanovleno() != 1 {
-			t.Error("жалоба спрошена у ещё не остановленного ядра: вывод мог не дочитаться")
+		if ostanovleno() == 1 {
+			posleOstanovki++
 		}
 		// Жалоба есть и на второй сервер: она не должна перебить его число.
 		return yadra.ZhalobaYadra{Prichina: sboi.SrokSertifikata, Vremya: posle}, true
@@ -166,11 +173,49 @@ func TestPingNazyvaetPrichinuIzZhurnalaYadra(t *testing.T) {
 	if z := po["b:2"]; z.PingMs == nil || z.PingPrichina != "" || z.PingOtkaz != "" {
 		t.Fatalf("ответивший сервер получил причину отказа: %+v", z)
 	}
-	if len(sprosheno) != 1 || sprosheno[0] != genkonfig.TegKandidata("a") {
-		t.Fatalf("жалобы спрошены про %v, ждали только тег отказавшего", sprosheno)
+	for _, teg := range sprosheno {
+		if teg != genkonfig.TegKandidata("a") {
+			t.Fatalf("жалобы спрошены про %v, ждали только тег отказавшего", sprosheno)
+		}
+	}
+	// До остановки жалобы можно только ждать: ответ берётся после неё, когда
+	// вывод ядра дочитан.
+	if posleOstanovki != 1 {
+		t.Fatalf("после остановки ядра жалоба спрошена %d раз, ждали 1", posleOstanovki)
 	}
 	if n := ostanovleno(); n != 1 {
 		t.Fatalf("временное ядро остановлено %d раз, ждали один", n)
+	}
+}
+
+// Ядро сначала рвёт соединение и только потом пишет причину, а остановка это
+// Kill (приёмка 1.9.3, 02.10.2026). Здесь строка приходит через 100 мс после
+// обрыва и только если ядро к тому времени живо: гасить его сразу значило бы
+// терять причину последнего отказавшего сервера.
+func TestPingZhdyotStrokuYadraDoOstanovki(t *testing.T) {
+	s, ostanovleno := pingovayaSluzhba(t, nil)
+	srokStrokiYadra = time.Second
+	var stroka atomic.Bool
+	s.zamerPinga = func(_ context.Context, _ string, proksi *url.URL) (time.Duration, error) {
+		if proksi.User.Username() == genkonfig.PolzovatelZamera("b:2") {
+			return 40 * time.Millisecond, nil
+		}
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			if ostanovleno() == 0 {
+				stroka.Store(true)
+			}
+		}()
+		return 0, errors.New("замер не прошёл: EOF")
+	}
+	s.zhalobaVyhoda = func(_, teg string, posle time.Time) (yadra.ZhalobaYadra, bool) {
+		if teg != genkonfig.TegKandidata("a") || !stroka.Load() {
+			return yadra.ZhalobaYadra{}, false
+		}
+		return yadra.ZhalobaYadra{Prichina: sboi.ObryvRukopozhatiya, Vremya: time.Now()}, true
+	}
+	if z := izmerit(t, s)["a"]; z.PingPrichina != sboi.ObryvRukopozhatiya.Korotko() {
+		t.Fatalf("строка ядра потеряна, ядро погашено раньше неё: %+v", z)
 	}
 }
 

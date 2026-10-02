@@ -60,6 +60,46 @@ func (s *Sluzhba) zameritYadro(ctx context.Context, adres, sekret, teg string, p
 	return d, &otkazZashchity{prichina: zh.Prichina}
 }
 
+// srokStrokiYadra это сколько ядро замера получает на строку отказа после
+// обрыва. Ядро сначала рвёт соединение и только потом пишет причину
+// (route/conn.go:118-119 у sing-box), а остановка ядра это Kill. Без ожидания
+// строка последнего отказавшего сервера не успевала родиться: приёмка 1.9.3 в
+// госте теряла её при доспросе одного сервера каждый раз (02.10.2026).
+// Переменная, а не константа: тестам пинга секунда на каждый замер ни к чему.
+var srokStrokiYadra = time.Second
+
+// dozhdatsyaZhalob ждёт, пока ядро назовёт причину по каждому тегу, но не
+// дольше srokStrokiYadra. Зовётся ДО остановки ядра; окончательный ответ всё
+// равно берётся после неё, когда вывод дочитан.
+func (s *Sluzhba) dozhdatsyaZhalob(ctx context.Context, konfig string, tegi []string, posle time.Time) {
+	zhdyom := append([]string(nil), tegi...)
+	if len(zhdyom) == 0 {
+		return
+	}
+	srok := time.NewTimer(srokStrokiYadra)
+	defer srok.Stop()
+	shag := time.NewTicker(50 * time.Millisecond)
+	defer shag.Stop()
+	for {
+		ostalis := zhdyom[:0]
+		for _, teg := range zhdyom {
+			if _, est := s.zhalobaVyhoda(konfig, teg, posle); !est {
+				ostalis = append(ostalis, teg)
+			}
+		}
+		if zhdyom = ostalis; len(zhdyom) == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-srok.C:
+			return
+		case <-shag.C:
+		}
+	}
+}
+
 // srokUtochneniya это сколько доспрос причины может добавить к отказу подъёма
 // или переключения. Ядро замера встаёт за секунду-две, а отказ защищённого
 // соединения приходит за доли секунды. Срок ответа connect и setServer (60 с)
@@ -116,14 +156,20 @@ func (s *Sluzhba) prichinaYadraZamera(ctx context.Context, id string) (sboi.Pric
 		return sboi.NeNazvana, false
 	}
 	z := s.pingOdnogo(ctx, srv, y)
-	// Жалобы спрашиваются после остановки: она ждёт, пока вывод ядра дочитан
-	// (см. measureDelays).
+	teg := genkonfig.TegKandidata(id)
+	if z.PingMs == nil {
+		s.dozhdatsyaZhalob(ctx, y.konfig, []string{teg}, nachalo)
+	}
+	// Окончательно жалобы спрашиваются после остановки: она ждёт, пока вывод
+	// ядра дочитан (см. measureDelays).
 	y.ostanovit()
-	if z.PingMs != nil || y.isklyucheny[id] {
+	if z.PingMs != nil {
+		log.Printf("сервер %s ответил ядру замера за %d мс: отказ живого ядра не про защищённое соединение", id, *z.PingMs)
 		return sboi.NeNazvana, false
 	}
-	zh, est := s.zhalobaVyhoda(y.konfig, genkonfig.TegKandidata(id), nachalo)
+	zh, est := s.zhalobaVyhoda(y.konfig, teg, nachalo)
 	if !est {
+		log.Printf("ядро замера не назвало причину отказа сервера %s, замер: %s", id, z.PingOtkaz)
 		return sboi.NeNazvana, false
 	}
 	return zh.Prichina, true
