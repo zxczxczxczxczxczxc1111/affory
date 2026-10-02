@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NAZVANIYA, OPISANIYA, SOVET, SpravkaProtokolov, ZAGOLOVOK_CHUZHIE } from "./SpravkaProtokolov";
+import { NAZVANIYA, OPISANIYA, PORYADOK, SpravkaProtokolov, VIDY, ZAGOLOVOK_CHUZHIE } from "./SpravkaProtokolov";
 import { Servery, type SpisokServerov } from "./Servery";
 import { Glavnyy } from "./Glavnyy";
 import type { Server, StatusOtvet } from "../protokol";
@@ -67,19 +67,30 @@ describe("Справка о протоколах", () => {
     expect(mesto("vmess")).toBeGreaterThan(granica);
   });
 
-  it("первым предлагает то, что лучше на замере", () => {
-    // 21.09.2026 справка советовала anytls и ставила его первым, а замер смеси
-    // голоса и трансляции от 20.09 показал ровно обратное: 101.5 мс против
-    // 64.4 у tuic и ни одного залипания у последнего за восемь замеров.
-    // Человек, берущий верхнюю строку не глядя, брал худшее из живых ключей.
-    render(<SpravkaProtokolov zakryt={vi.fn()} svoi={["tuic", "anytls", "trojan"]} />);
-    const okno = screen.getByTestId("spravka-protokolov");
-    const mesto = (s: string) => okno.textContent?.indexOf(s) ?? -1;
+  it("описывает, а не советует", () => {
+    // До 02.10.2026 справка звала «бери tuic» по замерам одной машины, а у
+    // другого провайдера тот же tuic режут. Какой протокол быстрее, зависит
+    // от сети человека, и справка этого знать не может (решение владельца).
+    const sovety = ["бери", "пробуй", "лучш", "худш", "самый", "самая", "рекоменд", "совет"];
+    const tekst = [
+      ...Object.values(OPISANIYA).map((o) => `${o.kak} ${o.sledstvie}`),
+      ...VIDY.map((v) => v.tekst),
+    ].join(" ").toLowerCase();
+    for (const slovo of sovety) {
+      expect(tekst.includes(slovo), slovo).toBe(false);
+    }
+  });
 
-    expect(mesto("tuic")).toBeGreaterThan(-1);
-    expect(mesto("tuic")).toBeLessThan(mesto("anytls"));
-    // И совет сверху зовёт туда же, куда порядок: разойтись им нельзя.
-    expect(SOVET[0]).toContain("tuic");
+  it("порядок идёт по виду, как в пояснении сверху", () => {
+    // Сначала протоколы, передающие пакетами, затем потоком: человек читает
+    // пояснение о двух видах и находит их ниже в том же порядке.
+    const paketami = VIDY[0].kto.split(", ");
+    const posledniyPaket = Math.max(...paketami.map((t) => PORYADOK.indexOf(t)));
+    const pervyyPotok = Math.min(...PORYADOK.filter((t) => !paketami.includes(t)).map((t) => PORYADOK.indexOf(t)));
+    expect(paketami.every((t) => PORYADOK.includes(t))).toBe(true);
+    expect(posledniyPaket).toBeLessThan(pervyyPotok);
+    render(<SpravkaProtokolov zakryt={vi.fn()} />);
+    expect(screen.getByTestId("spravka-vidy")).toHaveTextContent(/Пакетами \(tuic, hy2\)/);
   });
 
   it("закрывается по Escape", () => {
@@ -112,23 +123,21 @@ describe("Справка о протоколах", () => {
     // замена на пробел, чтобы склейка не породила запрещённое слово.
     const imena = [...Object.keys(OPISANIYA), ...Object.keys(NAZVANIYA), ...Object.values(NAZVANIYA)]
       .sort((a, b) => b.length - a.length);
-    let tekst = Object.values(OPISANIYA).map((o) => `${o.horosho} ${o.ceny}`).join(" ").toLowerCase();
+    let tekst = [...Object.values(OPISANIYA).map((o) => `${o.kak} ${o.sledstvie}`), ...VIDY.map((v) => v.tekst)]
+      .join(" ").toLowerCase();
     for (const imya of imena) tekst = tekst.split(imya.toLowerCase()).join(" ");
     for (const slovo of zapreshcheno) {
       expect(tekst.includes(slovo.toLowerCase()), slovo).toBe(false);
     }
   });
 
-  it("у каждого протокола названа и польза, и цена", () => {
-    // Описание из одних достоинств это реклама, а не справка: выбрать по ней
-    // нельзя, потому что выбор это всегда обмен одного на другое.
-    //
-    // Порог 15, а не 20: 21.09.2026 владелец сократил тексты вдвое, и цена
-    // tuic «Не работает в Happ.» это целых 19 знаков. Сторож здесь стоит
-    // против ПУСТОЙ цены и отписки вроде «нет», а не против краткости.
+  it("у каждого протокола названо устройство и что из него следует", () => {
+    // Одно устройство без следствия человеку ничего не говорит, одно
+    // следствие без устройства читается как обещание. Сторож стоит против
+    // пустой строки и отписки, а не против краткости.
     for (const [t, o] of Object.entries(OPISANIYA)) {
-      expect(o.horosho.length, t).toBeGreaterThan(15);
-      expect(o.ceny.length, t).toBeGreaterThan(15);
+      expect(o.kak.length, t).toBeGreaterThan(15);
+      expect(o.sledstvie.length, t).toBeGreaterThan(15);
     }
   });
 });
