@@ -111,9 +111,10 @@ func TestVygruzkaVozvrashchaetTeZheServery(t *testing.T) {
 		t.Fatalf("выгрузка отвергнута: %+v", o.Oshib)
 	}
 	var v struct {
-		Tekst  string `json:"tekst"`
-		Base64 string `json:"base64"`
-		Vsego  int    `json:"vsego"`
+		Tekst   string                `json:"tekst"`
+		Base64  string                `json:"base64"`
+		Vsego   int                   `json:"vsego"`
+		Servery []ssylki.Vygruzhennyy `json:"servery"`
 	}
 	if err := json.Unmarshal(o.Telo, &v); err != nil {
 		t.Fatal(err)
@@ -140,6 +141,26 @@ func TestVygruzkaVozvrashchaetTeZheServery(t *testing.T) {
 	if b, err := base64.StdEncoding.DecodeString(v.Base64); err != nil || string(b) != v.Tekst {
 		t.Errorf("base64 не совпал с текстом: %v", err)
 	}
+	// Список по серверам это те же строки в том же порядке, и каждая
+	// названа своим сервером из набора.
+	stroki := strings.Split(v.Tekst, "\n")
+	if len(v.Servery) != len(stroki) {
+		t.Fatalf("строк текста %d, строк по серверам %d", len(stroki), len(v.Servery))
+	}
+	for i, vs := range v.Servery {
+		if vs.Ssylka != stroki[i] {
+			t.Errorf("строка %d по серверам не та, что в тексте", i)
+		}
+		nashli := false
+		for _, srv := range n.Servery {
+			if srv.Id == vs.Id && srv.Imya == vs.Imya && srv.Transport == vs.Transport && !srv.Uderzhan {
+				nashli = true
+			}
+		}
+		if !nashli {
+			t.Errorf("строка %d названа %+v, такого живого сервера в наборе нет", i, vs)
+		}
+	}
 
 	// Выгрузка отобранных: только то, что попросили.
 	var hy2Id string
@@ -149,8 +170,15 @@ func TestVygruzkaVozvrashchaetTeZheServery(t *testing.T) {
 		}
 	}
 	o = vypolnit(t, s, "exportServers", map[string]any{"ids": []string{hy2Id}})
-	if o.Oshib != nil || json.Unmarshal(o.Telo, &v) != nil || v.Vsego != 1 || !strings.HasPrefix(v.Tekst, "hy2://") {
+	if o.Oshib != nil || json.Unmarshal(o.Telo, &v) != nil || v.Vsego != 1 || !strings.HasPrefix(v.Tekst, "hy2://") ||
+		len(v.Servery) != 1 || v.Servery[0].Id != hy2Id {
 		t.Fatalf("выгрузка одного: %+v, %+v", o.Oshib, v)
+	}
+
+	// Удержанный, названный по id, отдаётся: это ключ из меню сервера.
+	o = vypolnit(t, s, "exportServers", map[string]any{"ids": []string{"uderzhan"}})
+	if o.Oshib != nil || json.Unmarshal(o.Telo, &v) != nil || v.Vsego != 1 || len(v.Servery) != 1 || v.Servery[0].Adres != "203.0.113.99:1" {
+		t.Fatalf("ключ удержанного: %+v, %+v", o.Oshib, v)
 	}
 }
 

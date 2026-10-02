@@ -3,7 +3,7 @@ import type { OtkazNaEkrane, OtkazStroki, Server, StatusOtvet } from "../protoko
 import { slovoPosleChisla } from "../chisla";
 import { IkonkaKorzina, Karta, Knopka, Kolonka, MenyuUKursora, Neudacha, Pole, PoleTeksta, Razdel, Ryad, Shapka, Teg } from "./ui";
 import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
-import { Vygruzka, type VygruzkaOtvet } from "./Vygruzka";
+import { OknoKlyucha, Vygruzka, type KlyuchServera, type VygruzkaOtvet } from "./Vygruzka";
 import { tekstOshibki } from "../ponyatno";
 
 // Servers tab (task 4.9). Pure over props like every screen: App fetches
@@ -72,7 +72,37 @@ export function vygruzkaIz(telo: unknown): VygruzkaOtvet | null {
     ? t.propushcheny.filter((p): p is { imya: string; prichina: string } =>
         !!p && typeof p === "object" && typeof (p as { imya?: unknown }).imya === "string" && typeof (p as { prichina?: unknown }).prichina === "string")
     : [];
-  return { tekst: t.tekst, base64: t.base64, vsego: chislo(t.vsego), propushcheny };
+  const servery = Array.isArray(t.servery)
+    ? t.servery.flatMap((x: unknown): KlyuchServera[] => {
+        if (!x || typeof x !== "object") return [];
+        const { id, imya, transport, adres, ssylka } = x as Record<string, unknown>;
+        return typeof id === "string" && typeof imya === "string" && typeof transport === "string" && typeof adres === "string" && typeof ssylka === "string"
+          ? [{ id, imya, transport, adres, ssylka }]
+          : [];
+      })
+    : klyuchiIzTeksta(t.tekst);
+  return { tekst: t.tekst, base64: t.base64, vsego: chislo(t.vsego), servery, propushcheny };
+}
+
+/** Строки выгрузки от службы старее окна, где поля servery ещё нет: имя из
+ *  хвоста ссылки, протокол по схеме, адреса нет. Хуже, чем от службы, но
+ *  лучше сплошного текста, от которого выгрузку и уводили (02.10.2026). */
+function klyuchiIzTeksta(tekst: string): KlyuchServera[] {
+  return tekst.split("\n").map((s) => s.trim()).filter(Boolean).map((ssylka, i) => {
+    const reshyotka = ssylka.lastIndexOf("#");
+    const imya = reshyotka >= 0 ? raskodirovat(ssylka.slice(reshyotka + 1)) : "";
+    return { id: `stroka-${i}`, imya: imya || `сервер ${i + 1}`, transport: ssylka.split("://")[0] ?? "", adres: "", ssylka };
+  });
+}
+
+/** Кривое процентное кодирование оставляет имя как пришло: по нему строку
+ *  всё равно можно узнать. */
+function raskodirovat(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }
 
 export interface SpisokServerov {
@@ -272,6 +302,17 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
   // курсора, а не строки: меню, появляющееся в стороне от нажатия, читается как
   // чужое.
   const [menyu, zadatMenyu] = useState<{ id: string; x: number; y: number } | null>(null);
+  // Ключ одного сервера из меню (02.10.2026). Окно открывается сразу, а
+  // ключ доезжает ответом службы.
+  const [oknoKlyucha, zadatOknoKlyucha] = useState<{ id: string; imya: string; klyuch: KlyuchServera | null; otkaz: string | null } | null>(null);
+  // Строка, чей ключ только что ушёл в буфер из меню. Меню к этому времени
+  // закрыто, и без отметки в самой строке нажатие выглядело бы пустым.
+  const [skopirovanKlyuch, zadatSkopirovanKlyuch] = useState<string | null>(null);
+  useEffect(() => {
+    if (!skopirovanKlyuch) return;
+    const t = setTimeout(() => zadatSkopirovanKlyuch(null), 3000);
+    return () => clearTimeout(t);
+  }, [skopirovanKlyuch]);
 
   const servery = spisok?.servery ?? [];
   const vidimye = useMemo(() => servery.filter((s) => sovpadaet(s, poisk)), [servery, poisk]);
@@ -417,6 +458,40 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
     if (otpravit(ssylka, "pole")) zadatSsylku("");
   };
   const zakrytFormu = () => { zabytQr(); zadatDobavlyayu(false); zadatSsylku(""); zadatItog(null); zadatIshodVvoda(null); };
+
+  // Ключ одного сервера: та же exportServers, но с одним id. Сервер, который
+  // в ссылку не переводится, приходит в propushcheny со своей причиной.
+  const vzyatKlyuch = (s: Server, naKlyuch: (k: KlyuchServera) => void, naOtkaz: (tekst: string) => void) => {
+    naKomandu("exportServers", { ids: [s.id] }, (telo) => {
+      const v = vygruzkaIz(telo);
+      const k = v?.servery.find((x) => x.id === s.id) ?? v?.servery[0];
+      if (k) naKlyuch(k);
+      else naOtkaz(v?.propushcheny?.[0]?.prichina ?? "служба не отдала ключ");
+    }, (o) => naOtkaz(o.tekst));
+  };
+  const pokazatKlyuch = (s: Server) => {
+    zadatOknoKlyucha({ id: s.id, imya: s.imya, klyuch: null, otkaz: null });
+    vzyatKlyuch(
+      s,
+      (klyuch) => zadatOknoKlyucha((o) => (o?.id === s.id ? { ...o, klyuch } : o)),
+      (otkaz) => zadatOknoKlyucha((o) => (o?.id === s.id ? { ...o, otkaz } : o)),
+    );
+  };
+  // Отказ копирования открывает окно ключа: в нём видно, почему не вышло, а
+  // сам ключ можно выделить и скопировать руками.
+  const skopirovatKlyuch = (s: Server) => {
+    if (!skopirovat) return;
+    vzyatKlyuch(
+      s,
+      (klyuch) => {
+        skopirovat(klyuch.ssylka).then(
+          () => zadatSkopirovanKlyuch(s.id),
+          (e: unknown) => zadatOknoKlyucha({ id: s.id, imya: s.imya, klyuch, otkaz: `не скопировалось: ${tekstOshibki(e)}` }),
+        );
+      },
+      (otkaz) => zadatOknoKlyucha({ id: s.id, imya: s.imya, klyuch: null, otkaz }),
+    );
+  };
 
   const otmena = !pervyyZapusk && <Knopka rang="tekst" onClick={zakrytFormu}>{itog ? "Готово" : "Отмена"}</Knopka>;
   // Служба ходит за подпиской по сети прямо в команде, и ответа ждать секунды.
@@ -582,7 +657,27 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
       {!pervyyZapusk && dobavlyayu && forma}
 
       {vygruzka && (
-        <Vygruzka vygruzka={vygruzka} zakryt={() => zadatVygruzku(null)} skopirovat={skopirovat} kodyQr={kodyQr} />
+        <Vygruzka
+          vygruzka={vygruzka}
+          zakryt={() => zadatVygruzku(null)}
+          skopirovat={skopirovat}
+          kodyQr={kodyQr}
+          nazvatTransport={nazvatTransport}
+        />
+      )}
+
+      {oknoKlyucha && (
+        <OknoKlyucha
+          imya={oknoKlyucha.imya}
+          klyuch={oknoKlyucha.klyuch}
+          // Служба замолчала, пока ключ был в пути: ответа не будет, и окно
+          // не должно обещать его вечно. Причину называет общий баннер.
+          otkaz={oknoKlyucha.otkaz ?? (!aktiven && !oknoKlyucha.klyuch ? "служба не отвечает, ключ не получен" : null)}
+          zakryt={() => zadatOknoKlyucha(null)}
+          skopirovat={skopirovat}
+          kodyQr={kodyQr}
+          nazvatTransport={nazvatTransport}
+        />
       )}
 
       {spisok !== null && (spisok.podpiska_zadana || stroki.length > 0) && (
@@ -762,6 +857,7 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
                       {s.host}:{s.port} · {TRANSPORT[s.transport] ?? s.transport}
                     </span>
                   </div>
+                  {skopirovanKlyuch === s.id && <Teg ton="akcent" testId={`klyuch-skopirovan-${s.id}`}>ключ скопирован</Teg>}
                   <Zaderzhka zamer={poZaderzhkam.get(s.id)} />
                   {s.s_pinom && <Teg ton="akcent">сертификат закреплён</Teg>}
                   {s.nebezopasnyy_ignorirovan && <Teg ton="preduprezhdenie">проверка сертификата включена принудительно</Teg>}
@@ -812,6 +908,8 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
             podpis={`Что сделать с сервером ${s.imya}`}
             naZakrytie={() => zadatMenyu(null)}
             punkty={[
+              ...(skopirovat ? [{ podpis: "Скопировать ключ", naZhmyh: () => skopirovatKlyuch(s) }] : []),
+              { podpis: "Показать ключ и QR", naZhmyh: () => pokazatKlyuch(s) },
               s.vne_avto
                 ? {
                     podpis: "Вернуть в автовыбор",
@@ -851,6 +949,10 @@ export function Zaderzhka({ zamer }: { zamer?: ZamerZaderzhki }) {
       {tekst}
     </span>
   );
+}
+
+function nazvatTransport(t: string): string {
+  return TRANSPORT[t] ?? t;
 }
 
 function imyaPo(servery: Server[], id: string): string {

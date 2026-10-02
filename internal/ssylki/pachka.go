@@ -2,6 +2,8 @@ package ssylki
 
 import (
 	"errors"
+	"net"
+	"strconv"
 	"strings"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
@@ -69,12 +71,25 @@ type OtkazEksporta struct {
 	Prichina string `json:"prichina"`
 }
 
+// Vygruzhennyy это одна строка выгрузки вместе с тем, чей это ключ. Окно
+// рисует выгрузку списком серверов (02.10.2026): сплошной текст из дюжины
+// ссылок не давал понять, какая из них какой сервер. Протокол и адрес
+// приходят отсюда, а не разбором ссылки в окне: список схем в окне уже
+// однажды отстал от разбора службы.
+type Vygruzhennyy struct {
+	Id        string `json:"id"`
+	Imya      string `json:"imya"`
+	Transport string `json:"transport"`
+	Adres     string `json:"adres"`
+	Ssylka    string `json:"ssylka"`
+}
+
 // SobratSpisok собирает ссылки по строке. Серверы, которые в ссылку не
 // переводятся, возвращаются отдельно: выгрузка не имеет права терять их молча.
 //
 // Сюда обязан приходить сервер из набора, а не экранная копия: dlyaEkrana
 // вычищает ключи, и ссылка из неё собралась бы без единой ошибки и не работала.
-func SobratSpisok(servery []protokol.Server) (ssylki []string, propushcheny []OtkazEksporta) {
+func SobratSpisok(servery []protokol.Server) (gotovye []Vygruzhennyy, propushcheny []OtkazEksporta) {
 	for _, s := range servery {
 		ss, err := Sobrat(s)
 		if err != nil {
@@ -85,7 +100,13 @@ func SobratSpisok(servery []protokol.Server) (ssylki []string, propushcheny []Ot
 			propushcheny = append(propushcheny, OtkazEksporta{Imya: s.Imya, Prichina: prichina})
 			continue
 		}
-		ssylki = append(ssylki, ss)
+		gotovye = append(gotovye, Vygruzhennyy{
+			Id:        s.Id,
+			Imya:      s.Imya,
+			Transport: s.Transport,
+			Adres:     net.JoinHostPort(s.Host, strconv.Itoa(s.Port)),
+			Ssylka:    ss,
+		})
 	}
-	return ssylki, propushcheny
+	return gotovye, propushcheny
 }

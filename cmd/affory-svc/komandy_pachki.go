@@ -69,8 +69,13 @@ func (s *Sluzhba) addServers(k protokol.Kadr) protokol.Kadr {
 // exportServers отдаёт ссылки на серверы набора, все ключи машины открытым
 // текстом. Администратора с 01.10.2026 не требует, см. komandyDlyaAdmina.
 //
-// ids пустой значит «все». Удержанные записи не выгружаются: подписка про них
-// уже не знает, и на другом устройстве они стали бы вечными.
+// ids пустой значит «все». Удержанные записи во всеобщую выгрузку не идут:
+// подписка про них уже не знает, и на другом устройстве они стали бы вечными.
+// Названный по id удержанный отдаётся (02.10.2026): это ключ одного сервера из
+// меню, человек выбрал его сам, глядя на полосу «Пропали из подписки».
+//
+// servery это те же ссылки по одной, с именем, протоколом и адресом: окно
+// рисует выгрузку списком и ключ одного сервера из меню.
 func (s *Sluzhba) exportServers(k protokol.Kadr) protokol.Kadr {
 	var telo struct {
 		Ids []string `json:"ids"`
@@ -90,7 +95,10 @@ func (s *Sluzhba) exportServers(k protokol.Kadr) protokol.Kadr {
 	}
 	var otobrany []protokol.Server
 	for _, srv := range n.Servery {
-		if srv.Uderzhan || (len(nuzhny) > 0 && !nuzhny[srv.Id]) {
+		if len(nuzhny) > 0 && !nuzhny[srv.Id] {
+			continue
+		}
+		if srv.Uderzhan && len(nuzhny) == 0 {
 			continue
 		}
 		otobrany = append(otobrany, srv)
@@ -98,12 +106,22 @@ func (s *Sluzhba) exportServers(k protokol.Kadr) protokol.Kadr {
 	if len(otobrany) == 0 {
 		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, errVygruzhatNechego.Error())
 	}
-	spisok, propushcheny := ssylki.SobratSpisok(otobrany)
-	tekst := strings.Join(spisok, "\n")
+	gotovye, propushcheny := ssylki.SobratSpisok(otobrany)
+	if gotovye == nil {
+		// Пустой список, а не null: окно отличает «служба старая, поля нет» от
+		// «ни один сервер в ссылку не перевёлся».
+		gotovye = []ssylki.Vygruzhennyy{}
+	}
+	stroki := make([]string, len(gotovye))
+	for i, v := range gotovye {
+		stroki[i] = v.Ssylka
+	}
+	tekst := strings.Join(stroki, "\n")
 	return otvet(k.Id, k.Imya, map[string]any{
 		"tekst":        tekst,
 		"base64":       base64.StdEncoding.EncodeToString([]byte(tekst)),
-		"vsego":        len(spisok),
+		"vsego":        len(gotovye),
+		"servery":      gotovye,
 		"propushcheny": propushcheny,
 	})
 }

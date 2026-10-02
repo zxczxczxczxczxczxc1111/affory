@@ -87,8 +87,9 @@ describe("серверы: область автовыбора", () => {
     const stroka = screen.getAllByRole("option")[1];
     fireEvent.keyDown(stroka, { key: "F10", shiftKey: true });
     const menyu = screen.getByTestId("menyu-servera");
-    // Фокус уезжает в меню сразу: иначе пройти его с клавиатуры нечем.
-    expect(within(menyu).getByRole("menuitem", { name: "Убрать из автовыбора" })).toHaveFocus();
+    // Фокус уезжает в меню сразу, на первый пункт: иначе пройти его с
+    // клавиатуры нечем. С 02.10.2026 первыми стоят пункты ключа.
+    expect(within(menyu).getAllByRole("menuitem")[0]).toHaveFocus();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("menyu-servera")).toBeNull();
     // Escape закрывает и ничего не делает: закрытие это не отмена и не

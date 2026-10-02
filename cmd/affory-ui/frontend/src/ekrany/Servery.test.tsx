@@ -656,12 +656,16 @@ describe("серверы: выгрузка", () => {
     tekst: "hy2://p@h:443#a\nanytls://p@h:995#b",
     base64: "aHkyOi8vcEBoOjQ0MyNhCmFueXRsczovL3BAaDo5OTUjYg==",
     vsego: 2,
+    servery: [
+      { id: "id1", imya: "Сервер 1", transport: "hy2", adres: "h:443", ssylka: "hy2://p@h:443#a" },
+      { id: "id2", imya: "Сервер 2", transport: "anytls", adres: "h:995", ssylka: "anytls://p@h:995#b" },
+    ],
     propushcheny: [{ imya: "старый", prichina: "этот вид сервера в ссылку не переводится" }],
   };
 
-  function otkryt(pere: { skopirovat?: (t: string) => Promise<void>; kodyQr?: (t: string) => Promise<string[]> } = {}) {
+  function otkryt(pere: { skopirovat?: (t: string) => Promise<void>; kodyQr?: (t: string) => Promise<string[]> } = {}, otvet: unknown = OTVET) {
     const na = vi.fn((komanda: string, _telo: unknown, naOtvet?: (telo: unknown) => void) => {
-      if (komanda === "exportServers") naOtvet?.(OTVET);
+      if (komanda === "exportServers") naOtvet?.(otvet);
     });
     render(<Servery status={VYKL} spisok={spisok([server(1), server(2)])} naKomandu={na} {...pere} />);
     fireEvent.click(screen.getByTestId("vygruzit"));
@@ -674,11 +678,21 @@ describe("серверы: выгрузка", () => {
     expect(screen.getByTestId("vygruzka-itog")).toHaveTextContent("Выгрузка: 2 сервера");
     expect(screen.getByTestId("vygruzka-propushcheny")).toHaveTextContent("не выгружен старый");
     expect(screen.getByTestId("vygruzka")).toHaveTextContent(/кто их получит, тот подключится/);
-    expect(screen.queryByTestId("vygruzka-pole")).toBeNull();
     expect(document.body.textContent).not.toMatch(/hy2:\/\//);
   });
 
-  it("«Скопировать» кладёт список или base64, не показывая их", async () => {
+  // Жалоба 02.10.2026 со скриншотом: сплошной текст из дюжины ссылок не давал
+  // понять, какая из них какой сервер.
+  it("каждый ключ это строка со своим сервером: имя, адрес, протокол словами", () => {
+    otkryt();
+    const stroki = within(screen.getByTestId("vygruzka-spisok")).getAllByRole("listitem");
+    expect(stroki).toHaveLength(2);
+    expect(stroki[0]).toHaveTextContent("Сервер 1");
+    expect(stroki[0]).toHaveTextContent("h:443 · hysteria2");
+    expect(stroki[1]).toHaveTextContent("h:995 · anytls");
+  });
+
+  it("«Скопировать всё» кладёт список или base64, не показывая их", async () => {
     const skopirovat = vi.fn(async () => {});
     otkryt({ skopirovat });
     fireEvent.click(screen.getByTestId("vygruzka-kopirovat"));
@@ -687,15 +701,48 @@ describe("серверы: выгрузка", () => {
     fireEvent.click(screen.getByRole("radio", { name: "одной строкой base64" }));
     fireEvent.click(screen.getByTestId("vygruzka-kopirovat"));
     await vi.waitFor(() => expect(skopirovat).toHaveBeenLastCalledWith(OTVET.base64));
-    expect(screen.queryByTestId("vygruzka-pole")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/hy2:\/\//);
   });
 
-  it("текст открывается по кнопке и только для чтения", () => {
+  it("ключ строки копируется отдельно, и строка говорит, что скопирована", async () => {
+    const skopirovat = vi.fn(async () => {});
+    otkryt({ skopirovat });
+    fireEvent.click(screen.getByRole("button", { name: "скопировать ключ Сервер 2" }));
+    await vi.waitFor(() => expect(skopirovat).toHaveBeenCalledWith("anytls://p@h:995#b"));
+    expect(await screen.findByRole("button", { name: "скопировано: ключ Сервер 2" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "скопировать ключ Сервер 1" })).toHaveTextContent("Скопировать");
+    expect(document.body.textContent).not.toMatch(/anytls:\/\//);
+  });
+
+  it("«Показать ключи» открывает ссылку под каждой строкой", () => {
     otkryt();
     fireEvent.click(screen.getByTestId("vygruzka-tekst"));
-    const pole = screen.getByTestId("vygruzka-pole") as HTMLTextAreaElement;
-    expect(pole.value).toBe(OTVET.tekst);
-    expect(pole.readOnly).toBe(true);
+    expect(screen.getByTestId("vygruzka-klyuch-id1")).toHaveTextContent("hy2://p@h:443#a");
+    expect(screen.getByTestId("vygruzka-klyuch-id2")).toHaveTextContent("anytls://p@h:995#b");
+    fireEvent.click(screen.getByTestId("vygruzka-tekst"));
+    expect(screen.queryByTestId("vygruzka-klyuch-id1")).toBeNull();
+  });
+
+  it("QR строки рисуется из её ссылки и открывается под ней", async () => {
+    const kodyQr = vi.fn(async () => ["data:image/png;base64,AAA"]);
+    otkryt({ kodyQr });
+    fireEvent.click(screen.getByRole("button", { name: "QR ключа Сервер 1" }));
+    await vi.waitFor(() => expect(kodyQr).toHaveBeenCalledWith("hy2://p@h:443#a"));
+    const stroka = screen.getByTestId("vygruzka-stroka-id1");
+    expect(await within(stroka).findByRole("img", { name: "QR Сервер 1" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "скрыть QR ключа Сервер 1" }));
+    expect(within(stroka).queryByRole("img")).toBeNull();
+  });
+
+  // Служба старее окна поля servery не знает. Строки тогда собираются из
+  // текста: имя из хвоста ссылки, протокол по схеме.
+  it("без строк от службы список собирается из текста", () => {
+    const { servery: _, ...bezStrok } = OTVET;
+    otkryt({}, bezStrok);
+    const stroki = within(screen.getByTestId("vygruzka-spisok")).getAllByRole("listitem");
+    expect(stroki).toHaveLength(2);
+    expect(stroki[0]).toHaveTextContent("a");
+    expect(stroki[1]).toHaveTextContent("anytls");
   });
 
   it("QR рисуется из списка, а не из base64, и несколько кодов подписаны", async () => {
@@ -718,6 +765,72 @@ describe("серверы: выгрузка", () => {
   it("на пустом списке выгружать нечего, кнопки нет", () => {
     risovat(spisok([]));
     expect(screen.queryByTestId("vygruzit")).toBeNull();
+  });
+});
+
+// Ключ одного сервера из меню правой кнопки (02.10.2026, просьба владельца).
+describe("серверы: ключ из меню", () => {
+  const KLYUCH = { id: "id2", imya: "Сервер 2", transport: "reality-tcp", adres: "s2.example.net:443", ssylka: "vless://u@s2.example.net:443#s2" };
+  const OTVET = { tekst: KLYUCH.ssylka, base64: "", vsego: 1, servery: [KLYUCH], propushcheny: [] };
+
+  function otkryt(pere: { skopirovat?: (t: string) => Promise<void>; kodyQr?: (t: string) => Promise<string[]> } = {},
+    otvet: (naOtvet?: (telo: unknown) => void, naOtkaz?: (o: { kod: string; tekst: string }) => void) => void = (naOtvet) => naOtvet?.(OTVET)) {
+    const na = vi.fn((komanda: string, _telo: unknown, naOtvet?: (telo: unknown) => void, naOtkaz?: (o: { kod: string; tekst: string }) => void) => {
+      if (komanda === "exportServers") otvet(naOtvet, naOtkaz);
+    });
+    render(<Servery status={VYKL} spisok={spisok([server(1), server(2)])} naKomandu={na} {...pere} />);
+    fireEvent.contextMenu(screen.getAllByRole("option")[1]);
+    return na;
+  }
+
+  it("«Показать ключ и QR» берёт ключ одного сервера и показывает его с кодом", async () => {
+    const kodyQr = vi.fn(async () => ["data:image/png;base64,AAA"]);
+    const na = otkryt({ kodyQr });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Показать ключ и QR" }));
+    expect(na).toHaveBeenCalledWith("exportServers", { ids: ["id2"] }, expect.any(Function), expect.any(Function));
+    const okno = screen.getByRole("dialog", { name: "Ключ сервера Сервер 2" });
+    expect(within(okno).getByTestId("klyuch-servera-ssylka")).toHaveTextContent(KLYUCH.ssylka);
+    expect(okno).toHaveTextContent("s2.example.net:443 · reality");
+    await vi.waitFor(() => expect(kodyQr).toHaveBeenCalledWith(KLYUCH.ssylka));
+    expect(await within(okno).findByRole("img", { name: "QR Сервер 2" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("«Скопировать ключ» кладёт ключ в буфер, не показывая его, и строка это отмечает", async () => {
+    const skopirovat = vi.fn(async () => {});
+    otkryt({ skopirovat });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Скопировать ключ" }));
+    await vi.waitFor(() => expect(skopirovat).toHaveBeenCalledWith(KLYUCH.ssylka));
+    expect(await screen.findByTestId("klyuch-skopirovan-id2")).toHaveTextContent("ключ скопирован");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/vless:\/\//);
+  });
+
+  it("буфер отказал: окно ключа объясняет и даёт скопировать руками", async () => {
+    otkryt({ skopirovat: async () => { throw new Error("буфер занят другой программой"); } });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Скопировать ключ" }));
+    const okno = await screen.findByRole("dialog");
+    expect(within(okno).getByTestId("klyuch-servera-otkaz")).toHaveTextContent("не скопировалось");
+    expect(within(okno).getByTestId("klyuch-servera-ssylka")).toHaveTextContent(KLYUCH.ssylka);
+  });
+
+  it("сервер, который в ссылку не переводится, назван причиной", () => {
+    otkryt({}, (naOtvet) => naOtvet?.({ tekst: "", base64: "", vsego: 0, servery: [], propushcheny: [{ imya: "Сервер 2", prichina: "этот вид сервера в ссылку не переводится" }] }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Показать ключ и QR" }));
+    expect(screen.getByTestId("klyuch-servera-otkaz")).toHaveTextContent("этот вид сервера в ссылку не переводится");
+  });
+
+  it("отказ службы показан в окне ключа, а не общим баннером", () => {
+    otkryt({}, (_naOtvet, naOtkaz) => naOtkaz?.({ kod: "secrets-unreadable", tekst: "ключи на этой машине не читаются" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Показать ключ и QR" }));
+    expect(screen.getByTestId("klyuch-servera-otkaz")).toHaveTextContent("ключи на этой машине не читаются");
+  });
+
+  it("без буфера у оболочки пункта копирования нет", () => {
+    otkryt();
+    expect(screen.queryByRole("menuitem", { name: "Скопировать ключ" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Показать ключ и QR" })).toBeTruthy();
   });
 });
 

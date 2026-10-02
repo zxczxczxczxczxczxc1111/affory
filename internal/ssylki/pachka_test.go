@@ -133,8 +133,35 @@ func TestSobratSpisokNeTeryaetMolcha(t *testing.T) {
 		{Transport: "hy2", Host: "1.2.3.4", Port: 443, Parol: "p", Imya: "hy2"},
 		{Transport: "xhttp", Host: "1.2.3.4", Port: 443, Imya: "chuzhoy"},
 	}
-	ssylkiSpisok, propushcheny := ssylki.SobratSpisok(servery)
-	if len(ssylkiSpisok) != 1 || len(propushcheny) != 1 || propushcheny[0].Imya != "chuzhoy" {
-		t.Fatalf("ссылок %d, пропущено %+v", len(ssylkiSpisok), propushcheny)
+	gotovye, propushcheny := ssylki.SobratSpisok(servery)
+	if len(gotovye) != 1 || len(propushcheny) != 1 || propushcheny[0].Imya != "chuzhoy" {
+		t.Fatalf("ссылок %d, пропущено %+v", len(gotovye), propushcheny)
+	}
+}
+
+// Строка выгрузки называет свой сервер: имя, протокол и адрес берутся из
+// того же профиля, из которого собрана ссылка. Адрес IPv6 в скобках, как в
+// самой ссылке, иначе порт сливается с последней группой адреса.
+func TestSobratSpisokNazyvaetServer(t *testing.T) {
+	servery := []protokol.Server{
+		{Id: "a1", Transport: "hy2", Host: "1.2.3.4", Port: 443, Parol: "p", Imya: "hy2"},
+		{Id: "b2", Transport: "anytls", Host: "2001:db8::1", Port: 995, Parol: "q", Imya: "anytls v6"},
+	}
+	gotovye, propushcheny := ssylki.SobratSpisok(servery)
+	if len(gotovye) != 2 || len(propushcheny) != 0 {
+		t.Fatalf("готово %+v, пропущено %+v", gotovye, propushcheny)
+	}
+	for i, ozhid := range []ssylki.Vygruzhennyy{
+		{Id: "a1", Imya: "hy2", Transport: "hy2", Adres: "1.2.3.4:443"},
+		{Id: "b2", Imya: "anytls v6", Transport: "anytls", Adres: "[2001:db8::1]:995"},
+	} {
+		v := gotovye[i]
+		if v.Id != ozhid.Id || v.Imya != ozhid.Imya || v.Transport != ozhid.Transport || v.Adres != ozhid.Adres {
+			t.Errorf("строка %d: %+v, ждали %+v", i, v, ozhid)
+		}
+		ss, err := ssylki.Sobrat(servery[i])
+		if err != nil || v.Ssylka != ss {
+			t.Errorf("строка %d: ссылка %q не та, что собирает Sobrat (%v)", i, v.Ssylka, err)
+		}
 	}
 }

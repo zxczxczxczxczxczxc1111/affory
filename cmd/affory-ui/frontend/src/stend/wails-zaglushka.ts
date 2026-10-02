@@ -339,9 +339,17 @@ const OTVETY: Record<string, (vhod: Record<string, unknown>) => unknown> = {
     const dobavleno = stroki.filter((s) => s.includes("://") && !s.trim().toLowerCase().startsWith("http")).length;
     return { dobavleno, obnovleno: 0, uzhe_bylo: 0, otkazy };
   },
-  exportServers: () => {
-    const tekst = servery.map((s) => `hy2://demo-parol@${s.host}:${s.port}?sni=demo.example#${encodeURIComponent(s.imya)}`).join("\n");
-    return { tekst, base64: btoa(String.fromCharCode(...new TextEncoder().encode(tekst))), vsego: servery.length, propushcheny: [] };
+  // С 02.10.2026 выгрузка отдаёт и строки по серверам, а ids выбирает один
+  // сервер: так меню правой кнопки берёт ключ одного.
+  exportServers: (v) => {
+    const ids = Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === "string") : [];
+    const otobrany = ids.length ? servery.filter((s) => ids.includes(s.id)) : servery;
+    const klyuchi = otobrany.map((s) => ({
+      id: s.id, imya: s.imya, transport: s.transport, adres: `${s.host}:${s.port}`,
+      ssylka: `hy2://demo-parol@${s.host}:${s.port}?sni=demo.example#${encodeURIComponent(s.imya)}`,
+    }));
+    const tekst = klyuchi.map((k) => k.ssylka).join("\n");
+    return { tekst, base64: btoa(String.fromCharCode(...new TextEncoder().encode(tekst))), vsego: klyuchi.length, servery: klyuchi, propushcheny: [] };
   },
   removeServer: () => ({ ostalos: servery.length }),
   listRules: () => pravila,

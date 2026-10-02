@@ -104,7 +104,7 @@ export const SOVET = [
   "Некоторые клиенты могут не поддерживать tuic и anytls. В них бери trojan.",
 ];
 
-function Krestik() {
+export function Krestik() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
       <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
