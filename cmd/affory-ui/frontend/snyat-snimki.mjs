@@ -23,18 +23,20 @@ const MASHTAB = 1.5;
 // Снимков стало семь (21.09.2026, по просьбе владельца «скрины всех экранов»):
 // до этого README показывал три из шести экранов, и «Управлять» - то место,
 // куда человек идёт первым делом, - не был виден вовсе.
+// С 02.10.2026 все кадры одной высоты: README ставит их парами в таблицу, и
+// кадры разной высоты давали рваные ряды.
 const KADRY = [
-  { imya: "connection.jpg", ekran: "podklyuchenie" },
-  // Замеры нажимаются: без них список стоит без задержек, а это половина
-  // смысла экрана.
-  { imya: "servers.jpg", ekran: "servery", otkryt: "zamerit-zaderzhki", vysota: 640 },
+  // Замеры нажимаются и на главном: без них у каждого сервера «Не измерен», а
+  // это половина смысла экрана.
+  { imya: "connection.jpg", ekran: "podklyuchenie", knopka: "Проверить серверы" },
+  { imya: "servers.jpg", ekran: "servery", otkryt: "zamerit-zaderzhki" },
   { imya: "services.jpg", ekran: "pravila", nazhat: "Сервисы" },
   { imya: "applications.jpg", ekran: "pravila", nazhat: "Приложения" },
-  { imya: "sites.jpg", ekran: "pravila", nazhat: "Сайты", vysota: 640 },
+  { imya: "sites.jpg", ekran: "pravila", nazhat: "Сайты" },
   { imya: "settings.jpg", ekran: "nastroyki" },
   // Справка это окно поверх экрана подключения, и открывается оно значком
   // вопроса у заголовка «Серверы».
-  { imya: "protocols.jpg", ekran: "podklyuchenie", otkryt: "spravka-protokolov-otkryt" },
+  { imya: "protocols.jpg", ekran: "podklyuchenie", knopka: "Проверить серверы", otkryt: "spravka-protokolov-otkryt", obrezat: "spravka-protokolov" },
 ];
 
 mkdirSync(KUDA, { recursive: true });
@@ -44,11 +46,12 @@ const context = await browser.newContext({ viewport: OKNO, deviceScaleFactor: MA
 const page = await context.newPage();
 
 for (const kadr of KADRY) {
-  // Своя высота у кадров, чей экран короче окна: у списка серверов и правил
-  // сайтов нижняя треть иначе уходит пустым полем, и снимок читается как
-  // незагрузившийся.
-  await page.setViewportSize({ width: OKNO.width, height: kadr.vysota ?? OKNO.height });
+  await page.setViewportSize(OKNO);
   await page.goto(`${BAZA}/?ekran=${kadr.ekran}`, { waitUntil: "networkidle" });
+  if (kadr.knopka) {
+    await page.getByRole("button", { name: kadr.knopka }).click();
+    await page.waitForTimeout(600);
+  }
   if (kadr.nazhat) {
     // По роли, а не по тексту: подпись вкладки лежит в одном узле со счётчиком
     // правил, и точный поиск текста её не находит вовсе.
@@ -68,8 +71,29 @@ for (const kadr of KADRY) {
       if (el.scrollTop) el.scrollTop = 0;
     });
   });
-  // Сфера на главном экране анимирована, а замеры приезжают отдельным кадром.
-  await page.waitForTimeout(1200);
+  if (kadr.obrezat) {
+    // Окно со своей прокруткой режется краем экрана посреди абзаца, и кадр
+    // читается как недоснятый. Нижний край окна подводится к концу последнего
+    // протокола, который виден целиком. Тексты при этом не меняются, только
+    // высота окна на снимке.
+    await page.evaluate((testId) => {
+      const okno = document.querySelector(`[data-testid="${testId}"]`);
+      if (!okno) return;
+      const verh = okno.getBoundingClientRect().top;
+      const niz = okno.getBoundingClientRect().bottom - 20;
+      let granica = 0;
+      okno.querySelectorAll("dl > div").forEach((blok) => {
+        const r = blok.getBoundingClientRect();
+        if (r.bottom <= niz) granica = Math.max(granica, r.bottom);
+      });
+      // 10 px под текстом: черта следующего протокола стоит на 12 px ниже, и
+      // запас больше этого выводит её полоской по нижнему краю окна.
+      if (granica > 0) okno.style.maxHeight = `${Math.ceil(granica - verh + 10)}px`;
+    }, kadr.obrezat);
+  }
+  // Сфера на главном экране анимирована, а замеры и скорость приезжают
+  // отдельными кадрами: скорость считается по двум снимкам статистики.
+  await page.waitForTimeout(2200);
   await page.screenshot({ path: KUDA + kadr.imya, type: "jpeg", quality: 92 });
   console.log(`снят ${kadr.imya} (${kadr.ekran})`);
 }

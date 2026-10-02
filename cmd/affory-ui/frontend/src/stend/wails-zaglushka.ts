@@ -72,9 +72,9 @@ const osnovnyeServery: Server[] = [
   { id: "de", imya: "Германия · Франкфурт", transport: "hy2", host: "203.0.113.12", port: 443, iz_podpiski: true, s_pinom: true },
   { id: "fi", imya: "Финляндия · Хельсинки", transport: "ws", host: "203.0.113.13", port: 443, iz_podpiski: true },
   { id: "se", imya: "Швеция · Стокгольм", transport: "anytls", host: "203.0.113.14", port: 443, iz_podpiski: true },
-  // tuic стоит в подписке первым и первым же советует справка, поэтому он
-  // обязан быть и здесь: без него снимок справки советовал бы протокол,
-  // которого на соседнем снимке нет (21.09.2026).
+  // tuic стоит в подписке первым, и справка открывает им список своих
+  // протоколов: без него снимок справки описывал бы протокол, которого на
+  // соседнем снимке нет (21.09.2026).
   { id: "pl", imya: "Польша · Варшава", transport: "tuic", host: "203.0.113.16", port: 10443, iz_podpiski: true },
   { id: "svoy", imya: "Свой сервер", transport: "trojan", host: "203.0.113.15", port: 443, iz_podpiski: false },
 ];
@@ -226,6 +226,8 @@ const zamery = {
     { id: "de", ping_ms: 38 },
     { id: "fi", ping_ms: 61 },
     { id: "pl", ping_ms: 52 },
+    { id: "se", ping_ms: 57 },
+    { id: "svoy", ping_ms: 64 },
   ],
 };
 
@@ -584,18 +586,33 @@ export const Clipboard = { Text: async () => "", SetText: async (_tekst: string)
 // Экран выбирается параметром адреса, вкладку окно берёт из события трея.
 // Цифры под сферой приходят тем же путём, что и в жизни: событием kanal, где
 // data это СТРОКА JSON, а не объект (см. naSobytie в most.ts).
-const kadrStats = JSON.stringify({
-  tip: "sobytie", id: 0, imya: "stats",
-  telo: { adres_vyhoda: "203.0.113.24", zaderzhka_ms: 38, prinyato: 2_362_232_012, otdano: 184_090_624 },
-});
+//
+// Счётчики растут с каждым кадром: скорость под сферой окно считает по
+// разнице двух снимков, и с застывшими числами снимок README показывал
+// прочерк вместо скорости (02.10.2026). Прирост за секунду идёт по кругу из
+// четырёх значений, чтобы цифра жила, но кадр съёмки был предсказуемым.
+const PRIROST_VNIZ = [5_400_000, 5_150_000, 5_600_000, 5_300_000];
+const PRIROST_VVERH = [420_000, 390_000, 450_000, 410_000];
+let takt = 0;
+let prinyato = 2_362_232_012;
+let otdano = 184_090_624;
+function kadrStats(): string {
+  takt++;
+  prinyato += PRIROST_VNIZ[takt % PRIROST_VNIZ.length];
+  otdano += PRIROST_VVERH[takt % PRIROST_VVERH.length];
+  return JSON.stringify({
+    tip: "sobytie", id: 0, imya: "stats",
+    telo: { adres_vyhoda: "203.0.113.24", zaderzhka_ms: 38, prinyato, otdano },
+  });
+}
 
 /** Что подать подписчику события `imya` сразу при подписке. */
 function podat(imya: string, o: Obrabotchik): void {
   if (imya === "okno") o({ data: true });
   if (imya === "vkladka") o({ data: parametr("ekran", "podklyuchenie") });
-  if (imya === "kanal") o({ data: kadrStats });
+  if (imya === "kanal") o({ data: kadrStats() });
 }
 
 // Цифры под сферой идут потоком, как в жизни. Вкладка и признак окна
 // потоком НЕ идут: они подаются один раз при подписке, см. Events.On.
-setInterval(() => izvestit("kanal", kadrStats), 1000);
+setInterval(() => izvestit("kanal", kadrStats()), 1000);
