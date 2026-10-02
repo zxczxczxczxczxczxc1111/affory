@@ -25,7 +25,8 @@ Service icons
 Source: https://github.com/simple-icons/simple-icons/tree/15.0.0/icons
 License: CC0 1.0.
 Included marks: YouTube, Discord, OpenAI (ChatGPT), Instagram, Claude,
-Telegram, Spotify and SoundCloud. SVG geometry is unchanged; the marks are
+Telegram, Spotify, SoundCloud, Steam, Epic Games, Battle.net, Riot Games
+and Ubisoft. SVG geometry is unchanged; the marks are
 drawn as a CSS mask, so the interface, not the file, decides their colour.
 Full text: cmd/affory-ui/frontend/src/assets/services/LICENSE.simple-icons.txt.
 Brand names and marks belong to their respective owners. These marks identify

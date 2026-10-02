@@ -1,6 +1,6 @@
-// affory-cli is NOT a product. It exists so waves 1 through 3 can poke the
-// service without an interface, and it does not go into the release. When wave 4
-// lands, this is the thing that gets deleted, not maintained.
+// affory-cli: консоль службы. Установщик ставит её рядом с окном, говорит она
+// со службой по тому же каналу, что и окно, и ею же приёмка на стенде гоняет
+// службу без интерфейса. Команды описаны в README.
 package main
 
 import (
