@@ -61,6 +61,13 @@ func sveritTegi(k map[string]any) error {
 			pomyanutVPravile(v, pomyanut)
 		}
 	}
+	// Источник адреса сервера у каждого исходящего: висячий тег здесь ядро
+	// приняло бы молча, а сервер потом не нашёл бы адреса вовсе.
+	for _, v := range spisok(k["outbounds"]) {
+		if m, ok := v.(map[string]any); ok {
+			pomyanut(m["domain_resolver"])
+		}
+	}
 	if r, ok := k["route"].(map[string]any); ok {
 		pomyanut(r["final"])
 		if dr, ok := r["default_domain_resolver"].(map[string]any); ok {

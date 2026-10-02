@@ -18,6 +18,10 @@ const (
 	TegTunnel  = "tunnel"
 	TegMestnyy = "mestnyy"
 
+	// Таблица адресов серверов, найденных службой (02.10.2026). Ядро берёт
+	// адрес сервера отсюда, а не у DNS провайдера, см. tablicaServerov.
+	TegAdresaServerov = "adresa-serverov"
+
 	// Тег входящего прокси. Отдельная константа, потому что на теги смотрит
 	// проверка висячих ссылок, а строка в двух местах разъезжается молча.
 	TegProksiVhod = "proksi-in"
@@ -60,6 +64,9 @@ func SingBox(v Vhod) ([]byte, error) {
 		o, err := ishodyashchiy(v, s, teg)
 		if err != nil {
 			return nil, err
+		}
+		if _, est := adresaIzTablicy(v, s.Host); est {
+			o["domain_resolver"] = TegAdresaServerov
 		}
 		ishodyashchie = append(ishodyashchie, o)
 		tegi = append(tegi, teg)
@@ -110,17 +117,7 @@ func SingBox(v Vhod) ([]byte, error) {
 	k := map[string]any{
 		"log": map[string]any{"level": "warn", "timestamp": true},
 		"dns": map[string]any{
-			// Резолвер туннеля намеренно публичный: запрос к нему уходит внутрь
-			// туннеля и потому не выдаёт нас домашнему провайдеру. Местный нужен
-			// только для имён, которых в интернете нет.
-			//
-			// Через туннель DNS идёт по https (С7 аудита 1.6.1): замером в
-			// госте udp на hy2 терял запросы и дольше всех открывал страницу,
-			// https по p90 лучше tcp на обоих проверенных протоколах.
-			"servers": []any{
-				map[string]any{"type": "https", "tag": TegTunnel, "server": "1.1.1.1", "detour": TegSelector},
-				map[string]any{"type": "udp", "tag": TegMestnyy, "server": v.Resolver.String()},
-			},
+			"servers":  dnsServery(v),
 			"rules":    dnsPravila(v),
 			"final":    trafikDNSFinal(v),
 			"strategy": "ipv4_only",
@@ -317,6 +314,65 @@ func praviloProtsessov(v Vhod) (map[string]any, bool) {
 		return nil, false
 	}
 	return map[string]any{"process_path": v.Protsessy, "outbound": TegPryamo}, true
+}
+
+// dnsServery это резолверы ядра.
+//
+// Резолвер туннеля намеренно публичный: запрос к нему уходит внутрь туннеля и
+// потому не выдаёт нас домашнему провайдеру. Местный нужен только для имён,
+// которых в интернете нет.
+//
+// Через туннель DNS идёт по https (С7 аудита 1.6.1): замером в госте udp на
+// hy2 терял запросы и дольше всех открывал страницу, https по p90 лучше tcp на
+// обоих проверенных протоколах.
+func dnsServery(v Vhod) []any {
+	servery := []any{
+		map[string]any{"type": "https", "tag": TegTunnel, "server": "1.1.1.1", "detour": TegSelector},
+		map[string]any{"type": "udp", "tag": TegMestnyy, "server": v.Resolver.String()},
+	}
+	if t, est := tablicaServerov(v); est {
+		servery = append(servery, t)
+	}
+	return servery
+}
+
+// tablicaServerov отдаёт ядру адреса серверов, которые уже нашла служба
+// (жалоба 02.10.2026). Прежде ядро спрашивало имя сервера у местного
+// резолвера, то есть у DNS провайдера, и провайдер, не отдающий имя, отрезал
+// человека от VPN, даже когда служба нашла адрес в обход.
+//
+// Заодно ядро звонит ровно на те адреса, что стоят в правиле петли и в
+// брандмауэре: прежде оно резолвило имя второй раз, и ответ с другим адресом
+// мог увести трафик к серверу в туннель, который на этом трафике и держится.
+//
+// Только IPv4: DNS ядра работает в режиме ipv4_only, и адрес IPv6 из таблицы
+// ему всё равно не годится.
+func tablicaServerov(v Vhod) (map[string]any, bool) {
+	tablica := map[string]any{}
+	for _, s := range v.kandidaty() {
+		if adresa, est := adresaIzTablicy(v, s.Host); est {
+			tablica[s.Host] = adresa
+		}
+	}
+	if len(tablica) == 0 {
+		return nil, false
+	}
+	return map[string]any{"type": "hosts", "tag": TegAdresaServerov, "predefined": tablica}, true
+}
+
+// adresaIzTablicy отвечает, есть ли у сервера строка в таблице: имя, а не
+// литерал, и хоть один адрес IPv4 от службы.
+func adresaIzTablicy(v Vhod, host string) ([]string, bool) {
+	if _, err := netip.ParseAddr(host); err == nil {
+		return nil, false
+	}
+	var adresa []string
+	for _, a := range v.AdresaServerov[host] {
+		if a.Unmap().Is4() {
+			adresa = append(adresa, a.Unmap().String())
+		}
+	}
+	return adresa, len(adresa) > 0
 }
 
 // praviloPetli ведёт мимо туннеля адреса серверов, но только на их портах.

@@ -143,6 +143,28 @@ func TestPropavshiyDrayverNeNazyvaetsyaNesozdannymAdapterom(t *testing.T) {
 	}
 }
 
+// Жалоба 02.10.2026: провайдер не отдавал по DNS имя сервера, а
+// окно писало «не удалось создать адаптер» и звало повторять. Адаптер тут ни
+// при чём, его даже не начинали создавать: подъём упал на сборе адресов.
+func TestMolchashchiyRezolverNeNazyvaetsyaNesozdannymAdapterom(t *testing.T) {
+	s := podstavnaya(t, nil)
+	s.podnyatTunnel = func(ctx context.Context) (set.Adapter, error) {
+		return set.Adapter{}, fmt.Errorf("%w: %w", ErrRezolverMolchit,
+			&set.OshibkaRazresheniya{Imena: []string{"vpn.example.net"}})
+	}
+
+	if err := s.Connect(context.Background()); err == nil {
+		t.Fatal("connect объявил успех при неподнявшемся туннеле")
+	}
+	st := s.Status()
+	if st.Oshib == nil || st.Oshib.Kod != protokol.KodDnsResolveFailed {
+		t.Fatalf("код ошибки %v, ожидался %s", st.Oshib, protokol.KodDnsResolveFailed)
+	}
+	if !strings.Contains(st.Oshib.Tekst, "vpn.example.net") {
+		t.Errorf("текст %q не называет имя, которое не нашлось", st.Oshib.Tekst)
+	}
+}
+
 // Признак ставится ТОЛЬКО по жалобе ядра. Пустая жалоба означает «виновник не
 // установлен», а не «драйвера нет»: молчаливое обвинение здесь стоило бы
 // человеку установки службы заново при исправном драйвере.

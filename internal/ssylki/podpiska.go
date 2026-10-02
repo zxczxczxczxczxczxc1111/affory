@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/obhoddns"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 )
@@ -301,10 +302,15 @@ type Zagruzchik struct {
 }
 
 func NovyyZagruzchik() *Zagruzchik {
+	// Своя копия транспорта ради одного поля: имя подписки, которого не нашёл
+	// DNS системы, спрашивается у публичного DNS через HTTPS (жалоба
+	// 02.10.2026: провайдер не отдавал имя, и подписка не грузилась вовсе).
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = obhoddns.Nabrat
 	return &Zagruzchik{
 		// Таймаут задан, а не оставлен нулём. Клиент без таймаута висит на
 		// молчащем сокете вечно, и служба вместе с ним.
-		Klient:  &http.Client{Timeout: 30 * time.Second},
+		Klient:  &http.Client{Timeout: 30 * time.Second, Transport: tr},
 		Potolok: PotolokPoUmolchaniyu,
 		Chasy:   nastoyashchieChasy{},
 	}

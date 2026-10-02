@@ -1464,9 +1464,15 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 // Оба приходят одним таймаутом ожидания, и до этой ветки человек с невставшим
 // драйвером читал «не удалось создать адаптер», то есть шёл повторять там, где
 // повторять нечего. Признак ставит ядро, разбор в otkazOzhidaniyaAdaptera.
+//
+// Молчащий резолвер тоже не адаптер (жалоба 02.10.2026): подъём падает на
+// сборе адресов серверов, до создания адаптера, и чинить надо DNS.
 func kodPodyomaTunnelya(err error) string {
-	if errors.Is(err, yadra.ErrDrayverNeVstal) {
+	switch {
+	case errors.Is(err, yadra.ErrDrayverNeVstal):
 		return protokol.KodWintunMissing
+	case errors.Is(err, ErrRezolverMolchit):
+		return protokol.KodDnsResolveFailed
 	}
 	return protokol.KodTunCreateFailed
 }

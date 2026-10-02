@@ -4,8 +4,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/obhoddns"
 )
 
 // Загрузчик через локальный вход ядра (A8). Проверяется не поле структуры, а
@@ -57,12 +60,25 @@ func TestZagruzchikCherezProksiNeOslablyaetTLS(t *testing.T) {
 	}
 }
 
+// Свой транспорт у прямого загрузчика появился 02.10.2026 ради обхода DNS
+// провайдера. Прямым он обязан остаться: прокси тот же, что у общего
+// транспорта (из окружения), а не вход ядра, и сертификат проверяется.
 func TestZagruzchikBezProksiOstayotsyaPryamym(t *testing.T) {
 	z, err := NovyyZagruzchikCherez("")
 	if err != nil {
 		t.Fatalf("загрузчик: %v", err)
 	}
-	if z.Klient.Transport != nil {
-		t.Fatalf("у прямого загрузчика свой транспорт %T, а он должен остаться общим", z.Klient.Transport)
+	tr, ok := z.Klient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("транспорт %T", z.Klient.Transport)
+	}
+	if reflect.ValueOf(tr.Proxy).Pointer() != reflect.ValueOf(http.ProxyFromEnvironment).Pointer() {
+		t.Fatal("у прямого загрузчика прокси не из окружения: запрос уйдёт не туда")
+	}
+	if reflect.ValueOf(tr.DialContext).Pointer() != reflect.ValueOf(obhoddns.Nabrat).Pointer() {
+		t.Fatal("прямой загрузчик соединяется без обхода DNS провайдера")
+	}
+	if tr.TLSClientConfig != nil && tr.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("проверка сертификата отключена на прямом пути")
 	}
 }

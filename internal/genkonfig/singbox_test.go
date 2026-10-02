@@ -416,7 +416,78 @@ func profili() map[string]Vhod {
 	zamerBezTun.Zamer = &VhodZamera{Port: 10810, Parol: "s3kr3t"}
 	itog["вход замеров без tun"] = zamerBezTun
 
+	// Серверы по имени (02.10.2026): адреса от службы приходят таблицей hosts,
+	// и исходящий берёт их через свой domain_resolver. Форму predefined и
+	// поле domain_resolver у исходящего ловит только check.
+	poImeni := mnogo
+	poImeni.Servery = make([]protokol.Server, len(mnogo.Servery))
+	poImeni.AdresaServerov = map[string][]netip.Addr{}
+	for i, s := range mnogo.Servery {
+		a := netip.MustParseAddr(s.Host)
+		s.Host = s.Id + ".example.com"
+		poImeni.Servery[i] = s
+		poImeni.AdresaServerov[s.Host] = []netip.Addr{a, netip.MustParseAddr("2001:db8::1")}
+	}
+	poImeni.Server = poImeni.Servery[0]
+	itog["серверы по имени"] = poImeni
+
 	return itog
+}
+
+// Жалоба 02.10.2026: провайдер не отдавал имя сервера, и ядро, спрашивая его
+// у местного резолвера, не находило сервера, даже когда служба нашла адрес в
+// обход. Теперь адрес берётся из таблицы службы, только IPv4, только у имён.
+func TestAdresaServerovIzTablicySluzhby(t *testing.T) {
+	v := obraztsovyyVhod()
+	poImeni := v.Server
+	poImeni.Id, poImeni.Host = "imya", "hi.example.com"
+	tolkoV6 := v.Server
+	tolkoV6.Id, tolkoV6.Host = "v6", "v6.example.com"
+	neNashlos := v.Server
+	neNashlos.Id, neNashlos.Host = "net", "net.example.com"
+	v.Servery = []protokol.Server{v.Server, poImeni, tolkoV6, neNashlos}
+	v.AdresaServerov = map[string][]netip.Addr{
+		"hi.example.com": {netip.MustParseAddr("2001:db8::7"), netip.MustParseAddr("198.51.100.7")},
+		"v6.example.com": {netip.MustParseAddr("2001:db8::8")},
+	}
+	v.Kandidaty = append(v.Kandidaty, netip.MustParseAddr("198.51.100.7"))
+	b, err := SingBox(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var k struct {
+		DNS struct {
+			Servers []map[string]any `json:"servers"`
+		} `json:"dns"`
+	}
+	if err := json.Unmarshal(b, &k); err != nil {
+		t.Fatal(err)
+	}
+	var tablica map[string]any
+	for _, s := range k.DNS.Servers {
+		if s["tag"] == TegAdresaServerov {
+			if s["type"] != "hosts" {
+				t.Fatalf("таблица адресов типа %v, ждали hosts", s["type"])
+			}
+			tablica, _ = s["predefined"].(map[string]any)
+		}
+	}
+	adresa, _ := tablica["hi.example.com"].([]any)
+	if len(tablica) != 1 || len(adresa) != 1 || adresa[0] != "198.51.100.7" {
+		t.Fatalf("таблица адресов %v, ждали одно имя с одним адресом IPv4", tablica)
+	}
+
+	if r := ishodyashchiyPoTegu(t, b, TegKandidata("imya"))["domain_resolver"]; r != TegAdresaServerov {
+		t.Fatalf("сервер по имени берёт адрес у %v, ждали таблицу службы", r)
+	}
+	// Литерал, имя только с IPv6 и ненайденное имя остаются как были: у них
+	// в таблице строки нет, и ссылка на неё оставила бы сервер без адреса.
+	for _, id := range []string{v.Server.Id, "v6", "net"} {
+		if r, est := ishodyashchiyPoTegu(t, b, TegKandidata(id))["domain_resolver"]; est {
+			t.Errorf("у сервера %s источник адреса %v, ждали прежний", id, r)
+		}
+	}
 }
 
 func TestInvariant8ProfiliProhodyatCheck(t *testing.T) {
@@ -430,8 +501,8 @@ func TestInvariant8ProfiliProhodyatCheck(t *testing.T) {
 	// сделанное от несделанного: молча потерянный профиль тоже даёт зелёный.
 	// 21 с 26.09.2026: добавлен reality поверх grpc. 22 с 28.09.2026: tls-tcp.
 	// 23 с 28.09.2026: блокировка рекламы. 25 с 01.10.2026: вход замеров с
-	// туннелем и без.
-	const skolkoZhdyom = 25
+	// туннелем и без. 26 с 02.10.2026: серверы по имени с таблицей адресов.
+	const skolkoZhdyom = 26
 	if n := len(profili()); n != skolkoZhdyom {
 		t.Fatalf("профилей %d, а ожидалось %d: профиль потерян или добавлен молча", n, skolkoZhdyom)
 	}

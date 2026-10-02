@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -243,6 +244,75 @@ func TestMedlennoeImyaNeValitOstalnye(t *testing.T) {
 	}
 	if want := []string{"198.51.100.1", "198.51.100.2"}; !slices.Equal(stroki(a.Vse), want) {
 		t.Fatalf("адреса %v, ждали %v", stroki(a.Vse), want)
+	}
+}
+
+// Жалоба 02.10.2026: DNS провайдера не отдавал имя сервера. Имя, которого не
+// нашёл DNS системы, берётся у обхода, а найденное системой обход не трогает.
+func TestObhodTolkoDlyaNenaydennogoSistemoy(t *testing.T) {
+	sistema := rezolverIz(map[string][]string{"zhivoy.example": {"198.51.100.1"}})
+	// Имена спрашиваются параллельно, поэтому список под замком.
+	var mu sync.Mutex
+	var sprosheny []string
+	obhod := func(_ context.Context, host string) ([]netip.Addr, error) {
+		mu.Lock()
+		sprosheny = append(sprosheny, host)
+		mu.Unlock()
+		if host == "zablokirovan.example" {
+			return []netip.Addr{netip.MustParseAddr("198.51.100.2")}, nil
+		}
+		return nil, errors.New("нет и у обхода")
+	}
+	a, err := sobratAdresaS(context.Background(), sObhodom(sistema, obhod), []protokol.Server{
+		{Host: "zhivoy.example", Port: 443}, {Host: "zablokirovan.example", Port: 443}, {Host: "mertvyy.example", Port: 443},
+	}, "")
+	var oshibka *OshibkaRazresheniya
+	if !errors.As(err, &oshibka) || !slices.Equal(oshibka.Imena, []string{"mertvyy.example"}) {
+		t.Fatalf("неразрешившиеся %v, ждали только имя, которого нет нигде", err)
+	}
+	if want := []string{"198.51.100.1", "198.51.100.2"}; !slices.Equal(stroki(a.Vse), want) {
+		t.Fatalf("адреса %v, ждали %v", stroki(a.Vse), want)
+	}
+	slices.Sort(sprosheny)
+	if want := []string{"mertvyy.example", "zablokirovan.example"}; !slices.Equal(sprosheny, want) {
+		t.Fatalf("обход спрошен про %v, ждали %v", sprosheny, want)
+	}
+}
+
+// Молчащий DNS системы съедает только свой срок, и обходу его остаётся.
+// Прежний срок имени был общим на всё, и обход после молчания не успел бы.
+func TestObhodPosleMolchashchegoDNS(t *testing.T) {
+	prezhniy := TaymautRezolva
+	TaymautRezolva = 50 * time.Millisecond
+	t.Cleanup(func() { TaymautRezolva = prezhniy })
+	molchit := func(ctx context.Context, _, _ string) ([]netip.Addr, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	obhod := func(ctx context.Context, _ string) ([]netip.Addr, error) {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return []netip.Addr{netip.MustParseAddr("198.51.100.3")}, nil
+	}
+	a, err := sobratAdresaS(context.Background(), sObhodom(molchit, obhod), []protokol.Server{{Host: "zablokirovan.example", Port: 443}}, "")
+	if err != nil || !slices.Equal(stroki(a.Vse), []string{"198.51.100.3"}) {
+		t.Fatalf("адреса %v, ошибка %v", stroki(a.Vse), err)
+	}
+}
+
+// Отменённый сбор обход не зовёт: спрашивать там уже некого и некогда.
+func TestObhodNeZovyotsyaPosleOtmeny(t *testing.T) {
+	ctx, otmena := context.WithCancel(context.Background())
+	otmena()
+	zvali := false
+	obhod := func(context.Context, string) ([]netip.Addr, error) { zvali = true; return nil, nil }
+	r := sObhodom(rezolverIz(nil), obhod)
+	if _, err := r(ctx, "ip", "zablokirovan.example"); err == nil {
+		t.Fatal("отменённый поиск имени вернул успех")
+	}
+	if zvali {
+		t.Fatal("обход позван после отмены")
 	}
 }
 

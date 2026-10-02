@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"maps"
 	"net"
 	"net/netip"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/obhoddns"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 )
 
@@ -51,10 +53,38 @@ const potokovRezolva = 8
 //
 // zagruzki это адреса прочих загрузок мимо туннеля (наборы rule_set, §«Загрузки
 // идут мимо туннеля»): их хосты входят в список брандмауэра наравне с подпиской.
+//
+// Имя, которого не нашёл DNS системы, спрашивается у публичного DNS через
+// HTTPS (жалоба 02.10.2026, internal/obhoddns): провайдер, не отдающий имя
+// сервера, иначе отрезал бы человека от его же VPN.
 func SobratAdresa(servery []protokol.Server, podpiska string, zagruzki ...string) (Adresa, error) {
 	ctx, otmena := context.WithTimeout(context.Background(), byudzhetRezolva)
 	defer otmena()
-	return sobratAdresaS(ctx, net.DefaultResolver.LookupNetIP, servery, podpiska, zagruzki...)
+	return sobratAdresaS(ctx, sObhodom(net.DefaultResolver.LookupNetIP, obhoddns.Sprosit), servery, podpiska, zagruzki...)
+}
+
+// sObhodom спрашивает DNS системы со сроком TaymautRezolva, и только если тот
+// имени не нашёл, обход со своим сроком. Отмена и вышедший общий срок обход
+// не зовут: спрашивать там уже некого и некогда.
+func sObhodom(sistema rezolver, obhod func(context.Context, string) ([]netip.Addr, error)) rezolver {
+	return func(ctx context.Context, set, host string) ([]netip.Addr, error) {
+		c, otmena := context.WithTimeout(ctx, TaymautRezolva)
+		adresa, err := sistema(c, set, host)
+		otmena()
+		if err == nil && len(adresa) > 0 {
+			return adresa, nil
+		}
+		if ctx.Err() != nil {
+			return adresa, err
+		}
+		zapas, oshib := obhod(ctx, host)
+		if oshib != nil {
+			log.Printf("имя %s не нашлось ни у DNS системы (%v), ни у публичного DNS через HTTPS (%v)", host, err, oshib)
+			return adresa, err
+		}
+		log.Printf("имя %s не нашлось у DNS системы (%v), адреса взяты у публичного DNS через HTTPS", host, err)
+		return zapas, nil
+	}
 }
 
 // Adresa это итог ОДНОГО прохода резолвера, общий для обоих списков.
@@ -187,7 +217,9 @@ func razreshitParallelno(ctx context.Context, r rezolver, hosty []string) []itog
 				return
 			}
 			defer func() { <-mesta }()
-			c, otmena := context.WithTimeout(ctx, TaymautRezolva)
+			// Срок имени вмещает и DNS системы, и обход после него: срок
+			// каждой попытки свой, см. sObhodom.
+			c, otmena := context.WithTimeout(ctx, TaymautRezolva+obhoddns.Taymaut)
 			defer otmena()
 			itogi[i].adresa, itogi[i].err = razreshit(c, r, h)
 		})
