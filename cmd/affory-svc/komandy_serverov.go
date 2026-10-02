@@ -516,6 +516,8 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 	})
 
 	teg := genkonfig.TegKandidata(id)
+	// По часам машины, а не s.seychas: с ними сверяется время строк ядра.
+	smena := time.Now()
 	if err := s.postavitVybor(ctx, adres, sekret, genkonfig.TegSelector, teg); err != nil {
 		// Ядро могло исчезнуть и между чтением выбора и этим PUT: окно узкое,
 		// но оно то же самое.
@@ -524,10 +526,13 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		}
 		return err
 	}
+	// Жалобы ядра на группу до этой секунды говорят о прежнем сервере.
+	s.otmetitSmenuVybora(smena)
 	// 204 говорит «команда принята», а не «трафик пошёл туда». Судит проба.
-	if _, err := s.zamerit(ctx, adres, sekret, tegDlyaZamera()); err != nil {
+	if _, err := s.zameritYadro(ctx, adres, sekret, tegDlyaZamera(), smena); err != nil {
 		// Человек был подключён и работал. Неудачный выбор не имеет права
 		// оставить его без сети: возвращаем прежний и говорим, что случилось.
+		vozvrat := time.Now()
 		if e := s.postavitVybor(ctx, adres, sekret, genkonfig.TegSelector, prezhniy); e != nil {
 			// Возврат ТОЖЕ не прошёл. Ядро осталось на кандидате, который не
 			// несёт, и называть это «новый не несёт, подключение цело» значит
@@ -546,6 +551,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 			})
 			return fmt.Errorf("%w: проба %v, возврат %v", ErrOtkatNeUdalsya, err, e)
 		}
+		s.otmetitSmenuVybora(vozvrat)
 		// Оба %w: вызывающему нужны и обещание «подключение цело», и причина.
 		return fmt.Errorf("%w: %w", ErrNovyyVyborNeNesyot, err)
 	}
@@ -670,6 +676,11 @@ func kodPereklyucheniya(err error) string {
 	switch {
 	case errors.Is(err, yadra.ErrTegaNetVYadre):
 		return protokol.KodNuzhenPodyom
+	// Раньше ErrNovyyVyborNeNesyot: ядро назвало причину отказа нового
+	// сервера, и она точнее «не отвечает». Подключение при этом цело: в
+	// ErrOtkatNeUdalsya проба обёрнута через %v, и туда эта ветка не попадает.
+	case estOtkazZashchity(err):
+		return protokol.KodZashchitaServera
 	// Раньше ErrNovyyVyborNeNesyot: «этот сервер не отвечает, выбери другой».
 	// На отвергнутом рукопожатии это ложный совет, другой сервер той же
 	// подписки отвергнут ровно так же.

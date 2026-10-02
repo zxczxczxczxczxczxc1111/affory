@@ -39,7 +39,10 @@ func Zapustit(imya string, putKonfiga string) (*Yadro, error) {
 	// Вывод ядра идёт в журнал службы, а не в никуда. Без этого отказ подъёма
 	// недиагностируем: служба говорит «адаптер не появился», а почему ядро не
 	// поднялось, не знает никто. Ровно так пряталась находка 43.
-	zh := &zhurnalYadra{imya: imya}
+	//
+	// Жалобы на выходы забываются до старта: они про ядро, которого больше нет.
+	zabytZhalobyVyhodov(putKonfiga)
+	zh := &zhurnalYadra{imya: imya, konfig: putKonfiga}
 	cmd.Stdout = zh
 	cmd.Stderr = zh
 	if err := cmd.Start(); err != nil {

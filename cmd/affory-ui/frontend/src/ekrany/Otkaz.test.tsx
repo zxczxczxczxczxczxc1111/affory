@@ -37,7 +37,7 @@ const VSE_DEYSTVIYA: Deystvie[] = [
 describe("экраны отказов", () => {
   const kody = kodyIzGo().filter((k) => !BEZ_EKRANA.has(k));
 
-  it("коды прочитаны из kody.go, и их сорок пять", () => {
+  it("коды прочитаны из kody.go, и их сорок семь", () => {
     // Pinning the count is deliberate: a new code must fail here until the
     // screen for it exists, and an empty read must not pass as "all covered".
     // Тридцать восьмой это internal-error, заведён 04.09.2026 полосой З:
@@ -59,7 +59,9 @@ describe("экраны отказов", () => {
     // subscription-device-limit. Лимит устройств чинится в панели, а не в
     // ссылке и не в сети. Сорок шестой в тот же день (О6): diagnostics-stale,
     // выгрузка диагностики пережила перезапуск службы.
-    expect(kody.length).toBe(46);
+    // Сорок седьмой заведён 02.10.2026: server-tls-failed. Истёкший
+    // сертификат сервера назывался отказом ключа и вёл обновлять подписку.
+    expect(kody.length).toBe(47);
   });
 
   it.each(kody)("у кода %s есть свой текст и действие из словаря", (kod) => {

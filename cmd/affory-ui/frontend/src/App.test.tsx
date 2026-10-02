@@ -575,6 +575,24 @@ describe("ни один отказ не пропадает молча", () => {
     expect(screen.getByText("333 мс")).toBeTruthy();
   });
 
+  it("причина отказа от ядра доезжает до каталога главного экрана", async () => {
+    const most = mostProby();
+    const servers = ["a", "b"].map(id => ({ id, imya: id, host: `${id}.example`, port: 443, transport: "trojan", iz_podpiski: false }));
+    most.otvechatTelom("listServers", { servery: servers, vybran: "a", versii: { a: "a1", b: "b1" } });
+    const fraza = "у сервера сертификат на другое имя: адрес в ключе мог устареть, или связь перехватывают по пути";
+    most.otvechatTelom("measureDelays", { zamery: [
+      { id: "a", versiya: "a1", ping_ms: 48 },
+      { id: "b", versiya: "b1", ping_ms: null, ping_otkaz: fraza, ping_prichina: "сертификат на другое имя" },
+    ] });
+    render(<App />);
+    await screen.findByRole("button", { name: "Подключиться к a" });
+    fireEvent.click(screen.getByRole("button", { name: "Проверить серверы" }));
+    const prichina = await screen.findByText("Сертификат на другое имя");
+    expect(prichina).toHaveAttribute("title", fraza);
+    expect(screen.getByText("48 мс")).toBeTruthy();
+    expect(screen.queryByText("Недоступен")).toBeNull();
+  });
+
   it("ожидание обновления относится к одной подписке и снимается после сетевого отказа", async () => {
     const most = mostProby();
     most.otvechatTelom("listSubscriptions", { podpiski: [

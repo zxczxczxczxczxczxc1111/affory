@@ -58,6 +58,10 @@ type zamerZaderzhki struct {
 	Id        string `json:"id"`
 	PingMs    *int64 `json:"ping_ms"`
 	PingOtkaz string `json:"ping_otkaz,omitempty"`
+	// Короткая причина отказа, которую назвало ядро (02.10.2026): окно ставит
+	// её в строку сервера вместо «недоступен», а PingOtkaz уходит в подсказку.
+	// Пусто, когда ядро ничего узнаваемого не сказало.
+	PingPrichina string `json:"ping_prichina,omitempty"`
 }
 
 // vremennoeYadro это поднятое для замера ядро без TUN.
@@ -66,7 +70,9 @@ type vremennoeYadro struct {
 	// isklyucheny это серверы, которых ядро не приняло: их исходящих в
 	// конфиге нет, и мерить их нечем.
 	isklyucheny map[string]bool
-	ostanovit   func()
+	// konfig это путь конфига ядра: по нему спрашиваются его жалобы на выходы.
+	konfig    string
+	ostanovit func()
 }
 
 func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.Kadr {
@@ -93,11 +99,16 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 		return otkaz(k.Id, k.Imya, protokol.KodSecretsUnreadable, "не удалось определить версии серверов")
 	}
 
+	nachalo := time.Now()
 	y, err := s.yadroZamera(ctx)
 	if err != nil {
 		return otkazIz(k, protokol.KodYadroNeOtvechaet, fmt.Errorf("пинг не измерен: %w", err))
 	}
-	defer y.ostanovit()
+	// Ядро гасится до разбора жалоб (см. ниже) и отложенно, если выйдем
+	// раньше; ровно один раз.
+	var ostanovleno sync.Once
+	ostanovit := func() { ostanovleno.Do(y.ostanovit) }
+	defer ostanovit()
 
 	zamery := make([]zamerZaderzhki, len(servery))
 	var gruppa sync.WaitGroup
@@ -113,6 +124,24 @@ func (s *Sluzhba) measureDelays(ctx context.Context, k protokol.Kadr) protokol.K
 		})
 	}
 	gruppa.Wait()
+
+	// Причину замер не видит: на CONNECT ядро отвечает «соединение
+	// установлено» раньше, чем звонит серверу, и замеру достаётся обрыв.
+	// Ядро пишет её в журнал строкой с тегом сервера. Остановка ждёт, пока
+	// весь вывод ядра дочитан, поэтому жалобы спрашиваются после неё: иначе
+	// строка последнего сервера могла бы ещё не доехать.
+	ostanovit()
+	for i := range zamery {
+		if zamery[i].PingMs != nil || y.isklyucheny[zamery[i].Id] {
+			continue
+		}
+		zh, est := s.zhalobaVyhoda(y.konfig, genkonfig.TegKandidata(zamery[i].Id), nachalo)
+		if !est {
+			continue
+		}
+		zamery[i].PingOtkaz = zh.Prichina.Tekst()
+		zamery[i].PingPrichina = zh.Prichina.Korotko()
+	}
 
 	return otvet(k.Id, k.Imya, map[string]any{"zamery": zamery})
 }
@@ -209,6 +238,6 @@ func (s *Sluzhba) podnyatYadroZamera(ctx context.Context) (vremennoeYadro, error
 			ostanovit()
 			return vremennoeYadro{}, fmt.Errorf("ядро для замера не ответило: %w", err)
 		}
-		return vremennoeYadro{zamer: zamer, isklyucheny: isklyucheny, ostanovit: ostanovit}, nil
+		return vremennoeYadro{zamer: zamer, isklyucheny: isklyucheny, konfig: put, ostanovit: ostanovit}, nil
 	}
 }

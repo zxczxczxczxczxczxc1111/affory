@@ -88,8 +88,10 @@ export function KatalogServerov({ servery, podpiski, uzel, zapros, zaderzhki, ne
     const selected = tekushchaya && !podnyat && vybran === s.id;
     // Замер другой подписки с таким же адресным ID не относится к её ключам.
     const m = tekushchaya ? zamerPoId.get(s.id) : undefined;
-    // Пинг одним числом, как в Discord (01.10.2026). Причина отказа в подсказке.
-    const latency = typeof m?.ping_ms === "number" ? `${m.ping_ms} мс` : m?.ping_otkaz ? "Недоступен" : "Не измерен";
+    // Пинг одним числом, как в Discord (01.10.2026). Причина отказа в подсказке,
+    // короткая от ядра в самой строке (02.10.2026); служба пишет её с маленькой.
+    const prichina = m?.ping_prichina ? m.ping_prichina.charAt(0).toUpperCase() + m.ping_prichina.slice(1) : "";
+    const latency = typeof m?.ping_ms === "number" ? `${m.ping_ms} мс` : prichina || (m?.ping_otkaz ? "Недоступен" : "Не измерен");
     return <li key={key} className={`group flex min-h-12 items-center rounded-lg ${active || selected ? "bg-accent-soft" : "hover:bg-surface-hover"}`}>
       <button type="button" disabled={disabled || !naVybor} onClick={() => g.podpiska ? naVybor?.(s.id, g.id) : naVybor?.(s.id)}
         aria-label={`Подключиться к ${s.imya}`} aria-pressed={active || selected}

@@ -146,6 +146,9 @@ export interface ZamerZaderzhki {
   id: string;
   ping_ms?: number | null;
   ping_otkaz?: string;
+  /** Короткая причина отказа, которую назвало ядро (02.10.2026): встаёт в
+   *  строку вместо «недоступен». Полная фраза остаётся в `ping_otkaz`. */
+  ping_prichina?: string;
 }
 
 export interface ServeryProps {
@@ -936,10 +939,12 @@ export function Servery({ status, spisok, spisokOtkaz = null, obnovitSpisok, naK
  *  Ноль на экране читается как «мгновенно» и ставит сервер первым по пингу,
  *  то есть ровно наверх списка, что противоположно правде о мёртвом. Отказ
  *  в строке короткий, причина целиком в подсказке: длинный текст в строке
- *  сервера не помещается и наезжает на соседние (16.09.2026). */
+ *  сервера не помещается и наезжает на соседние (16.09.2026). Если ядро
+ *  назвало причину, в строке она, а не «недоступен» (02.10.2026). */
 export function Zaderzhka({ zamer }: { zamer?: ZamerZaderzhki }) {
   if (!zamer) return null;
-  const tekst = typeof zamer.ping_ms === "number" ? `${zamer.ping_ms} мс` : zamer.ping_otkaz ? "недоступен" : "не измерен";
+  const tekst = typeof zamer.ping_ms === "number" ? `${zamer.ping_ms} мс`
+    : zamer.ping_prichina || (zamer.ping_otkaz ? "недоступен" : "не измерен");
   return (
     <span
       data-testid={`zaderzhka-${zamer.id}`}

@@ -524,6 +524,16 @@ describe("серверы: замер задержки", () => {
     expect(r).toHaveAttribute("title", "сервер не ответил вовремя");
   });
 
+  it("причину, названную ядром, видно в строке, а фразу целиком в подсказке", () => {
+    // 02.10.2026 пять ключей из шести стояли «недоступен», а истёкший
+    // сертификат сервера нашёлся только в журнале ядра.
+    const fraza = "сертификат сервера просрочен или ещё не начал действовать: если часы на компьютере верные, его должен продлить владелец сервера";
+    render(<Servery {...svoystva({ zaderzhki: [{ id: "s1", ping_otkaz: fraza, ping_prichina: "сертификат не действует" }] })} />);
+    const r = screen.getByTestId("zaderzhka-s1");
+    expect(r).toHaveTextContent(/^сертификат не действует$/);
+    expect(r).toHaveAttribute("title", fraza);
+  });
+
   it("без замера строка задержки не появляется вовсе", () => {
     render(<Servery {...svoystva({})} />);
     expect(screen.queryByTestId("zaderzhka-s1")).toBeNull();

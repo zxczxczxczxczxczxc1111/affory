@@ -141,7 +141,7 @@ func (s *Sluzhba) sloyYadra(ctx context.Context) sloyProverki {
 		return sloy("yadro", "Связь с сервером", proby.Itog{
 			Podrobno: "ядро не запущено", Dlitelnost: s.seychas().Sub(nach)})
 	}
-	t, err := s.zamerit(ctx, adres, sekret, tegDlyaZamera())
+	t, err := s.zameritYadro(ctx, adres, sekret, tegDlyaZamera(), s.zhalobyNePrezhe())
 	if err != nil {
 		return sloy("yadro", "Связь с сервером", proby.Itog{
 			Podrobno: "сервер не ответил: " + sboi.DlyaCheloveka(err), Dlitelnost: s.seychas().Sub(nach)})

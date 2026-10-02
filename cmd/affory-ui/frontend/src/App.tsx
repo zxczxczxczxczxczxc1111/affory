@@ -127,6 +127,7 @@ function zameryIz(telo: unknown): ZamerZaderzhki[] {
       versiya: tekst(o.versiya) || undefined,
       ping_ms: chislo(o.ping_ms),
       ping_otkaz: tekst(o.ping_otkaz),
+      ping_prichina: tekst(o.ping_prichina) || undefined,
     }];
   });
 }

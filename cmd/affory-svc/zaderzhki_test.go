@@ -12,6 +12,8 @@ import (
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
 
 // Команда measureDelays: пинг по каждому серверу одним числом (01.10.2026).
@@ -119,6 +121,72 @@ func TestPingMyortvyyServerEtoOtkazANeNol(t *testing.T) {
 	}
 	if po["b:2"].PingMs == nil {
 		t.Fatal("отказ одного сервера унёс замер соседа")
+	}
+}
+
+// Причину отказа знает только журнал ядра (02.10.2026): замер видит обрыв,
+// а ядро пишет «x509: certificate has expired» строкой с тегом сервера.
+// Спрашивается она у ТОГО ядра, которым мерили, после его остановки (иначе
+// строка последнего сервера могла бы ещё не доехать), и только про отказавший
+// сервер.
+func TestPingNazyvaetPrichinuIzZhurnalaYadra(t *testing.T) {
+	s, ostanovleno := pingovayaSluzhba(t, nil)
+	prezhnee := s.yadroZamera
+	s.yadroZamera = func(ctx context.Context) (vremennoeYadro, error) {
+		y, err := prezhnee(ctx)
+		y.konfig = `C:\x\sing-box.zamer.json`
+		return y, err
+	}
+	s.zamerPinga = func(_ context.Context, _ string, proksi *url.URL) (time.Duration, error) {
+		if proksi.User.Username() == genkonfig.PolzovatelZamera("b:2") {
+			return 40 * time.Millisecond, nil
+		}
+		return 0, errors.New("замер не прошёл: EOF")
+	}
+	nachalo := time.Now()
+	var sprosheno []string
+	s.zhalobaVyhoda = func(konfig, teg string, posle time.Time) (yadra.ZhalobaYadra, bool) {
+		sprosheno = append(sprosheno, teg)
+		if konfig != `C:\x\sing-box.zamer.json` {
+			t.Errorf("жалоба спрошена у конфига %q, а мерило другое ядро", konfig)
+		}
+		if posle.Before(nachalo) {
+			t.Errorf("жалобы берутся с %v, раньше замера %v: прошлое выдалось бы за нынешнее", posle, nachalo)
+		}
+		if ostanovleno() != 1 {
+			t.Error("жалоба спрошена у ещё не остановленного ядра: вывод мог не дочитаться")
+		}
+		// Жалоба есть и на второй сервер: она не должна перебить его число.
+		return yadra.ZhalobaYadra{Prichina: sboi.SrokSertifikata, Vremya: posle}, true
+	}
+	po := izmerit(t, s)
+	if z := po["a"]; z.PingMs != nil || z.PingPrichina != sboi.SrokSertifikata.Korotko() || z.PingOtkaz != sboi.SrokSertifikata.Tekst() {
+		t.Fatalf("отказавший сервер: %+v", z)
+	}
+	if z := po["b:2"]; z.PingMs == nil || z.PingPrichina != "" || z.PingOtkaz != "" {
+		t.Fatalf("ответивший сервер получил причину отказа: %+v", z)
+	}
+	if len(sprosheno) != 1 || sprosheno[0] != genkonfig.TegKandidata("a") {
+		t.Fatalf("жалобы спрошены про %v, ждали только тег отказавшего", sprosheno)
+	}
+	if n := ostanovleno(); n != 1 {
+		t.Fatalf("временное ядро остановлено %d раз, ждали один", n)
+	}
+}
+
+// Ядро ничего узнаваемого не сказало: остаётся прежний текст отказа, а не
+// пустая строка и не догадка.
+func TestPingBezZhalobyOstavlyaetPrezhniyOtkaz(t *testing.T) {
+	s, _ := pingovayaSluzhba(t, nil)
+	s.zamerPinga = func(context.Context, string, *url.URL) (time.Duration, error) {
+		return 0, errors.New("замер не прошёл: EOF")
+	}
+	s.zhalobaVyhoda = func(string, string, time.Time) (yadra.ZhalobaYadra, bool) {
+		return yadra.ZhalobaYadra{}, false
+	}
+	z := izmerit(t, s)["a"]
+	if z.PingOtkaz == "" || z.PingPrichina != "" {
+		t.Fatalf("без жалобы ядра: %+v", z)
 	}
 }
 

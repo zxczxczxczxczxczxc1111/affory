@@ -575,6 +575,10 @@ func kodPodklyucheniya(err error, sost *protokol.Oshibka) string {
 	switch {
 	case errors.Is(err, ErrNetServerov), errors.Is(err, ErrServerNeNayd):
 		return protokol.KodSelectedServerGone
+	// Ядро назвало, почему не установилось защищённое соединение: ключ тут ни
+	// при чём, и вести обновлять подписку нельзя.
+	case estOtkazZashchity(err):
+		return protokol.KodZashchitaServera
 	// Ядро живо и ответило, а исходящий не отработал пробу: сервер отверг
 	// рукопожатие. all-servers-down тут отправлял человека проверять сеть при
 	// исправной сети, а чинить надо подписку.

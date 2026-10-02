@@ -139,6 +139,13 @@ type Sluzhba struct {
 	// вход замеров которого он ходит.
 	zamerPinga  func(ctx context.Context, cel string, proksi *url.URL) (time.Duration, error)
 	yadroZamera func(ctx context.Context) (vremennoeYadro, error)
+	// Жалобы ядра на выходы по пути конфига (02.10.2026): только из них
+	// узнаётся, почему сервер не ответил. Шов ради тестов, настоящее ядро
+	// пишет их само.
+	zhalobaVyhoda func(konfig, teg string, posle time.Time) (yadra.ZhalobaYadra, bool)
+	// Когда группа vybor живого ядра последний раз сменила сервер без
+	// перезапуска ядра: её жалобы до этого про прежний сервер (prichina_yadra.go).
+	vyborSmenyon time.Time
 	// Одно место на замер пинга, см. measureDelays.
 	vorotaPinga chan struct{}
 	// Проверки 6.3: эндпоинт и два шва для сети и брандмауэра.
@@ -519,6 +526,7 @@ func NovayaSluzhba() *Sluzhba {
 		return set.LuchshiyOtklikCherez(ctx, cel, proksi, krugovPinga)
 	}
 	s.yadroZamera = s.podnyatYadroZamera
+	s.zhalobaVyhoda = yadra.ZhalobaVyhoda
 	s.adresProverki = set.AdresProverkiPoUmolchaniyu
 	s.sprositVyhod = set.AdresVyhoda
 	s.ipv6Zaglushen = set.PravilaIPv6Est
@@ -1288,7 +1296,9 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 			}
 			nomer++
 			nachProby := time.Now()
-			d, err := s.zamerit(vnutr, adres, sekret, teg)
+			// Жалобы ядра с начала подъёма: ядро стартовало в нём же, и
+			// чужих среди них нет.
+			d, err := s.zameritYadro(vnutr, adres, sekret, teg, nach)
 			if err != nil {
 				log.Printf("подключение: проба %d за %v (с начала подъёма %v): %v",
 					nomer, time.Since(nachProby).Round(time.Millisecond),
@@ -1484,6 +1494,8 @@ func kodPodyomaTunnelya(err error) string {
 // экран, который спорит сам с собой.
 func kodNepodnyavshegosya(poslednyaya error) string {
 	switch {
+	case estOtkazZashchity(poslednyaya):
+		return protokol.KodZashchitaServera
 	case errors.Is(poslednyaya, yadra.ErrServerOtvergKlyuchi):
 		return protokol.KodServerAuthFailed
 	case errors.Is(poslednyaya, yadra.ErrProbaNeUspela):
@@ -1947,7 +1959,7 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 		}
 		sledZamer = time.Now().Add(s.period)
 		s.dognatPravila()
-		if _, err := s.zamerit(ctx, adres, sekret, teg); err != nil {
+		if _, err := s.zameritYadro(ctx, adres, sekret, teg, s.zhalobyNePrezhe()); err != nil {
 			// Отменённый контекст это НЕ авария, а нас самих опускают. Считать
 			// его провалом значило бы поставить ne-neset поверх выключенного и
 			// запустить восстановление, которое подключит туннель обратно.
@@ -2010,6 +2022,12 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 			// Причина выясняется ДО остановки, пока адаптер и конфиг ещё на
 			// месте: после s.opustit() спрашивать уже нечего и не у чего (A3).
 			prichina := s.prichinaRazryva(ctx)
+			// Своей причины у сети нет, а ядро назвало, почему не
+			// устанавливается защищённое соединение: её и говорим (02.10.2026
+			// так выглядел сертификат сервера, истёкший посреди работы).
+			if prichina == "" && estOtkazZashchity(err) {
+				prichina = err.Error()
+			}
 			// Показ восстановления ДО опускания: иначе между ним и запуском
 			// цикла наружу ушли бы vyklyuchen и ne-neset.
 			s.pokazVosst(true)
@@ -2038,6 +2056,7 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 // pomoglaGruppa перемеряет группу авто и пробует исходящий ещё раз. Вне авто
 // отвечает false сразу: перемерять нечего.
 func (s *Sluzhba) pomoglaGruppa(ctx context.Context, adres, sekret, teg string) bool {
+	nach := time.Now()
 	bylo, err := s.peremeritAvto(ctx, adres, sekret)
 	if err != nil {
 		log.Printf("группа авто не перемерена: %v", err)
@@ -2045,7 +2064,9 @@ func (s *Sluzhba) pomoglaGruppa(ctx context.Context, adres, sekret, teg string) 
 	if !bylo || ctx.Err() != nil {
 		return false
 	}
-	if _, err := s.zamerit(ctx, adres, sekret, teg); err != nil {
+	// Перемер мог выбрать другой сервер: жалобы до него про прежний.
+	s.otmetitSmenuVybora(nach)
+	if _, err := s.zameritYadro(ctx, adres, sekret, teg, nach); err != nil {
 		log.Printf("и после перемера группы исходящий %s не несёт: %v", teg, err)
 		return false
 	}

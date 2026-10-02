@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 )
 
 // Вывод ядра в журнал службы.
@@ -39,10 +41,13 @@ const oknoStrokYadra = time.Minute
 var Zhurnal = log.Default()
 
 type zhurnalYadra struct {
-	imya  string
-	ost   []byte
-	strok int
-	skazl bool
+	imya string
+	// Путь конфига, с которым поднято ядро: по нему жалобы на выходы
+	// отделяются от жалоб соседнего ядра (см. ZhalobaVyhoda).
+	konfig string
+	ost    []byte
+	strok  int
+	skazl  bool
 	// Начало текущего окна и сколько строк за него проглочено.
 	nachalo    time.Time
 	proglochen int
@@ -98,6 +103,7 @@ func (z *zhurnalYadra) Write(p []byte) (int, error) {
 		// Запоминаем ДО предела строк? Нет, после: за пределом мы уже молчим,
 		// и обвинять драйвер строкой, которой нет в журнале, нечестно.
 		zapomnitZhalobu(stroka)
+		zapomnitZhalobuVyhoda(z.konfig, stroka, teper)
 		Zhurnal.Printf("ядро %s: %s", z.imya, stroka)
 	}
 }
@@ -158,4 +164,120 @@ func zapomnitZhalobu(stroka string) {
 			return
 		}
 	}
+}
+
+// Жалобы ядра на выходы (02.10.2026).
+//
+// Причину, по которой ядро не дозвонилось до сервера, кроме журнала не знает
+// никто. Clash API на неудачный замер отвечает 503 и фразой «An error occurred
+// in the delay test», а настоящую ошибку выбрасывает
+// (experimental/clashapi/proxies.go). Замер через вход ядра видит обрыв: на
+// CONNECT ядро сначала отвечает «200 Connection established» и только потом
+// звонит серверу (sing protocol/http/handshake.go). Остаётся строка журнала,
+// которую ядро пишет на каждый неудавшийся звонок (route/conn.go):
+//
+//	connection: open connection to <куда> using outbound/<тип>[<тег>]: <ошибка>
+//
+// Тег у временного ядра пинга это сервер (srv-<id>), у основного группа
+// vybor: она сервер не называет, и привязывать её к серверу дело того, кто
+// знает выбор группы.
+//
+// Хранится последняя УЗНАННАЯ жалоба на тег. Нераспознанные строки её не
+// затирают намеренно: у живого ядра отказы UDP идут сотнями вперемешку с
+// отказами сертификата, и «последняя строка» почти всегда оказывалась бы
+// шумом. Устаревание решает вызывающий сроком posle.
+
+// ZhalobaYadra это узнанная причина отказа выхода и когда ядро о ней сказало.
+type ZhalobaYadra struct {
+	Prichina sboi.PrichinaYadra
+	Vremya   time.Time
+}
+
+// По пути конфига: основное ядро, ядро пинга и ядро проверки сервера
+// одноимённы (sing-box.exe), а конфиги у них разные. Каждый Zapustit
+// начинает жалобы своего конфига с нуля, то есть жалобы живут ровно один
+// запуск ядра.
+var zhalobyVyhodov struct {
+	mu sync.Mutex
+	po map[string]map[string]ZhalobaYadra
+}
+
+// Отказ звонка и отказ UDP-сессии. С пробелом впереди и со словом
+// «connection:» намеренно: та же фраза приходит и внутри «connection download
+// closed: remote error: open connection to ...», и там это отказ ЧУЖОГО
+// выхода, на стороне сервера, а тег в ней серверный.
+var metkiOtkazaVyhoda = []string{
+	" connection: open connection to ",
+	" connection: listen packet connection using ",
+}
+
+const metkaVyhoda = "using outbound/"
+
+// razobratOtkazVyhoda достаёт тег выхода и текст ошибки из строки ядра.
+func razobratOtkazVyhoda(stroka string) (teg, oshibka string, ok bool) {
+	nachalo := -1
+	for _, m := range metkiOtkazaVyhoda {
+		if i := strings.Index(stroka, m); i >= 0 {
+			nachalo = i + len(m)
+			break
+		}
+	}
+	if nachalo < 0 {
+		return "", "", false
+	}
+	ost := stroka[nachalo:]
+	i := strings.Index(ost, metkaVyhoda)
+	if i < 0 {
+		return "", "", false
+	}
+	ost = ost[i+len(metkaVyhoda):]
+	l := strings.IndexByte(ost, '[')
+	r := strings.Index(ost, "]: ")
+	if l < 0 || r <= l+1 {
+		return "", "", false
+	}
+	return ost[l+1 : r], ost[r+len("]: "):], true
+}
+
+func zapomnitZhalobuVyhoda(konfig, stroka string, kogda time.Time) {
+	teg, oshibka, ok := razobratOtkazVyhoda(stroka)
+	if !ok {
+		return
+	}
+	prichina := sboi.PoStrokeYadra(oshibka)
+	if prichina == sboi.NeNazvana {
+		return
+	}
+	zhalobyVyhodov.mu.Lock()
+	defer zhalobyVyhodov.mu.Unlock()
+	if zhalobyVyhodov.po == nil {
+		zhalobyVyhodov.po = map[string]map[string]ZhalobaYadra{}
+	}
+	poTegam := zhalobyVyhodov.po[konfig]
+	if poTegam == nil {
+		poTegam = map[string]ZhalobaYadra{}
+		zhalobyVyhodov.po[konfig] = poTegam
+	}
+	poTegam[teg] = ZhalobaYadra{Prichina: prichina, Vremya: kogda}
+}
+
+// zabytZhalobyVyhodov зовётся запуском ядра: жалобы прошлого запуска с тем же
+// конфигом говорят о ядре, которого уже нет.
+func zabytZhalobyVyhodov(konfig string) {
+	zhalobyVyhodov.mu.Lock()
+	defer zhalobyVyhodov.mu.Unlock()
+	delete(zhalobyVyhodov.po, konfig)
+}
+
+// ZhalobaVyhoda отдаёт последнюю узнанную жалобу ядра с конфигом konfig на
+// выход teg, если она не старше posle. Второе значение false значит «ядро
+// ничего узнаваемого не сказало», и тогда причину не называют вовсе.
+func ZhalobaVyhoda(konfig, teg string, posle time.Time) (ZhalobaYadra, bool) {
+	zhalobyVyhodov.mu.Lock()
+	defer zhalobyVyhodov.mu.Unlock()
+	z, est := zhalobyVyhodov.po[konfig][teg]
+	if !est || z.Vremya.Before(posle) {
+		return ZhalobaYadra{}, false
+	}
+	return z, true
 }

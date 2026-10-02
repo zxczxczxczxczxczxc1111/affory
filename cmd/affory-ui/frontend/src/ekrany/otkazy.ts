@@ -25,6 +25,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "dns-resolve-failed": { deystvie: "povtorit", tekst: "не удалось найти сервер по имени" },
   "server-auth-failed": { deystvie: "obnovit-podpisku", tekst: "сервер не принял ключ, проверь подписку" },
   "probe-timeout": { deystvie: "povtorit", tekst: "сервер не ответил вовремя, попробуй ещё раз или выбери другой" },
+  "server-tls-failed": { deystvie: "otkryt-servery", tekst: "защищённое соединение с сервером не установилось" },
   "subscription-unreachable": { deystvie: "obnovit-podpisku", tekst: "подписка не загрузилась" },
   "subscription-timeout": { deystvie: "povtorit", tekst: "подписка не ответила вовремя" },
   "subscription-auth-failed": { deystvie: "obnovit-podpisku", tekst: "сервер подписки не принял ссылку, проверь её" },
