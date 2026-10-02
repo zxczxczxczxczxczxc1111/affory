@@ -164,9 +164,6 @@ export function Vygruzka({ vygruzka, zakryt, skopirovat, kodyQr, nazvatTransport
           </span>
           <Knopka rang="tekst" testId="vygruzka-zakryt" onClick={zakryt}>Закрыть</Knopka>
         </div>
-        <p className="text-warn text-xs">
-          в этих строках ключи: кто их получит, тот подключится к твоим серверам
-        </p>
         <div className="flex flex-wrap items-center gap-2">
           <Segment<"spisok" | "base64">
             aria-label="вид выгрузки"

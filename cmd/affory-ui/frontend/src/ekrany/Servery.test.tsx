@@ -677,7 +677,6 @@ describe("серверы: выгрузка", () => {
     expect(na).toHaveBeenCalledWith("exportServers", {}, expect.any(Function));
     expect(screen.getByTestId("vygruzka-itog")).toHaveTextContent("Выгрузка: 2 сервера");
     expect(screen.getByTestId("vygruzka-propushcheny")).toHaveTextContent("не выгружен старый");
-    expect(screen.getByTestId("vygruzka")).toHaveTextContent(/кто их получит, тот подключится/);
     expect(document.body.textContent).not.toMatch(/hy2:\/\//);
   });
 
