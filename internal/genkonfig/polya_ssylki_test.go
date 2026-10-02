@@ -25,39 +25,58 @@ func ishodyashchiyProby(t *testing.T, s protokol.Server) map[string]any {
 	return v
 }
 
-// Непроверенный отпечаток сводится к chrome, и это ЗАМЕР, а не осторожность.
-// 02.09.2026 на стенде против своего сервера: firefox не понёс ни разу из трёх,
-// chrome понёс два из трёх, при том что ссылка собрана из рабочего конфига
-// Xray, где firefox несёт. Ядро такой конфиг принимает молча, поэтому отказ
-// выглядит как «сервер не отвечает», и человек чинит не то.
-func TestNeproverennyyOtpechatokSvoditsyaKChrome(t *testing.T) {
-	s := protokol.Server{
-		Id: "p", Transport: "reality-tcp", Host: "203.0.113.20", Port: 443,
-		Uuid: "11111111-2222-3333-4444-555555555555",
-		// 43 символа base64url: проверка ключа сильна в значениях.
-		PublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", ShortId: "01ab",
-		Sni: "www.example.com", Fp: "firefox",
-	}
-	v := ishodyashchiyProby(t, s)
-	tls := v["tls"].(map[string]any)
-	utls := tls["utls"].(map[string]any)
-	if utls["fingerprint"] != "chrome" {
-		t.Fatalf("отпечаток %v: непроверенный firefox уехал в ядро и не понесёт", utls["fingerprint"])
+// У reality отпечаток всегда chrome, даже когда ссылка просит firefox.
+//
+// Xray с 26.9.8 отвергает приветствие reality без ключа X25519MLKEM768, а в
+// пресетах utls ядра его несёт только chrome. Официальный клиент Xray с
+// fp=firefox к такому серверу подключается, поэтому послушаться ссылки значило
+// бы молча сломать чужой рабочий ключ. Пустой отпечаток здесь тоже нельзя: без
+// utls рукопожатие Go, и REALITY его отвергнет.
+func TestRealityVsegdaSChrome(t *testing.T) {
+	for _, transport := range []string{"reality-tcp", "reality-grpc"} {
+		for _, fp := range []string{"firefox", "edge", ""} {
+			t.Run(transport+"/"+fp, func(t *testing.T) {
+				s := protokol.Server{
+					Id: "p", Transport: transport, Host: "203.0.113.20", Port: 443,
+					Uuid: "11111111-2222-3333-4444-555555555555",
+					// 43 символа base64url: проверка ключа сильна в значениях.
+					PublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", ShortId: "01ab",
+					Sni: "www.example.com", Fp: fp,
+				}
+				utls := ishodyashchiyProby(t, s)["tls"].(map[string]any)["utls"].(map[string]any)
+				if utls["fingerprint"] != "chrome" {
+					t.Fatalf("отпечаток reality %v: без X25519MLKEM768 свежий Xray его отвергнет", utls["fingerprint"])
+				}
+			})
+		}
 	}
 }
 
-// КОНТРОЛЬ: без fp в ссылке отпечаток обязан остаться chrome. Пустой отпечаток
-// это отсутствие utls вовсе, то есть рукопожатие Go, которое REALITY отвергнет.
-func TestBezOtpechatkaVSsylkeOstayotsyaChrome(t *testing.T) {
-	s := protokol.Server{
-		Id: "p", Transport: "reality-tcp", Host: "203.0.113.20", Port: 443,
-		Uuid:      "11111111-2222-3333-4444-555555555555",
-		PublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", ShortId: "01ab",
-	}
-	v := ishodyashchiyProby(t, s)
-	utls := v["tls"].(map[string]any)["utls"].(map[string]any)
-	if utls["fingerprint"] != "chrome" {
-		t.Fatalf("отпечаток по умолчанию %v, ожидался chrome", utls["fingerprint"])
+// Обычный TLS без проверенного fp в ссылке ходит с firefox.
+//
+// Приветствие chrome в ядре 1757 байт, двумя TCP-сегментами, и залп из шести
+// соединений разом замораживал адрес сервера на 70-150 с (02.10.2026, запись
+// пакетов на сервере). firefox 663 байта одним сегментом, залп проходил.
+// Непроверенный отпечаток (edge) уходит туда же: ядро примет его молча, а
+// несёт ли он, никто не мерил.
+func TestObychnyyTlsPoUmolchaniyuSFirefox(t *testing.T) {
+	for _, transport := range []string{"trojan", "trojan-ws", "anytls", "tls-tcp", "ws", "httpupgrade", "grpc", "vmess"} {
+		for _, fp := range []string{"", "edge", "firefox"} {
+			t.Run(transport+"/"+fp, func(t *testing.T) {
+				s := protokol.Server{
+					Id: "p", Transport: transport, Host: "203.0.113.20", Port: 443,
+					Uuid: "11111111-2222-3333-4444-555555555555", Parol: "p",
+					Sni: "a.example", Fp: fp,
+				}
+				utls, est := ishodyashchiyProby(t, s)["tls"].(map[string]any)["utls"].(map[string]any)
+				if !est {
+					t.Fatal("utls не появился")
+				}
+				if utls["fingerprint"] != "firefox" {
+					t.Fatalf("отпечаток %v, ожидался firefox", utls["fingerprint"])
+				}
+			})
+		}
 	}
 }
 
@@ -164,8 +183,8 @@ func TestBezOtpechatkaNaObychnomTlsUtlsVsyoRavnoEst(t *testing.T) {
 	if !est {
 		t.Fatal("utls не появился: рукопожатие Go узнаётся по отсутствию GREASE и ALPN")
 	}
-	if utls["fingerprint"] != "chrome" {
-		t.Fatalf("отпечаток %v, без просьбы ссылки ожидался chrome", utls["fingerprint"])
+	if utls["fingerprint"] != "firefox" {
+		t.Fatalf("отпечаток %v, без просьбы ссылки ожидался firefox", utls["fingerprint"])
 	}
 }
 
@@ -191,8 +210,8 @@ func TestUQuicProtokolovUtlsNet(t *testing.T) {
 	}
 }
 
-// Зеркало: с ПРОВЕРЕННЫМ fp в ссылке utls на ws обязан появиться, иначе
-// проверка выше зелёная и на генераторе, который отпечаток игнорирует вовсе.
+// Зеркало: ПРОВЕРЕННЫЙ fp из ссылки на ws доезжает как есть, иначе проверка
+// выше зелёная и на генераторе, который отпечаток ссылки игнорирует вовсе.
 func TestSOtpechatkomNaObychnomTlsUtlsEst(t *testing.T) {
 	s := protokol.Server{
 		Id: "p", Transport: "ws", Host: "203.0.113.20", Port: 443,

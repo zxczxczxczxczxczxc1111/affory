@@ -439,21 +439,15 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 	// ALPN и заголовок Host приезжают ИЗ ССЫЛКИ: разбор их вынимал с самого
 	// начала, а сюда они не доезжали.
 	//
-	// С отпечатком сложнее, и это ЗАМЕР, а не осторожность. 02.09.2026 на стенде
-	// против своего сервера: firefox не понёс ни разу из трёх, chrome понёс два
-	// раза из трёх. Ссылка при этом собрана из РАБОЧЕГО конфига Xray, где
-	// firefox несёт, то есть сервер отпечатка не требует, а ломается своя сборка
-	// ядра. `sing-box check` такой конфиг принимает молча, поэтому отказ
-	// выглядит как «сервер не отвечает».
-	//
-	// Отсюда правило: берём отпечаток из ссылки только из ПРОВЕРЕННЫХ, остальные
-	// сводим к chrome. Список расширяется замером, а не догадкой.
-	otpechatok := otpechatokIliChrome(s.Fp)
+	// Отпечаток TLS не из ссылки, а по двум правилам из замеров: reality ходит
+	// только с chrome, обычный TLS по умолчанию с firefox (см. otpechatokTLS).
+	// `sing-box check` негодный отпечаток принимает молча, и отказ выглядит как
+	// «сервер не отвечает», поэтому правила меняются замером, а не догадкой.
 
 	switch s.Transport {
 	case "reality-tcp":
 		o := vless(s, teg)
-		o["tls"] = tlsReality(s, sniReality, otpechatok)
+		o["tls"] = tlsReality(s, sniReality)
 		dobavitAlpn(o, s)
 		return o, nil
 
@@ -470,7 +464,7 @@ func ishodyashchiy(v Vhod, s protokol.Server, teg string) (map[string]any, error
 		// Тот же reality, что выше, плюс транспорт grpc. Flow здесь нет и быть
 		// не может: vision живёт только на голом TCP (см. flowVozmozhen).
 		o := vless(s, teg)
-		o["tls"] = tlsReality(s, sniReality, otpechatok)
+		o["tls"] = tlsReality(s, sniReality)
 		dobavitAlpn(o, s)
 		o["transport"] = map[string]any{"type": "grpc", "service_name": putIli(s.Put, "gun")}
 		return o, nil
@@ -713,25 +707,44 @@ func flowVozmozhen(transport string) bool {
 
 // tlsReality это TLS-блок reality. У reality без utls рукопожатие не
 // состоится вовсе, поэтому отпечаток входит в блок всегда.
-func tlsReality(s protokol.Server, sni, otpechatok string) map[string]any {
+func tlsReality(s protokol.Server, sni string) map[string]any {
 	return map[string]any{
 		"enabled": true, "server_name": sni,
 		"reality": map[string]any{
 			"enabled": true, "public_key": s.PublicKey, "short_id": s.ShortId,
 		},
-		"utls": map[string]any{"enabled": true, "fingerprint": otpechatok},
+		"utls": map[string]any{"enabled": true, "fingerprint": otpechatokReality},
 	}
 }
 
-// Отпечатки, проверенные живым подъёмом. Пополнять ТОЛЬКО прогоном на стенде:
-// негодный отпечаток не отвергается ядром, а тихо не несёт трафик.
-var proverennyeOtpechatki = map[string]bool{"chrome": true}
+// У reality отпечаток всегда chrome, что бы ни просила ссылка.
+//
+// Xray с 26.9.8 (сентябрь 2026) отвергает приветствие reality без ключа
+// X25519MLKEM768, а из пресетов utls в ядре его несёт только chrome: firefox
+// там это Firefox 120 с X25519 и P-256. Официальный клиент Xray с fp=firefox
+// к такому серверу подключается (у него Firefox 148), то есть чужая ссылка с
+// firefox у нас молча перестала бы работать. Своему серверу sing-box ключ не
+// нужен, но отличить его по ссылке нельзя.
+const otpechatokReality = "chrome"
 
-func otpechatokIliChrome(fp string) string {
+// Отпечатки обычного TLS, проверенные живым подъёмом. Пополнять ТОЛЬКО
+// прогоном на стенде: негодный отпечаток не отвергается ядром, а тихо не
+// несёт трафик.
+var proverennyeOtpechatki = map[string]bool{"chrome": true, "firefox": true}
+
+// otpechatokTLS это отпечаток обычного TLS: из ссылки, если он проверен,
+// иначе firefox.
+//
+// firefox по умолчанию с 02.10.2026. Приветствие chrome в ядре весит 1757
+// байт и едет двумя TCP-сегментами, и залп из шести соединений разом
+// замораживал адрес сервера на 70-150 с: путь резал второй сегмент или ответ
+// сервера (запись пакетов на сервере). firefox весит 663 байта, идёт одним
+// сегментом, и тот же залп проходил. Имя в рукопожатии на это не влияло.
+func otpechatokTLS(fp string) string {
 	if proverennyeOtpechatki[fp] {
 		return fp
 	}
-	return "chrome"
+	return "firefox"
 }
 
 // dobavitAlpn кладёт список ТОЛЬКО когда он задан. Пустой список ALPN это не
@@ -782,7 +795,7 @@ func dobavitHost(tr map[string]any, s protokol.Server) {
 // браузера: Chrome кладёт GREASE в четыре места и ALPN всегда. По такому
 // ClientHello соединение отличается от браузерного первым же пакетом.
 //
-// Заодно чинится ALPN: пресет chrome в utls перезаписывает NextProtos на
+// Заодно чинится ALPN: пресеты chrome и firefox в utls перезаписывают NextProtos на
 // h2/http1.1 (u_tls_extensions.go, writeToUConn), то есть расширение появляется
 // само. Сервер его не выбирает, и это безопасно: checkALPN в crypto/tls при
 // пустом ответе сервера возвращает nil для всего, кроме QUIC.
@@ -815,7 +828,7 @@ func dobavitUtls(o map[string]any, s protokol.Server) {
 	if !est {
 		return
 	}
-	tls["utls"] = map[string]any{"enabled": true, "fingerprint": otpechatokIliChrome(s.Fp)}
+	tls["utls"] = map[string]any{"enabled": true, "fingerprint": otpechatokTLS(s.Fp)}
 }
 
 func putIli(v, poumolchaniyu string) string {
