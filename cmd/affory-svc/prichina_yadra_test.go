@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
@@ -178,6 +181,139 @@ func TestKodyOtkazaZashchity(t *testing.T) {
 	}
 	if got := sboi.DlyaCheloveka(fmt.Errorf("VPN не понёс трафик: %w", oz)); !strings.Contains(got, sboi.NeizvestnyyPodpisant.Tekst()) {
 		t.Errorf("человеку уходит %q, причина потеряна", got)
+	}
+}
+
+// Доспрос у ядра замера (приёмка 1.9.3, 02.10.2026). Живое ядро молчит: через
+// новый сервер не прошло ни одного соединения человека. Ядро замера звонит
+// серверу само и жалуется на его исходящий srv-<id>.
+const konfigZameraTesta = "sing-box.zamer.json"
+
+type dosprosZamera struct {
+	mu        sync.Mutex
+	tegi      []string
+	ostanovok atomic.Int32
+	podnyato  atomic.Int32
+}
+
+func (d *dosprosZamera) sprosheno() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]string(nil), d.tegi...)
+}
+
+func yadroZameraNazyvaet(t *testing.T, s *Sluzhba, prichina sboi.PrichinaYadra, server time.Duration) *dosprosZamera {
+	t.Helper()
+	d := &dosprosZamera{}
+	s.yadroZamera = func(context.Context) (vremennoeYadro, error) {
+		d.podnyato.Add(1)
+		return vremennoeYadro{
+			zamer:       genkonfig.VhodZamera{Port: 10810, Parol: "sekret"},
+			isklyucheny: map[string]bool{},
+			konfig:      konfigZameraTesta,
+			ostanovit:   func() { d.ostanovok.Add(1) },
+		}, nil
+	}
+	s.zamerPinga = func(context.Context, string, *url.URL) (time.Duration, error) {
+		if server > 0 {
+			return server, nil
+		}
+		return 0, errors.New("соединение оборвано")
+	}
+	s.zhalobaVyhoda = func(konfig, teg string, posle time.Time) (yadra.ZhalobaYadra, bool) {
+		if konfig != konfigZameraTesta {
+			return yadra.ZhalobaYadra{}, false
+		}
+		d.mu.Lock()
+		d.tegi = append(d.tegi, teg)
+		d.mu.Unlock()
+		return yadra.ZhalobaYadra{Prichina: prichina, Vremya: time.Now()}, true
+	}
+	return d
+}
+
+func TestPereklyucheniePrichinaOtYadraZamera(t *testing.T) {
+	s, port := sZhivoyProboy(t, otvergaetProbu)
+	s.zapomnitKlash(port, "sekret-stenda")
+	d := yadroZameraNazyvaet(t, s, sboi.SrokSertifikata, 0)
+
+	o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "setServer", Telo: []byte(`{"id":"nl"}`)})
+	if o.Oshib == nil || o.Oshib.Kod != protokol.KodZashchitaServera {
+		t.Fatalf("отказ переключения %+v, ждали server-tls-failed", o.Oshib)
+	}
+	if !strings.Contains(o.Oshib.Tekst, sboi.SrokSertifikata.Tekst()) {
+		t.Errorf("в тексте отказа нет причины: %q", o.Oshib.Tekst)
+	}
+	if got := d.sprosheno(); len(got) != 1 || got[0] != genkonfig.TegKandidata("nl") {
+		t.Errorf("жалобы ядра замера спрошены про %v, ждали один %s", got, genkonfig.TegKandidata("nl"))
+	}
+	if n := d.ostanovok.Load(); n != 1 {
+		t.Errorf("ядро замера остановлено %d раз, ждали 1", n)
+	}
+}
+
+func TestPodyomVRuchnomPrichinaOtYadraZamera(t *testing.T) {
+	korotkiyPodyom(t)
+	s, _ := sZhivoyProboy(t, otvergaetProbu)
+	if err := s.zapisatNabor(Nabor{
+		Servery: []protokol.Server{serverProby()}, Vybran: "nl", Rezhim: protokol.RezhimRuchnoy,
+	}); err != nil {
+		t.Fatalf("набор не записан: %v", err)
+	}
+	d := yadroZameraNazyvaet(t, s, sboi.NeizvestnyyPodpisant, 0)
+
+	o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "connect"})
+	if o.Oshib == nil || o.Oshib.Kod != protokol.KodZashchitaServera {
+		t.Fatalf("отказ подъёма %+v, ждали server-tls-failed", o.Oshib)
+	}
+	if st := s.Status(); st.Oshib == nil || !strings.Contains(st.Oshib.Tekst, sboi.NeizvestnyyPodpisant.Tekst()) {
+		t.Errorf("в состоянии нет причины: %+v", st.Oshib)
+	}
+	// Один доспрос на весь подъём, а не на каждую пробу.
+	if n := d.podnyato.Load(); n != 1 {
+		t.Errorf("ядро замера поднято %d раз, ждали 1", n)
+	}
+}
+
+// В «авто» 503 группы не называет сервер, и доспрос одного из них приписал бы
+// его беду всем.
+func TestPodyomVAvtoNeSprashivaetYadroZamera(t *testing.T) {
+	korotkiyPodyom(t)
+	s, _ := sZhivoyProboy(t, otvergaetProbu)
+	if err := s.zapisatNabor(Nabor{
+		Servery: []protokol.Server{serverProby()}, Rezhim: protokol.RezhimAvto,
+	}); err != nil {
+		t.Fatalf("набор не записан: %v", err)
+	}
+	d := yadroZameraNazyvaet(t, s, sboi.SrokSertifikata, 0)
+
+	o := s.Obrabotat(ctxAdmina(), protokol.Kadr{Tip: "cmd", Id: 1, Imya: "connect"})
+	if o.Oshib == nil || o.Oshib.Kod != protokol.KodServerAuthFailed {
+		t.Fatalf("отказ подъёма %+v, ждали прежний server-auth-failed", o.Oshib)
+	}
+	if n := d.podnyato.Load(); n != 0 {
+		t.Errorf("в авто поднято ядро замера: %d раз", n)
+	}
+}
+
+func TestUtochnenieBezPrichiny(t *testing.T) {
+	s := podstavnaya(t, nil)
+	// Сервер через ядро замера ответил: 503 живого ядра был не про защищённое
+	// соединение, и старая жалоба тут ничего не доказывает.
+	d := yadroZameraNazyvaet(t, s, sboi.SrokSertifikata, 30*time.Millisecond)
+	if err := s.utochnitPrichinu(context.Background(), otkaz503(), "nl"); !errors.Is(err, yadra.ErrServerOtvergKlyuchi) || estOtkazZashchity(err) {
+		t.Fatalf("при ответившем сервере отказ подменён: %v", err)
+	}
+	if got := d.sprosheno(); len(got) != 0 {
+		t.Errorf("жалобы спрошены при ответившем сервере: %v", got)
+	}
+	// Таймаут пробы не доспрашивается вовсе.
+	taymaut := fmt.Errorf("%w: не отвечает дольше 5s", yadra.ErrProbaNeUspela)
+	if err := s.utochnitPrichinu(context.Background(), taymaut, "nl"); err != taymaut {
+		t.Fatalf("таймаут подменён: %v", err)
+	}
+	if n := d.podnyato.Load(); n != 1 {
+		t.Errorf("ядро замера поднято %d раз, ждали 1", n)
 	}
 }
 

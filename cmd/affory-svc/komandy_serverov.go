@@ -552,6 +552,10 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 			return fmt.Errorf("%w: проба %v, возврат %v", ErrOtkatNeUdalsya, err, e)
 		}
 		s.otmetitSmenuVybora(vozvrat)
+		// Проба нового сервера падает за доли секунды, и строки трафика через
+		// него у ядра почти никогда нет: причину называет ядро замера. Уже
+		// после возврата, чтобы человек ждал её на рабочем подключении.
+		err = s.utochnitPrichinu(ctx, err, id)
 		// Оба %w: вызывающему нужны и обещание «подключение цело», и причина.
 		return fmt.Errorf("%w: %w", ErrNovyyVyborNeNesyot, err)
 	}

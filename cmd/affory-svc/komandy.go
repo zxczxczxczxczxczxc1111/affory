@@ -1444,6 +1444,19 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 		}
 	}
 
+	// В ручном режиме проба шла через один сервер, и безымянный 503 можно
+	// доспросить у ядра замера (utochnitPrichinu). Туннель ещё стоит: опустив
+	// его раньше, служба показала бы «выключено» между попыткой и отказом.
+	if rezhimNabora(n) == protokol.RezhimRuchnoy {
+		poslednyaya = s.utochnitPrichinu(ctx, poslednyaya, srv.Id)
+		// Человек мог отключить VPN, пока шёл доспрос: его «выключено» главнее.
+		if s.podyomOtmenyon(moyo) {
+			s.otmenit()
+			s.opustitYadro()
+			return errPodyomOtmenyon
+		}
+	}
+
 	// Up but carrying nothing is its own state, and it is the dangerous one.
 	//
 	// Вердикт пишется в журнал СО ВСЕЙ обстановкой. Разовый отказ 03.09.2026

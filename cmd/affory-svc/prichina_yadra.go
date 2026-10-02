@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
 )
@@ -56,6 +58,75 @@ func (s *Sluzhba) zameritYadro(ctx context.Context, adres, sekret, teg string, p
 		return d, err
 	}
 	return d, &otkazZashchity{prichina: zh.Prichina}
+}
+
+// srokUtochneniya это сколько доспрос причины может добавить к отказу подъёма
+// или переключения. Ядро замера встаёт за секунду-две, а отказ защищённого
+// соединения приходит за доли секунды. Срок ответа connect и setServer (60 с)
+// обязан пережить и подъём с двумя попытками по 15 с, и этот доспрос.
+const srokUtochneniya = 10 * time.Second
+
+// utochnitPrichinu спрашивает причину у ядра замера, когда проба живого ядра
+// получила безымянный 503, а в журнале про этот выход ничего узнаваемого нет.
+//
+// Найдено приёмкой 1.9.3 в госте 02.10.2026: живое переключение на сервер с
+// просроченным сертификатом падало за 0,1 с и тут же откатывалось. Через новый
+// сервер не успевало пройти ни одного соединения человека, ядру не о чем было
+// написать, и человек снова читал «сервер не принял ключ». Ядро замера звонит
+// серверу своим исходящим srv-<id> и называет причину строкой с этим тегом, не
+// дожидаясь чужого трафика.
+//
+// Зовётся, только когда проба шла через один известный сервер: в «авто» 503
+// группы не говорит, какой из серверов отказал.
+func (s *Sluzhba) utochnitPrichinu(ctx context.Context, err error, id string) error {
+	if estOtkazZashchity(err) || !errors.Is(err, yadra.ErrServerOtvergKlyuchi) {
+		return err
+	}
+	ctx, otm := context.WithTimeout(ctx, srokUtochneniya)
+	defer otm()
+	p, est := s.prichinaYadraZamera(ctx, id)
+	if !est {
+		return err
+	}
+	log.Printf("ядро замера назвало причину отказа сервера %s: %s", id, p.Korotko())
+	return &otkazZashchity{prichina: p}
+}
+
+// prichinaYadraZamera меряет один сервер ядром замера и отдаёт причину, которую
+// ядро написало про его исходящий. Ничего, если сервер ответил: тогда 503
+// живого ядра был не про защищённое соединение.
+func (s *Sluzhba) prichinaYadraZamera(ctx context.Context, id string) (sboi.PrichinaYadra, bool) {
+	// Те же ворота, что у пинга списка: конфиг ядра замера лежит одним файлом.
+	select {
+	case s.vorotaPinga <- struct{}{}:
+		defer func() { <-s.vorotaPinga }()
+	case <-ctx.Done():
+		log.Printf("причина отказа сервера %s не спрошена: идёт замер пинга", id)
+		return sboi.NeNazvana, false
+	}
+	srv, err := s.serverPoId(id)
+	if err != nil {
+		log.Printf("причина отказа сервера %s не спрошена: %v", id, err)
+		return sboi.NeNazvana, false
+	}
+	nachalo := time.Now()
+	y, err := s.yadroZamera(ctx)
+	if err != nil {
+		log.Printf("причина отказа сервера %s не спрошена: %v", id, err)
+		return sboi.NeNazvana, false
+	}
+	z := s.pingOdnogo(ctx, srv, y)
+	// Жалобы спрашиваются после остановки: она ждёт, пока вывод ядра дочитан
+	// (см. measureDelays).
+	y.ostanovit()
+	if z.PingMs != nil || y.isklyucheny[id] {
+		return sboi.NeNazvana, false
+	}
+	zh, est := s.zhalobaVyhoda(y.konfig, genkonfig.TegKandidata(id), nachalo)
+	if !est {
+		return sboi.NeNazvana, false
+	}
+	return zh.Prichina, true
 }
 
 // zhalobyNePrezhe это граница для проб, у которых своего начала нет
