@@ -10,7 +10,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/kbinani/screenshot v0.0.0-20250624051815-089614a94018
 	github.com/makiuchi-d/gozxing v0.1.1
-	github.com/wailsapp/wails/v3 v3.0.0-beta.26
+	github.com/wailsapp/wails/v3 v3.0.0-beta.27
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
