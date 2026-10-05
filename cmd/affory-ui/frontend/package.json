@@ -10,7 +10,7 @@
     "obhod": "playwright test"
   },
   "dependencies": {
-    "@wailsio/runtime": "3.0.0-beta.26",
+    "@wailsio/runtime": "3.0.0-beta.27",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
