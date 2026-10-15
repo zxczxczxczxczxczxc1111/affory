@@ -2,6 +2,7 @@ package petlya
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,11 +93,23 @@ func checkSharedTrackerRestart(t *testing.T, events bool) {
 	if events {
 		newWatcher = afforyprocess.NewEventWatcher
 	}
-	w, err := newWatcher(nil)
+	var reportsMu sync.Mutex
+	var reports []error
+	trackerReports := func() []error { reportsMu.Lock(); defer reportsMu.Unlock(); return slices.Clone(reports) }
+	w, err := newWatcher(func(err error) { reportsMu.Lock(); reports = append(reports, err); reportsMu.Unlock() })
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer w.Close()
+	// Without an event session the watcher falls back to polling by design, and
+	// this subtest would check polling instead of events. Windows refuses the
+	// session to a non-elevated account; any other refusal is a defect.
+	if failed := trackerReports(); events && len(failed) > 0 {
+		if errors.Is(failed[0], windows.ERROR_ACCESS_DENIED) {
+			t.Skipf("process events need an administrator: %v", failed[0])
+		}
+		t.Fatalf("process events not running: %v", failed)
+	}
 	api, err := afforyprocess.NewSharedServer(w.FindIdentity)
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +209,7 @@ func checkSharedTrackerRestart(t *testing.T, events bool) {
 			t.Fatal(err)
 		}
 		if strings.TrimSpace(got) != want {
-			t.Fatalf("application returned %q want %q\n%s", got, want, y.Zhurnal())
+			t.Fatalf("application returned %q want %q; tracker reports %v\n%s", got, want, trackerReports(), y.Zhurnal())
 		}
 	}
 	first := startCore(true, false)
