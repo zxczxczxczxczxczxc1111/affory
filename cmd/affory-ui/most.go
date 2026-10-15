@@ -445,8 +445,16 @@ func (m *most) Zvat(imya string, telo string) (string, error) {
 		// json.Marshal, и окно получало пустой кадр без отказа, то есть «сделано».
 		// Хуже всех от этого было SnyatRezhim: выход из трея считал защиту снятой,
 		// когда служба просто не успела ответить.
+		//
+		// Свой код у вышедшего срока (16.10.2026): служба, может быть, ещё
+		// работает, и подключение с переключением окно досматривает по
+		// состоянию, а не рисует провалом (жалоба 15.10.2026).
+		kod := kodObolochki
+		if errors.Is(err, kanal.ErrSrokOtveta) {
+			kod = kodSroka
+		}
 		otvet = protokol.Kadr{Tip: "otvet", Imya: imya,
-			Oshib: &protokol.Oshibka{Kod: kodObolochki, Tekst: err.Error()}}
+			Oshib: &protokol.Oshibka{Kod: kod, Tekst: err.Error()}}
 	}
 	// A refusal frame is an answer: the screen reads oshibka off the frame
 	// and shows the §9.1 screen for it. The pipe stays open.
@@ -522,6 +530,10 @@ func obryvKanala(otvet protokol.Kadr, err error) bool {
 // который родился в окне, а не в службе. Экран рисует по нему свою общую
 // фразу, а текст ошибки мелким шрифтом под ней.
 const kodObolochki = "oshibka-obolochki"
+
+// kodSroka это KOD_SROKA оттуда же: служба не ответила в срок канала. Канал
+// жив, а команда, может быть, ещё идёт.
+const kodSroka = "srok-otveta"
 
 // podklyuchitsya это шов над kanal.Podklyuchitsya для тестов моста.
 var podklyuchitsya = kanal.Podklyuchitsya

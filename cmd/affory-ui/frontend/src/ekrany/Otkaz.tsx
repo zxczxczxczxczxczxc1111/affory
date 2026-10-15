@@ -1,5 +1,5 @@
 import {
-  KOD_OBOLOCHKI, TEKST_BEZ_KODA, TEKST_OBOLOCHKI, TEKST_SLUZHBY_DOSLOVNO,
+  KOD_OBOLOCHKI, KOD_SROKA, TEKST_BEZ_KODA, TEKST_OBOLOCHKI, TEKST_SLUZHBY_DOSLOVNO,
   podpisDeystviya, tekstOtkaza, type Deystvie,
 } from "./otkazy";
 import { ponyatno } from "../ponyatno";
@@ -39,11 +39,14 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
   // сообщение вместо серверов»), а текст оболочки технический и часто
   // английский, потому что приходит из Windows. Крупно он и есть тот самый
   // отчёт о сбое, которого правило избегает.
-  const nash = kod === KOD_OBOLOCHKI ? TEKST_OBOLOCHKI : z?.tekst;
+  // Истёкший срок канала это тоже голос оболочки, а не службы, и рисуется так
+  // же, как было до того, как у него появился свой код.
+  const obolochka = kod === KOD_OBOLOCHKI || kod === KOD_SROKA;
+  const nash = obolochka ? TEKST_OBOLOCHKI : z?.tekst;
   // Сообщение панели подписки идёт как есть: оно может быть и по-английски, и
   // в нём бывает код оплаты.
   const panel = TEKST_SLUZHBY_DOSLOVNO.has(kod) && !!tekst;
-  const neizvesten = z === undefined && kod !== KOD_OBOLOCHKI && !!tekst;
+  const neizvesten = z === undefined && !obolochka && !!tekst;
   // Английский хвост Windows и Go отрезается (01.10.2026), целиком текст
   // остаётся в подсказке у причины: окно своего журнала не ведёт, и без неё
   // разбирать сбой оболочки было бы не по чему.

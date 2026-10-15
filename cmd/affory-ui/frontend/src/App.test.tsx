@@ -872,6 +872,50 @@ describe("баннер отказа", () => {
     expect(screen.queryByTestId("otkaz")).toBeNull();
   });
 
+  // Жалоба 15.10.2026: подъём при молчащих серверах шёл дольше срока канала,
+  // и окно рисовало «не получилось выполнить действие», пока служба ещё
+  // поднимала. Канал при этом жив, и итог служба присылает событием state.
+  it("истёкший срок ответа на подключение не объявляет провал, итог приезжает состоянием", async () => {
+    const most = mostProby();
+    most.otvechatOtkazom("connect", "srok-otveta", "служба не ответила вовремя: connect за 3m0s");
+    render(<App />);
+    await screen.findByText(/выключено/i);
+    fireEvent.click(screen.getByTestId("glavnoe-deystvie"));
+    await waitFor(() => expect(most.skolkoRaz("connect")).toBe(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId("otkaz")).toBeNull();
+    act(() => most.sobytie({ tip: "sobytie", imya: "state", telo: { sostoyanie: "otkaz", oshibka: { kod: "all-servers-down", tekst: "ни один не ответил" } } }));
+    expect(await screen.findByTestId("otkaz")).toHaveAttribute("data-kod", "all-servers-down");
+  });
+
+  it("истёкший срок ответа на смену сервера тоже не рисует плашку", async () => {
+    const most = mostProby();
+    const servery = ["a", "b"].map((id) => ({ id, imya: id, host: `${id}.example`, port: 443, transport: "trojan" }));
+    most.otvechatTelom("listServers", { servery, vybran: "a", podpiska_zadana: false, podpiska_uzel: "" });
+    most.otvechatOtkazom("setServer", "srok-otveta", "служба не ответила вовремя: setServer за 3m0s");
+    render(<App />);
+    await screen.findByText(/выключено/i);
+    fireEvent.click(screen.getByRole("button", { name: "Управлять" }));
+    fireEvent.click(await screen.findByTestId("server-b"));
+    await waitFor(() => expect(most.skolkoRaz("setServer")).toBe(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId("otkaz")).toBeNull();
+  });
+
+  it("истёкший срок у остальных команд остаётся плашкой сбоя", async () => {
+    // Очистка журнала не присылает итог событием: молчание тут и есть ответ,
+    // и спрятать его значило бы кнопку, которая ничего не делает.
+    const most = mostProby();
+    most.otvechatOtkazom("clearJournal", "srok-otveta", "служба не ответила вовремя: clearJournal за 5s");
+    render(<App />);
+    await screen.findByText(/выключено/i);
+    fireEvent.click(screen.getByText("Настройки"));
+    fireEvent.click(await screen.findByTestId("razdel-diagnostika"));
+    fireEvent.click(screen.getByTestId("ochistit-zhurnal"));
+    expect(await screen.findByTestId("otkaz-tekst")).toHaveTextContent("не получилось выполнить действие");
+    expect(screen.getByTestId("otkaz-prichina")).toHaveTextContent("служба не ответила вовремя");
+  });
+
   it("закрытый баннер не воскресает из status.oshibka", async () => {
     const most = mostProby();
     // The service holds a standing refusal in status: it survived every

@@ -82,11 +82,32 @@ func TestSrokOtvetaPriezzhaetOtkazom(t *testing.T) {
 	if err := otkazVOtvete(s); err == nil || !strings.Contains(err.Error(), "не ответила вовремя") {
 		t.Fatalf("вышедший срок сошёл за успех: %q", s)
 	}
+	// Свой код, а не сбой оболочки (16.10.2026): по нему окно отличает «служба
+	// ещё работает» от «окно не смогло» и подключение досматривает по состоянию.
+	var kadr protokol.Kadr
+	if err := json.Unmarshal([]byte(s), &kadr); err != nil {
+		t.Fatal(err)
+	}
+	if kadr.Oshib == nil || kadr.Oshib.Kod != kodSroka {
+		t.Fatalf("вышедший срок пришёл кодом %+v, а не %s", kadr.Oshib, kodSroka)
+	}
 	if !m.podklyuchen() {
 		t.Fatal("вышедший срок оборвал канал")
 	}
 	if err := m.SnyatRezhim(); err == nil {
 		t.Fatal("выход из трея счёл защиту снятой, хотя служба не ответила")
+	}
+}
+
+// Код срока объявлен дважды: здесь и в otkazy.ts окна. Разойдутся они молча,
+// и окно снова нарисует провал подъёма, который служба ещё ведёт.
+func TestKodSrokaSovpadaetSOknom(t *testing.T) {
+	ts, err := os.ReadFile(filepath.FromSlash("frontend/src/ekrany/otkazy.ts"))
+	if err != nil {
+		t.Fatalf("otkazy.ts не прочитан: %v", err)
+	}
+	if !strings.Contains(string(ts), `KOD_SROKA = "`+kodSroka+`"`) {
+		t.Fatalf("в otkazy.ts нет KOD_SROKA = %q", kodSroka)
 	}
 }
 

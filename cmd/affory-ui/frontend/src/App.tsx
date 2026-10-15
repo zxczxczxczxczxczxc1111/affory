@@ -9,7 +9,7 @@ import { useSkorost } from "./skorost";
 import { Karkas } from "./ekrany/Karkas";
 import { Nastroyki, type AdresVyhoda, type ZamerPolosy } from "./ekrany/Nastroyki";
 import { Otkaz } from "./ekrany/Otkaz";
-import { KOD_OBOLOCHKI, type Deystvie } from "./ekrany/otkazy";
+import { KOD_OBOLOCHKI, KOD_SROKA, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
@@ -161,6 +161,10 @@ const MENYAYUT_SPISOK = new Set(["addServer", "addServers", "removeServer", "set
 const MENYAYUT_PODPISKI = new Set(["setSubscription", "addSubscription", "removeSubscription", "setActiveSubscription", "refreshSubscription"]);
 // Same for the rules list.
 const MENYAYUT_PRAVILA = new Set(["setRules"]);
+// Команды подъёма. Если их срок ответа истёк, служба подъём ВЕДЁТ дальше, и
+// итог приедет событием state: отказ из него встанет плашкой сам. Плашка на
+// истёкшем сроке объявляла провал работающего подключения (жалоба 15.10.2026).
+const ZHDUT_ITOGA = new Set(["connect", "setServer"]);
 
 export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
@@ -427,7 +431,8 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
       if (kadr.oshibka) {
         // Экран, который сам показывает отказ на месте, забирает его себе, и
         // баннер не дублирует его чужими словами.
-        if (naOtkaz) naOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst });
+        if (kadr.oshibka.kod === KOD_SROKA && ZHDUT_ITOGA.has(komanda)) zadatOtkaz(null);
+        else if (naOtkaz) naOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst });
         else zadatOtkaz({ kod: kadr.oshibka.kod, tekst: kadr.oshibka.tekst, komanda, vkladka: vkladkaSeychas.current });
       } else {
         zadatOtkaz(null);
