@@ -486,7 +486,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 	if adres == "" {
 		// Ядра нет: переключать нечего, выбор просто запоминается. Отказ здесь
 		// означал бы, что выбрать сервер заранее нельзя.
-		return s.zapomnitVybor(id)
+		return s.zapomnitBezYadra(id)
 	}
 
 	// Прежний выбор берётся ОДНОЭТАЖНО и ДО всякой правки: в авто он равен тегу
@@ -503,7 +503,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		// человек, и попадает он ровно в это окно: авария опустила ядро
 		// секундой раньше. Отказать здесь значит отказать там, где нужнее.
 		if yadra.YadroNeSlushaet(err) {
-			return s.zapomnitVybor(id)
+			return s.zapomnitBezYadra(id)
 		}
 		return fmt.Errorf("текущий выбор ядра не прочитан, переключаться вслепую нельзя: %w", err)
 	}
@@ -522,7 +522,7 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		// Ядро могло исчезнуть и между чтением выбора и этим PUT: окно узкое,
 		// но оно то же самое.
 		if yadra.YadroNeSlushaet(err) {
-			return s.zapomnitVybor(id)
+			return s.zapomnitBezYadra(id)
 		}
 		return err
 	}
@@ -623,6 +623,23 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		})
 	}
 	return nil
+}
+
+// zapomnitBezYadra запоминает выбор, когда ядра нет. Если восстановление в эту
+// минуту ждёт на паузе, выбранный сервер пробуется сразу (жалоба 15.10.2026):
+// другой сервер выбирают ровно потому, что прежний не отвечает, и ждать ради
+// этого конца пятиминутной паузы незачем.
+//
+// Отставшие правила брандмауэра попытке не помеха: выбор записан, и отказ
+// уходит человеку тем же ответом, что и прежде.
+func (s *Sluzhba) zapomnitBezYadra(id string) error {
+	err := s.zapomnitVybor(id)
+	if err == nil || errors.Is(err, errPravilaOtstali) {
+		if s.popytatsyaSeychas("выбран другой сервер") {
+			log.Printf("выбран сервер %s во время паузы восстановления: пробую сразу", id)
+		}
+	}
+	return err
 }
 
 // putKonfigaVybora это шов над путём к конфигу ядра.

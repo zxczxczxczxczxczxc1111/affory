@@ -428,8 +428,10 @@ type Sluzhba struct {
 	pauzaPaniki time.Duration
 
 	// tolchokVosst обрывает паузу восстановления после сна машины: без
-	// туннеля vneocherednaya забирать некому (Б2 аудита 1.8.0).
-	tolchokVosst chan struct{}
+	// туннеля vneocherednaya забирать некому (Б2 аудита 1.8.0). С 16.10.2026
+	// и по действию человека (popytatsyaSeychas); строка называет причину для
+	// журнала.
+	tolchokVosst chan string
 
 	// Адаптер туннеля, известен только после подъёма. На его индексе держится
 	// поиск канала ПОД туннелем, на алиасе порядок правил задачи 2.5.
@@ -510,7 +512,7 @@ func NovayaSluzhba() *Sluzhba {
 		zapisat:   sostoyanie.Zapisat,
 		// На одну просьбу: две подряд значат ровно то же, что одна.
 		vneocherednaya: make(chan struct{}, 1),
-		tolchokVosst:   make(chan struct{}, 1),
+		tolchokVosst:   make(chan string, 1),
 		vorotaPinga:    make(chan struct{}, 1),
 	}
 	s.period = periodNablyudeniyaPoUmolchaniyu
@@ -942,7 +944,7 @@ func (s *Sluzhba) ProbaPosleSna() {
 	default:
 	}
 	select {
-	case s.tolchokVosst <- struct{}{}:
+	case s.tolchokVosst <- "машина проснулась":
 	default:
 	}
 }
@@ -990,6 +992,17 @@ func (s *Sluzhba) Connect(ctx context.Context) error {
 func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	// «Подключить», пока идёт восстановление, отдаётся циклу, а не идёт рядом с
+	// ним (жалоба 15.10.2026). Рядом оно поднимало туннель под отсчётом «снова
+	// через 5 мин», а цикл, проснувшись посреди такого подъёма, видел чужое
+	// podnimaetsya и прекращался: неудачная попытка руками оставляла машину
+	// без восстановления вовсе.
+	if expected == nil && !avto && s.vosstanovlenieIdyot() {
+		if s.popytatsyaSeychas("нажато «Подключить»") {
+			log.Printf("подключение во время паузы восстановления: пробую сразу")
+		}
+		return nil
 	}
 	s.mu.Lock()
 	sost := s.sost
@@ -2153,6 +2166,40 @@ func (s *Sluzhba) zapustitVosstanovlenie() {
 	})
 }
 
+// vosstanovlenieIdyot отвечает, крутится ли цикл восстановления.
+func (s *Sluzhba) vosstanovlenieIdyot() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.vosstIdyot
+}
+
+// popytatsyaSeychas обрывает паузу восстановления по действию человека
+// (жалоба 15.10.2026). После десятка неудач пауза растёт до пяти минут, и
+// выбранный в неё другой сервер ждал её конца, а окно всё это время
+// показывало «снова через 5 мин».
+//
+// Срок следующей попытки снимается здесь же, а не циклом: ответ команде
+// собирается сразу после толчка, и с прежним сроком он показал бы ту же паузу.
+//
+// Отвечает, стояло ли восстановление на паузе. Попытке, которая идёт прямо
+// сейчас, толкать нечего.
+func (s *Sluzhba) popytatsyaSeychas(pochemu string) bool {
+	s.mu.Lock()
+	vPauze := s.vosstIdyot && s.sledPopytka != nil
+	if vPauze {
+		s.sledPopytka = nil
+	}
+	s.mu.Unlock()
+	if !vPauze {
+		return false
+	}
+	select {
+	case s.tolchokVosst <- pochemu:
+	default:
+	}
+	return true
+}
+
 // setZhiva спрашивает внешний адрес напрямую, тем же путём, что проверка
 // выхода при выключенном VPN. Между попытками туннеля нет, и свой запрос
 // служба в запертом режиме шлёт по правилу процессов.
@@ -2196,8 +2243,8 @@ func (s *Sluzhba) zhdatVPauze(ctx context.Context, otstup time.Duration) bool {
 			return false
 		case <-taymer.C:
 			return true
-		case <-s.tolchokVosst:
-			log.Printf("пауза восстановления прервана: машина проснулась")
+		case pochemu := <-s.tolchokVosst:
+			log.Printf("пауза восстановления прервана: %s", pochemu)
 			return true
 		case <-tik:
 			stalo, err := s.mestnyyRezolver()
