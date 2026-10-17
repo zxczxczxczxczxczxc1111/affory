@@ -84,6 +84,14 @@ func (s *Sluzhba) proveritServerDoTun(ctx context.Context, avto bool, moyo int) 
 		log.Printf("%v, поднимаю туннель без неё", err)
 		return nil
 	}
+	// Ручной режим спрашивал один выбранный сервер. Прежде чем сказать «ни один
+	// сервер не отвечает», спросить остальные (жалоба 17.10.2026).
+	if probovali, zErr := s.zapasnoyDoTun(moyo, err); probovali {
+		if zErr == nil || errors.Is(zErr, errPodyomOtmenyon) {
+			return zErr
+		}
+		err = zErr
+	}
 	log.Printf("сервер не отвечает, туннель не поднимаю: %v", err)
 	s.postavit(protokol.SostOtkaz, &protokol.Oshibka{Kod: protokol.KodAllServersDown, Tekst: tekstServerMolchit})
 	return err

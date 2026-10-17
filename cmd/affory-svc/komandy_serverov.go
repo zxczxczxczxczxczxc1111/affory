@@ -365,6 +365,14 @@ func (s *Sluzhba) setRouteMode(ctx context.Context, r protokol.Rezhim) (trebuetP
 	// любой команды, которой хватает muNabor.
 	s.muVybor.Lock()
 	defer s.muVybor.Unlock()
+	// Режим выбран человеком: подмена молчащего сервера, заведённая без него,
+	// кончается вместе с прежним режимом. Отказ команды её не трогает: ядро
+	// осталось там, где было.
+	defer func() {
+		if err == nil {
+			s.snyatZapasnoy()
+		}
+	}()
 
 	// Ручной режим без выбранного сервера это не противоречие: VybrannyyServer
 	s.cancelSpeed("Режим выбора сервера изменяется. Замер остановлен.")
@@ -564,6 +572,8 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 	// ядра: поставив отметку после них, прибор мерил бы брандмауэр.
 	gotov := s.seychas()
 	s.pravitSost(func(f *sostoyanie.SostoyanieFayla) { f.SelectorGotov = &gotov })
+	// Человек выбрал сам, и выбор понёс: подмена молчащего сервера кончилась.
+	s.snyatZapasnoy()
 
 	// Запись набора ПОСЛЕ удачной пробы. Обратный порядок оставлял бы после
 	// неудачного переключения записанный выбор, которого в ядре нет.
@@ -635,6 +645,9 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 func (s *Sluzhba) zapomnitBezYadra(id string) error {
 	err := s.zapomnitVybor(id)
 	if err == nil || errors.Is(err, errPravilaOtstali) {
+		// Новый выбор человека отменяет подмену прежнего: следующий подъём
+		// пробует то, что он выбрал.
+		s.snyatZapasnoy()
 		if s.popytatsyaSeychas("выбран другой сервер") {
 			log.Printf("выбран сервер %s во время паузы восстановления: пробую сразу", id)
 		}
@@ -935,7 +948,9 @@ func (s *Sluzhba) navyazatVybor(ctx context.Context, adres, sekret string) error
 	if err != nil {
 		return err
 	}
-	teg, err := s.tegRezhima(rezhimNabora(n))
+	// Режим подъёма, а не набора: подменённый выбранный сервер не должен
+	// вернуться в ядро на подъёме, который восстановление затеяло ради подмены.
+	teg, err := s.tegRezhima(s.rezhimPodyoma(n))
 	if err != nil {
 		return err
 	}

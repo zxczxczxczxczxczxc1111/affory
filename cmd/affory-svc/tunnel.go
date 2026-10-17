@@ -260,7 +260,7 @@ func (s *Sluzhba) sobratTunPolno(isklyucheny map[string]bool, suhaya, bezReklamy
 		Trafik:         trafik,
 		AdresTun:       podsetTun.String(),
 		Server:         vybrannyy,
-		Rezhim:         rezhimNabora(n),
+		Rezhim:         s.rezhimPodyoma(n),
 		// Кандидаты это ВСЕ серверы, а не только выбранный: urltest пробит их
 		// все, и адрес, не попавший в правило петли, это петля на старте.
 		Servery: n.Servery,

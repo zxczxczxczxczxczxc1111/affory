@@ -53,6 +53,9 @@ export interface StatusOtvet {
    *  the frame carries the name and the tray already reads it; the screen
    *  used to ignore the field and fall back to the bare id. */
   nesushchiy_imya?: string;
+  /** Name of the chosen server that stopped answering while the core carries
+   *  another one in its place (kadr.go VremennoVmesto, manual mode). */
+  vremenno_vmesto?: string;
   rezhim_marshruta?: Rezhim;
   kill_switch?: boolean;
   avtozapusk?: boolean;

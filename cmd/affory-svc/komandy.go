@@ -190,6 +190,12 @@ type Sluzhba struct {
 	vybranId       string
 	nesushchiyId   string
 	nesushchiyImya string
+	// Подмена молчащего выбранного сервера группой авто в ручном режиме
+	// (zapasnoy.go). zapasnoyVmesto это id выбранного, пусто значит подмены
+	// нет; имя хранится рядом, потому что Status не ходит в хранилище.
+	zapasnoyVmesto     string
+	zapasnoyVmestoImya string
+	zapasnoyUspehov    int
 	// Считать режим только в sobratTun нельзя: Status отвечает с первого кадра,
 	// задолго до первого подъёма, и на провод уехала бы пустая строка, то есть
 	// третье значение у типа с двумя.
@@ -754,8 +760,16 @@ func (s *Sluzhba) Status() protokol.StatusOtvet {
 			sled = &t
 		}
 	}
+	// Подмена показывается, только пока туннель поднят и несёт ДРУГОЙ сервер:
+	// группа авто могла снова выбрать выбранный, и тогда «не отвечает» было бы
+	// неправдой.
+	vremennoVmesto := ""
+	if s.zapasnoyVmesto != "" && sost == protokol.SostPodnyat && s.nesushchiyId != s.zapasnoyVmesto {
+		vremennoVmesto = s.zapasnoyVmestoImya
+	}
 	return protokol.StatusOtvet{
 		Reklama:             rk,
+		VremennoVmesto:      vremennoVmesto,
 		Sostoyanie:          sost,
 		SledPopytka:         sled,
 		TrafikPoUmolchaniyu: s.trafikKonfiga,
@@ -1460,7 +1474,7 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 	// В ручном режиме проба шла через один сервер, и безымянный 503 можно
 	// доспросить у ядра замера (utochnitPrichinu). Туннель ещё стоит: опустив
 	// его раньше, служба показала бы «выключено» между попыткой и отказом.
-	if rezhimNabora(n) == protokol.RezhimRuchnoy {
+	if s.rezhimPodyoma(n) == protokol.RezhimRuchnoy {
 		poslednyaya = s.utochnitPrichinu(ctx, poslednyaya, srv.Id)
 		// Человек мог отключить VPN, пока шёл доспрос: его «выключено» главнее.
 		if s.podyomOtmenyon(moyo) {
@@ -1739,6 +1753,11 @@ func (s *Sluzhba) Otklyuchit() {
 	s.mu.Unlock()
 	if otmenaV != nil {
 		otmenaV()
+	}
+	// Человек отключился сам: следующее подключение начинается с его выбора, а
+	// не с подмены, заведённой без него.
+	if s.snyatZapasnoy() {
+		log.Printf("подмена выбранного сервера снята: VPN отключён")
 	}
 	s.Disconnect()
 	s.osvoboditSet()
@@ -2042,6 +2061,12 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 				podryad = 0
 				continue
 			}
+			// В ручном режиме перемерять нечего, и прежде здесь туннель
+			// рвался, оставляя живые серверы рядом (жалоба 17.10.2026).
+			if s.pereytiNaZapasnoy(ctx, adres, sekret, teg) {
+				podryad = 0
+				continue
+			}
 			if ctx.Err() != nil {
 				return
 			}
@@ -2076,6 +2101,9 @@ func (s *Sluzhba) nablyudat(ctx context.Context, adres, sekret, teg string) {
 		// Счётчик сбрасывается только успехом: два провала ПОДРЯД, а не два
 		// провала за всё время работы.
 		podryad = 0
+		// Туннель несёт, и только на несущем есть смысл мерить, вернулся ли
+		// подменённый выбранный сервер.
+		s.proveritVozvrat(ctx, adres, sekret, teg)
 	}
 }
 

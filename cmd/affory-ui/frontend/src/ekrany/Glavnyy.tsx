@@ -266,6 +266,13 @@ export function Glavnyy({
             <span className="affory-server-name">{imya}</span>
             {transport && <span className="affory-protocol text-fg-muted">{transport}</span>}
           </p>
+          {/* Ручной режим, выбранный сервер молчит, и VPN везёт другой. Сказать
+              это обязательно: молча отдать человеку другую страну нельзя. */}
+          {podnyat && status.vremenno_vmesto && (
+            <p className="text-fg-secondary mt-1 text-center text-sm" data-testid="vremenno-vmesto">
+              {status.vremenno_vmesto} не отвечает, VPN временно идёт через этот сервер
+            </p>
+          )}
           </div>
 
           <div className="affory-routing mt-5 w-full max-w-[380px]">

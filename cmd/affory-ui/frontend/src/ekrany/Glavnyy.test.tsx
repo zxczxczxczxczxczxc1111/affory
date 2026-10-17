@@ -71,6 +71,30 @@ describe("главный экран", () => {
     expect(screen.queryByTestId("hod-vosstanovleniya")).toBeNull();
   });
 
+  it("подмену выбранного сервера говорит вслух и только при поднятом VPN", () => {
+    // Жалоба 17.10.2026: ручной режим, выбранный молчит, VPN везёт другой.
+    // Молча показать чужое имя под сферой значит отдать другую страну втихую.
+    render(
+      <Glavnyy
+        status={{
+          sostoyanie: "podnyat",
+          rezhim_marshruta: "ruchnoy",
+          vybran_id: "de",
+          nesushchiy_id: "nl",
+          nesushchiy_imya: "Affory NL reality",
+          vremenno_vmesto: "Affory DE reality",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("nesushchiy")).toHaveTextContent("Affory NL reality");
+    expect(screen.getByTestId("vremenno-vmesto")).toHaveTextContent(
+      "Affory DE reality не отвечает, VPN временно идёт через этот сервер",
+    );
+    cleanup();
+    render(<Glavnyy status={{ sostoyanie: "vyklyuchen", vremenno_vmesto: "Affory DE reality" }} />);
+    expect(screen.queryByTestId("vremenno-vmesto")).toBeNull();
+  });
+
   it("от режима трафика есть путь в правила, а не только через полосу разделов", () => {
     const naPravila = vi.fn();
     render(<Glavnyy status={{ sostoyanie: "podnyat" }} naPravila={naPravila} />);

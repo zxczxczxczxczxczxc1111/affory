@@ -138,11 +138,8 @@ var (
 // серверу.
 const adresProbyFiltra = "[2001:db8::1]:443"
 
-// probaFiltra отвечает, режет ли Windows исходящий IPv6 этой службы.
-//
-// Фильтр WFP отказывает сразу, ещё до отправки пакета, и отказ этот WSAEACCES.
-// Любой другой исход значит «не закрыт» или «не знаю», и это одинаково повод
-// закрывать самим. Шов: тесты подставляют ответ.
+// probaFiltra отвечает, может ли исходящий IPv6 этой службы уйти в интернет.
+// Шов: тесты подставляют ответ.
 var probaFiltra = func() bool {
 	d := net.Dialer{Timeout: srokProbyFiltra}
 	c, err := d.Dial("tcp6", adresProbyFiltra)
@@ -154,7 +151,22 @@ var probaFiltra = func() bool {
 		}
 		return false
 	}
-	return errors.Is(err, windows.WSAEACCES)
+	return zakrytPoOtkazu(err)
+}
+
+// zakrytPoOtkazu разбирает отказ пробы. Оба «закрытых» отказа Windows отдаёт
+// сразу, ещё до отправки пакета:
+//
+//   - WSAEACCES: исходящий режет фильтр WFP, в туннеле это фильтр ядра;
+//   - WSAENETUNREACH: пути в интернет по IPv6 у машины нет вовсе. Так бывает у
+//     адаптера с одними частными fd00:: от роутера без шлюза IPv6, и уйти по
+//     нему мимо туннеля нечему. Без этого случая такая машина шла бы в netsh,
+//     то есть ровно туда, где у сотрудника падало (жалоба 17.10.2026).
+//
+// Любой другой исход значит «не закрыт» или «не знаю», и это одинаково повод
+// закрывать самим.
+func zakrytPoOtkazu(err error) bool {
+	return errors.Is(err, windows.WSAEACCES) || errors.Is(err, windows.WSAENETUNREACH)
 }
 
 // estIPv6NaMashine отвечает, есть ли у какого-нибудь адаптера адрес IPv6 шире

@@ -1,11 +1,17 @@
 package set
 
 import (
+	"context"
 	"errors"
+	"net"
 	"net/netip"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestPravilaZavodyatsyaSImenem(t *testing.T) {
@@ -222,6 +228,29 @@ func TestProbaIdyotNaAdresDokumentatsii(t *testing.T) {
 	}
 	if !netip.MustParsePrefix("2001:db8::/32").Contains(ap.Addr()) {
 		t.Fatalf("проба идёт на %s, вне 2001:db8::/32", ap.Addr())
+	}
+}
+
+func TestOtkazyProbyIPv6(t *testing.T) {
+	obernut := func(errno syscall.Errno) error {
+		return &net.OpError{Op: "dial", Net: "tcp6", Err: os.NewSyscallError("connectex", errno)}
+	}
+	sluchai := []struct {
+		imya   string
+		err    error
+		zakryt bool
+	}{
+		{"фильтр WFP", obernut(windows.WSAEACCES), true},
+		{"нет пути в интернет по IPv6", obernut(windows.WSAENETUNREACH), true},
+		// Узел недоступен сообщает роутер, то есть пакет уже ушёл с машины.
+		{"узел недоступен", obernut(windows.WSAEHOSTUNREACH), false},
+		{"срок пробы", context.DeadlineExceeded, false},
+		{"отказ соединения", obernut(windows.WSAECONNREFUSED), false},
+	}
+	for _, sl := range sluchai {
+		if got := zakrytPoOtkazu(sl.err); got != sl.zakryt {
+			t.Errorf("%s: закрыт %v, ждали %v", sl.imya, got, sl.zakryt)
+		}
 	}
 }
 
