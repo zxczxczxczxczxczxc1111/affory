@@ -466,6 +466,55 @@ func TestNeudachaPravilaOtkatyvaetVsyo(t *testing.T) {
 	}
 }
 
+// Опыт в госте 18.10.2026: служба брандмауэра отключена, первое же правило не
+// заводится. Менять было нечего, а файл отката оставался, и выключение режима
+// и «Отключить» потом раз за разом отвечали «политика не возвращена».
+func TestOtkazPervoyKomandyNeOstavlyaetOtkata(t *testing.T) {
+	for _, sl := range []struct {
+		imya    string
+		profil  string
+		pervaya string
+	}{
+		{"профили включены, отказ первого правила", vyvodProfilyaRu, " add rule"},
+		{"профиль выключен, отказ его включения", vyvodProfilyaEn, " state on"},
+	} {
+		t.Run(sl.imya, func(t *testing.T) {
+			zhurnal := perehvat(t, func(a []string) (string, error) {
+				k := " " + strings.Join(a, " ")
+				if strings.Contains(k, " show ") {
+					return sl.profil, nil
+				}
+				if strings.Contains(k, " delete ") {
+					return "", errors.New("netsh: нет такого правила")
+				}
+				return "", errors.New("netsh: An error occurred while attempting to contact the Windows Defender Firewall service")
+			})
+			sostoyanieMpsSvc = func() (bool, bool, error) { return false, true, nil }
+
+			err := VklyuchitVesTrafik(obraztsovoeRazreshyonnoe(), true)
+			if !errors.Is(err, ErrBrandmauerVyklyuchen) {
+				t.Fatalf("отказ %v, ждали «брандмауэр выключен»", err)
+			}
+			if _, err := ProchitatOtkat(); !errors.Is(err, ErrOtkataNet) {
+				t.Fatalf("файл отката остался после отказа, который ничего не менял: %v", err)
+			}
+			doshli := false
+			for _, z := range *zhurnal {
+				k := " " + strings.Join(z.argumenty, " ")
+				if strings.Contains(k, sl.pervaya) {
+					doshli = true
+				}
+				if strings.Contains(k, "firewallpolicy") {
+					t.Fatalf("откат звал netsh, хотя менять было нечего: %s", k)
+				}
+			}
+			if !doshli {
+				t.Fatalf("тест не дошёл до первой команды %q", sl.pervaya)
+			}
+		})
+	}
+}
+
 func TestOsirotevsheeSnimaetsyaBezTunnelya(t *testing.T) {
 	zhurnal := perehvat(t, otvetProfiley(vyvodProfilyaRu))
 	// Режим включён НЕ намеренно: это наш собственный переходный мусор.

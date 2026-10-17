@@ -202,6 +202,27 @@ func vklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 		return err
 	}
 
+	// izmeneno: прошла ли хоть одна команда, которую надо откатывать. Пока нет,
+	// отказ первого включения откатывает только файл отката (опыт в госте
+	// 18.10.2026). Без этого при выключенной службе брандмауэра откат звал тот
+	// же netsh, получал тот же отказ, файл оставался, и выключение режима и
+	// «Отключить» потом раз за разом отвечали «политика не возвращена» про
+	// защиту, которая не включалась ни на миг.
+	izmeneno := false
+	otkazPervogo := func(err error) error {
+		if peresborka {
+			return err
+		}
+		if !izmeneno {
+			if e := UdalitOtkat(); e != nil {
+				log.Printf("файл отката после отказа не удалён: %v", e)
+			}
+			return err
+		}
+		_ = VyklyuchitVesTrafik()
+		return err
+	}
+
 	// 2. Включить брандмауэр там, где он выключен. Решено 01.09.2026:
 	// программе разрешено менять настройки, нужные для работы.
 	// Замерено в тот же день: при выключенном профиле политика Block не делает
@@ -212,8 +233,9 @@ func vklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 			continue
 		}
 		if _, err := vypolnit([]string{"advfirewall", "set", p.Imya + "profile", "state", "on"}); err != nil {
-			return fmt.Errorf("%w: профиль %s: %v", ErrBrandmauerVyklyuchen, p.Imya, err)
+			return otkazPervogo(fmt.Errorf("%w: профиль %s: %v", ErrBrandmauerVyklyuchen, p.Imya, err))
 		}
+		izmeneno = true
 		// Сказано ВСЛУХ, потому что это правка настройки всей машины, а не
 		// нашей программы. Выключение режима вернёт профиль обратно по файлу
 		// отката, но если файл потерять, вернуть будет нечем и человек об этом
@@ -237,9 +259,9 @@ func vklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 		for _, k := range pravila {
 			_, _ = vypolnit([]string{"advfirewall", "firewall", "delete", "rule", "name=" + k[0]})
 			if _, err := vypolnit(k[1:]); err != nil {
-				_ = VyklyuchitVesTrafik()
-				return fmt.Errorf("правило %s не заведено: %w", k[0], err)
+				return otkazPervogo(fmt.Errorf("правило %s не заведено: %w", k[0], err))
 			}
+			izmeneno = true
 		}
 	}
 
@@ -249,8 +271,8 @@ func vklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 		if peresborka {
 			return fmt.Errorf("политика не поставлена заново, защита осталась прежней: %w", err)
 		}
-		_ = VyklyuchitVesTrafik()
-		return fmt.Errorf("политика не поставлена: %w", err)
+		// Здесь правила уже заведены, и откатывать есть что.
+		return otkazPervogo(fmt.Errorf("политика не поставлена: %w", err))
 	}
 	if peresborka {
 		// Временных и лишних прежних правил больше нет. Если запись не удалась,
