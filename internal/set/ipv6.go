@@ -150,7 +150,11 @@ func vypolnitNetsh(argumenty []string) (string, error) {
 	// совпадал НИКОГДА: снятие несуществующего правила считалось отказом, и
 	// установка поверх прежней падала на подготовке у всех, у кого правил
 	// брандмауэра в этот момент не осталось (жалоба 21.09.2026).
-	vyhod := kodirovki.Iz(syrye, kodirovki.Konsoli)
+	//
+	// Но и 866 не везде: на Windows 10.0.26200 у сотрудника netsh ответил в
+	// UTF-8, и прочитанный как 866 ответ превратился в «╨Э╨╡╤Г...» (жалоба
+	// 17.10.2026). Поэтому сначала проверяется UTF-8.
+	vyhod := kodirovki.IzVyvoda(syrye, kodirovki.Konsoli)
 	if err != nil {
 		return vyhod, fmt.Errorf("netsh %s: %w: %s",
 			strings.Join(argumenty, " "), err, strings.TrimSpace(vyhod))

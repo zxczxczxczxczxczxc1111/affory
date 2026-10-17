@@ -47,6 +47,22 @@ func TestOtvetNetshRaspoznayotsyaPosleperevoda(t *testing.T) {
 	}
 }
 
+// Ответ «правил нет» в UTF-8 тоже распознаётся: так netsh ответил на Windows
+// 10.0.26200 у сотрудника (жалоба 17.10.2026), а прочитанный как 866 он
+// превращался в «╨Э╨╕ ╨╛╨┤╨╜╨╛» и мимо фразы.
+func TestOtvetNetshVUtf8Raspoznayotsya(t *testing.T) {
+	syrye := []byte("Ни одно правило не соответствует указанным критериям.\r\n")
+	if netPravil(kodirovki.Iz(syrye, 866)) {
+		t.Fatal("UTF-8 через 866 распознался: судья ниже ничего не доказывает")
+	}
+	if vyhod := kodirovki.IzVyvoda(syrye, 866); !netPravil(vyhod) {
+		t.Errorf("ответ «правил нет» в UTF-8 не распознан: %q", vyhod)
+	}
+	if vyhod := kodirovki.IzVyvoda(otvet866, 866); !netPravil(vyhod) {
+		t.Errorf("ответ «правил нет» в 866 перестал распознаваться: %q", vyhod)
+	}
+}
+
 // Английский ответ читается без всякого перевода: он ASCII в любой кодовой
 // странице. Ровно поэтому дефект жил незамеченным — машина разработки и гость
 // стоят на английской Windows.
@@ -111,7 +127,7 @@ func TestVyvodNetshPerevoditsya(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ipv6.go не прочитан: %v", err)
 	}
-	if !strings.Contains(string(telo), "kodirovki.Iz(syrye, kodirovki.Konsoli)") {
+	if !strings.Contains(string(telo), "kodirovki.IzVyvoda(syrye, kodirovki.Konsoli)") {
 		t.Error("вывод netsh больше не переводится из кодовой страницы консоли: " +
 			"распознавание ответов вернётся к зависимости от языка системы")
 	}

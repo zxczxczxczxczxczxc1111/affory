@@ -82,6 +82,40 @@ func TestOtvetKonsoliChitaetsya(t *testing.T) {
 	}
 }
 
+// Вывод netsh читается в обоих видах, которые встречались у людей.
+//
+// 866 это русская Windows по 21.09.2026, UTF-8 это машина сотрудника на
+// 10.0.26200 (жалоба 17.10.2026). Фраза в UTF-8 та самая, что пришла от него.
+func TestVyvodChitaetsyaIIz866IIzUtf8(t *testing.T) {
+	const fraza866 = "Ни одно правило не соответствует указанным критериям."
+	otvet866 := []byte{
+		0x8d, 0xa8, 0x20, 0xae, 0xa4, 0xad, 0xae, 0x20, 0xaf, 0xe0, 0xa0, 0xa2, 0xa8, 0xab, 0xae, 0x20,
+		0xad, 0xa5, 0x20, 0xe1, 0xae, 0xae, 0xe2, 0xa2, 0xa5, 0xe2, 0xe1, 0xe2, 0xa2, 0xe3, 0xa5, 0xe2,
+		0x20, 0xe3, 0xaa, 0xa0, 0xa7, 0xa0, 0xad, 0xad, 0xeb, 0xac, 0x20, 0xaa, 0xe0, 0xa8, 0xe2, 0xa5,
+		0xe0, 0xa8, 0xef, 0xac, 0x2e,
+	}
+	if got := IzVyvoda(otvet866, cp866); got != fraza866 {
+		t.Errorf("866 прочитан как %q: принят за UTF-8 или переведён не той страницей", got)
+	}
+
+	const frazaUtf8 = "Неустранимая ошибка брандмауэра Защитника Windows (0x2)."
+	// Судья: прежнее чтение из 866 портит UTF-8 ровно как в журнале сотрудника.
+	if staroe := Iz([]byte(frazaUtf8), cp866); !strings.HasPrefix(staroe, "╨Э╨╡╤Г") {
+		t.Fatalf("UTF-8 через 866 дал %q, а не кракозябры из журнала: проверять нечего", staroe)
+	}
+	if got := IzVyvoda([]byte(frazaUtf8), cp866); got != frazaUtf8 {
+		t.Errorf("UTF-8 прочитан как %q", got)
+	}
+
+	const latinica = "No rules match the specified criteria.\r\n"
+	if got := IzVyvoda([]byte(latinica), cp866); got != latinica {
+		t.Errorf("латиница прочитана как %q", got)
+	}
+	if got := IzVyvoda(nil, cp866); got != "" {
+		t.Errorf("пустой вывод дал %q", got)
+	}
+}
+
 // Пустой вход не роняет ни одну сторону.
 func TestPustoyVhodNeRonyaet(t *testing.T) {
 	if b, err := V(nil, cp1251); err != nil || len(b) != 0 {
