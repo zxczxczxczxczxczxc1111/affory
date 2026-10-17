@@ -19,7 +19,7 @@ import (
 // обновления распечатывается по старому файлу отката, см. snyatStaryyZamok.
 
 var (
-	ErrBrandmauerVyklyuchen = errors.New("фильтрация Windows недоступна: запрет не применится")
+	ErrBrandmauerVyklyuchen = errors.New("служба базовой фильтрации Windows не работает: запрет не применится")
 	ErrNetTunnelya          = errors.New("нет адреса TUN: разрешение некуда привязать")
 )
 

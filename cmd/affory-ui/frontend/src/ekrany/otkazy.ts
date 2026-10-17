@@ -38,7 +38,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "wintun-missing": { deystvie: "postavit-sluzhbu", tekst: "драйвер VPN не установился" },
   "no-admin": { deystvie: "postavit-sluzhbu", tekst: "служба не установлена или не отвечает" },
   "admin-required": { deystvie: "zaprosit-prava", tekst: "нужны права администратора" },
-  "firewall-disabled": { deystvie: "nichego", tekst: "режим «весь трафик» недоступен: брандмауэр выключен" },
+  "firewall-disabled": { deystvie: "nichego", tekst: "режим «весь трафик» недоступен: в Windows не работает служба базовой фильтрации" },
   "firewall-failed": { deystvie: "povtorit", tekst: "не удалось поставить защиту" },
   "killswitch-orphan": { deystvie: "nichego", tekst: "защита оставалась включённой без VPN, теперь снята" },
   "health-snapshot-stale": { deystvie: "nichego", tekst: "сведениям о состоянии сервера больше суток" },
