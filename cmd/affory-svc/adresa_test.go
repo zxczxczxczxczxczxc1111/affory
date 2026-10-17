@@ -104,23 +104,14 @@ func ipCidrIz(t *testing.T, v genkonfig.Vhod) []string {
 	return out
 }
 
-// remoteIpIz достаёт адреса разрешающего правила брандмауэра.
+// remoteIpIz достаёт адреса, к которым запрет режима пускает как к серверам.
 func remoteIpIz(t *testing.T, r set.Razreshyonnoe) []string {
 	t.Helper()
-	for _, kom := range set.KomandyRazresheniya(r) {
-		if kom[0] != set.PravAllowSrv {
-			continue
-		}
-		for _, arg := range kom {
-			if !strings.HasPrefix(arg, "remoteip=") {
-				continue
-			}
-			out := strings.Split(strings.TrimPrefix(arg, "remoteip="), ",")
-			sort.Strings(out)
-			return out
-		}
+	out, err := set.ServeryVZaprete(r)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return nil
+	return out
 }
 
 func razreshyonnoeIz(a set.Adresa) set.Razreshyonnoe {

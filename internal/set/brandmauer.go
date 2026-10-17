@@ -7,45 +7,41 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/wfp"
 )
 
-// Режим «весь трафик»: DefaultOutboundAction = Block плюс именованные
-// разрешающие правила.
+// Режим «весь трафик» запирает машину фильтрами WFP, см. zamok_wfp.go.
 //
-// Одним блокирующим правилом со списком исключений обойтись НЕЛЬЗЯ: в
-// брандмауэре Windows блокирующие правила стоят выше разрешающих, явное Block
-// всегда бьёт явное Allow, а единственное исключение требует IPsec. Разрешающие
-// выигрывают только против умолчания профиля, то есть против политики.
-//
-// Плата названа прямо: снятие правил по имени больше НЕ возвращает интернет,
-// возвращает его откат политики, и прежнее значение надо знать заранее.
+// До 18.10.2026 запрет стоял политикой брандмауэра Windows (DefaultOutboundAction
+// = Block) плюс именованными разрешающими правилами netsh. Эта схема здесь
+// осталась только для снятия: машина, запертая версией 1.9.4 и раньше, после
+// обновления распечатывается по старому файлу отката, см. snyatStaryyZamok.
 
 var (
-	ErrBrandmauerVyklyuchen = errors.New("брандмауэр выключен: политика не будет применяться")
-	ErrNetTunnelya          = errors.New("нет адреса TUN: правило разрешения некуда привязать")
+	ErrBrandmauerVyklyuchen = errors.New("фильтрация Windows недоступна: запрет не применится")
+	ErrNetTunnelya          = errors.New("нет адреса TUN: разрешение некуда привязать")
 )
 
-// Имена правил. Имя это опознание: по нему их находит снятие, проверка
-// осиротевшего и человек с аварийным листом в руках.
+// Имена правил прежней схемы. По ним снимается замок прежней версии, их
+// подметает старт службы, и их перечисляет аварийный лист.
 const (
 	PravAllowTun = "Affory-Allow-Tun"
 	PravAllowSrv = "Affory-Allow-Server"
-	// Порт у netsh задаётся только вместе с протоколом, поэтому серверам два
-	// правила: TCP под прежним именем и UDP для hy2 и tuic.
+	// Порт у netsh задаётся только вместе с протоколом, поэтому серверам было
+	// два правила: TCP под прежним именем и UDP для hy2 и tuic.
 	PravAllowSrvUdp = "Affory-Allow-Server-Udp"
 	PravAllowLan    = "Affory-Allow-Local"
 	PravAllowDns    = "Affory-Allow-Dns"
-	// Отдельным именем, а не вторым правилом с тем же: снятие идёт по именам,
-	// и одно имя на два правила читается как «одно правило», пока кто-нибудь не
-	// начнёт их считать.
 	PravAllowDnsTcp = "Affory-Allow-Dns-Tcp"
 	PravAllowProc   = "Affory-Allow-Proc"
 )
 
-// VseImenaPravil это запасной список на случай, когда файла отката нет: после
-// нештатной смерти службы снимать всё равно надо. Правил по процессам может
-// быть сколько угодно, поэтому запас берётся с потолком: удаление
-// несуществующего правила ничего не стоит, а оставшееся висеть стоит интернета.
+// VseImenaPravil это запасной список правил прежней схемы на случай, когда
+// файла отката нет: после нештатной смерти службы снимать всё равно надо.
+// Правил по процессам было сколько угодно, поэтому запас берётся с потолком:
+// удаление несуществующего правила ничего не стоит, а оставшееся висеть стоит
+// интернета.
 //
 // По маске снятие не идёт принципиально: маска однажды заденет чужое правило с
 // похожим именем, и заметят это не сразу.
@@ -54,7 +50,7 @@ func VseImenaPravil() []string {
 	for i := 0; i < 10; i++ {
 		rezhim = append(rezhim, fmt.Sprintf("%s-%d", PravAllowProc, i))
 	}
-	// Замены живут только посреди пересборки, но служба может умереть и там.
+	// Замены жили только посреди пересборки, но служба могла умереть и там.
 	imena := append(slices.Clone(rezhim), ImyaPravilaIPv6)
 	for _, imya := range rezhim {
 		imena = append(imena, vremennoeImya(imya))
@@ -62,21 +58,24 @@ func VseImenaPravil() []string {
 	return imena
 }
 
-// Razreshyonnoe это шесть пунктов списка из спеки, выраженные данными.
+// suffiksZameny отличал правило-замену на время пересборки прежней схемы.
+const suffiksZameny = "-Zamena"
+
+func vremennoeImya(imya string) string { return imya + suffiksZameny }
+
+// Razreshyonnoe это то, что запрет пропускает, выраженное данными.
 type Razreshyonnoe struct {
-	// AdresTun это адрес САМОГО TUN-адаптера. Привязка идёт по нему, а не по
-	// имени адаптера: у netsh привязки к адаптеру по имени нет вовсе, а
-	// interfacetype знает только wireless, lan и ras, и lan заодно накрыл бы
-	// физический Ethernet.
+	// AdresTun это адрес САМОГО TUN-адаптера: всё, что уходит с него, идёт
+	// через туннель.
 	AdresTun netip.Addr
 
 	// Kandidaty это адреса ВСЕХ серверов, а не только выбранного: иначе
 	// переключение сервера в запертом режиме отрезает само себя.
 	Kandidaty []netip.Addr
-	// Porty это порты серверов, подписок и загрузок в записи netsh. Без них
-	// правило пускало любую программу на любой порт этих адресов (С2 аудита
-	// 1.6.1). Пустой список значит «правил на серверы нет»: правило без порта
-	// снова стало бы распахнутым.
+	// Porty это порты серверов, подписок и загрузок: «443», «20000-30000».
+	// Без них разрешение пускало любую программу на любой порт этих адресов
+	// (С2 аудита 1.6.1). Пустой список значит «разрешения на серверы нет»:
+	// разрешение без порта снова стало бы распахнутым.
 	Porty []string
 
 	// Shlyuz и Resolver берутся из системы (см. sistema.go). Без них умирают
@@ -104,9 +103,8 @@ type Razreshyonnoe struct {
 
 var imenaProfiley = []string{"domainprofile", "privateprofile", "publicprofile"}
 
-// SostoyanieProfiley читает КАЖДЫЙ профиль из реестра, где у состояния нет
-// языка. Вывод netsh не разбирается вовсе (П2 аудита 1.8.0): он переводится
-// на язык системы, и на русской Windows состояние печаталось «ВКЛ» вместо ON.
+// SostoyanieProfiley читает КАЖДЫЙ профиль брандмауэра из реестра, где у
+// состояния нет языка. Нужен прежней схеме: по нему видно, стоит ли её замок.
 // Недостающие значения реестра дают умолчание Windows, см.
 // sostoyanieIzReestra.
 func SostoyanieProfiley() ([]ProfilDo, error) {
@@ -122,237 +120,139 @@ func SostoyanieProfiley() ([]ProfilDo, error) {
 	return itog, nil
 }
 
-// VklyuchitVesTrafik ставит режим целиком и в единственно верном порядке.
+// VklyuchitVesTrafik ставит запрет целиком или заменяет стоящий новым.
+//
+// Функция зовётся и на первое включение, и на каждую пересборку (добавили
+// сервер, переподнялся туннель). Замена идёт одной транзакцией WFP: машина не
+// бывает ни открытой посередине, ни запертой без разрешений.
 func VklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
-	return sveritSMpsSvc(vklyuchitVesTrafik(r, namerenno))
-}
-
-func vklyuchitVesTrafik(r Razreshyonnoe, namerenno bool) error {
 	if !r.AdresTun.IsValid() {
 		return ErrNetTunnelya
 	}
-
-	// 1. Снять прежнее состояние и записать на диск. До любых изменений.
-	do, err := SostoyanieProfiley()
+	nabor, err := naborFiltrov(r)
 	if err != nil {
 		return err
 	}
-	pravila := pravilaRazresheniya(r)
-	// Правило IPv6 в этот список НЕ входит намеренно. Оно принадлежит туннелю, а
-	// не режиму, и живёт ровно столько, сколько туннель. Попав сюда, оно снималось
-	// бы при выключении режима, туннель при этом оставался бы поднятым, IPv6 шёл
-	// бы мимо него, а служба считала бы правило стоящим, потому что VernutIPv6
-	// никто не звал.
-	imena := []string{}
-	for _, k := range pravila {
-		imena = append(imena, k[0])
-	}
 
-	// Прежнее состояние снимается ОДИН РАЗ, при первом включении. Дальше эта
-	// функция зовётся повторно на каждую пересборку правил (добавили сервер при
-	// включённом режиме), и машина к тому моменту уже заперта НАМИ. Записать
-	// снятое сейчас значило бы положить в откат Block как "прежнее" и запереть
-	// машину навсегда: выключение режима честно вернуло бы Block обратно, файл
-	// отката удалило, а status при этом отвечал бы kill_switch: false.
-	//
-	// Имена правил, наоборот, обновляются всегда: их состав меняется вместе со
-	// списком серверов и процессов, а снятие идёт именно по ним.
+	prezhniy, err := ProchitatOtkat()
+	estFayl := err == nil
+	if err != nil && !errors.Is(err, ErrOtkataNet) {
+		return err
+	}
+	peresborka := estFayl && prezhniy.Wfp
+
+	// Файл пишется ДО фильтров: служба, умершая между ними, оставит запрет, и
+	// следующий старт обязан знать, что он наш и намеренный ли.
 	//
 	// Namerenno только поднимается. Понизить его пересборкой значило бы
 	// разрешить следующему старту службы распечатать машину, которую заперли
 	// осознанно.
-	prezhniy, err := ProchitatOtkat()
-	peresborka := err == nil
-	if peresborka {
-		do = prezhniy.Profili
-		namerenno = namerenno || prezhniy.Namerenno
-	} else if !errors.Is(err, ErrOtkataNet) {
-		return err
-	} else {
-		// Вторая половина решения 28 плана волны 2. Говорится ровно ЗДЕСЬ:
-		// это единственная ветка, где машина переходит из открытой в запертую,
-		// а пересборка правил при уже включённом режиме идёт мимо.
-		//
-		// netsh отвергает возврат дословно: "Notconfigured value can only be
-		// used when configuring a Group Policy object (GPO) store". Командлет
-		// вернуть смог бы, но он запрещён правилом "одна утилита на всё".
-		//
-		// Замерено опытом 02.09.2026 (stend/opyt-hranilishche-politiki.ps1):
-		// netsh show читает ПОСТОЯННОЕ хранилище и печатает NotConfigured тем же
-		// текстом, что и явное blockinbound,allowoutbound. То есть след виден
-		// только командлетом чтения, а человеку взяться о нём неоткуда, кроме
-		// этой строки.
-		log.Print("постоянная настройка профилей брандмауэра изменена БЕЗВОЗВРАТНО: " +
-			"значение NotConfigured вернуть нечем, оно станет явным " +
-			"blockinbound,allowoutbound. Поведение то же, состояние другое")
-	}
-
-	// Пока пересборка идёт, откат знает и прежние, и временные имена: оборванная
-	// посередине, она оставит их стоять, и выключение режима обязано снять всё.
-	vOtkate := imena
-	if peresborka {
-		vOtkate = slices.Concat(imena, prezhniy.Pravila)
-		for _, imya := range imena {
-			vOtkate = append(vOtkate, vremennoeImya(imya))
-		}
-		slices.Sort(vOtkate)
-		vOtkate = slices.Compact(vOtkate)
-	}
-	if err := ZapisatOtkat(Otkat{Profili: do, Namerenno: namerenno, Pravila: vOtkate}); err != nil {
+	novyy := prezhniy
+	novyy.Wfp = true
+	novyy.Namerenno = namerenno || prezhniy.Namerenno
+	if err := ZapisatOtkat(novyy); err != nil {
 		return err
 	}
 
-	// izmeneno: прошла ли хоть одна команда, которую надо откатывать. Пока нет,
-	// отказ первого включения откатывает только файл отката (опыт в госте
-	// 18.10.2026). Без этого при выключенной службе брандмауэра откат звал тот
-	// же netsh, получал тот же отказ, файл оставался, и выключение режима и
-	// «Отключить» потом раз за разом отвечали «политика не возвращена» про
-	// защиту, которая не включалась ни на миг.
-	izmeneno := false
-	otkazPervogo := func(err error) error {
+	if err := zamok.Postavit(nabor); err != nil {
+		err = sBfe(err)
 		if peresborka {
-			return err
+			// Транзакция откатилась: стоит прежний запрет, и машина остаётся
+			// запертой, что бы ни случилось (С3 аудита 1.6.1).
+			return fmt.Errorf("запрет не пересобран, защита осталась прежней: %w", err)
 		}
-		if !izmeneno {
-			if e := UdalitOtkat(); e != nil {
-				log.Printf("файл отката после отказа не удалён: %v", e)
-			}
-			return err
-		}
-		_ = VyklyuchitVesTrafik()
-		return err
+		// Транзакция откатилась целиком, в системе не изменилось ничего, кроме
+		// файла. Оставленный, он заставил бы выключение режима снимать то, чего
+		// нет, а старт службы считать машину запертой.
+		vernutFayl(estFayl, prezhniy)
+		return fmt.Errorf("запрет не поставлен: %w", err)
 	}
 
-	// 2. Включить брандмауэр там, где он выключен. Решено 01.09.2026:
-	// программе разрешено менять настройки, нужные для работы.
-	// Замерено в тот же день: при выключенном профиле политика Block не делает
-	// НИЧЕГО, интернет работает, а интерфейс при этом зелёный. Тихий отказ тут
-	// худший из возможных.
-	for _, p := range do {
-		if p.Vklyuchen {
-			continue
+	// Замок прежней версии снимается ПОСЛЕ того, как встал новый: наоборот
+	// означало бы окно, в котором машина открыта. Отказ не рушит включение:
+	// запрет уже стоит, а прежние имена и политика остаются в файле, и
+	// выключение режима попробует снять их снова.
+	if len(novyy.Profili) > 0 {
+		if err := snyatStaryyZamok(novyy); err != nil {
+			log.Printf("замок прежней версии не снят, запрет WFP стоит, сниму при выключении режима: %v", err)
+			return nil
 		}
-		if _, err := vypolnit([]string{"advfirewall", "set", p.Imya + "profile", "state", "on"}); err != nil {
-			return otkazPervogo(fmt.Errorf("%w: профиль %s: %v", ErrBrandmauerVyklyuchen, p.Imya, err))
-		}
-		izmeneno = true
-		// Сказано ВСЛУХ, потому что это правка настройки всей машины, а не
-		// нашей программы. Выключение режима вернёт профиль обратно по файлу
-		// отката, но если файл потерять, вернуть будет нечем и человек об этом
-		// узнает только из журнала. Решение 28 плана волны 2.
-		log.Printf("профиль %s брандмауэра был ВЫКЛЮЧЕН и включён нами: "+
-			"без включённого профиля запрет не применяется вовсе. "+
-			"Выключение режима вернёт его обратно", p.Imya)
-	}
-
-	// 3. Разрешающие правила. Ставятся ДО политики: наоборот означает окно, в
-	// котором машина уже заперта, а исключений ещё нет.
-	if peresborka {
-		// Машина заперта НАМИ и остаётся запертой, что бы ни случилось:
-		// распечатать её отказом netsh значит снять защиту ровно тогда, когда
-		// что-то пошло не так (С3 аудита 1.6.1). Прежние или временные правила
-		// стоят, и откат их знает.
-		if err := zavestiBezOkna(pravila, prezhniy.Pravila); err != nil {
-			return fmt.Errorf("правила не пересобраны, защита осталась прежней: %w", err)
-		}
-	} else {
-		for _, k := range pravila {
-			_, _ = vypolnit([]string{"advfirewall", "firewall", "delete", "rule", "name=" + k[0]})
-			if _, err := vypolnit(k[1:]); err != nil {
-				return otkazPervogo(fmt.Errorf("правило %s не заведено: %w", k[0], err))
-			}
-			izmeneno = true
-		}
-	}
-
-	// 4. И только последним запрет по умолчанию.
-	if _, err := vypolnit([]string{"advfirewall", "set", "allprofiles",
-		"firewallpolicy", "blockinbound,blockoutbound"}); err != nil {
-		if peresborka {
-			return fmt.Errorf("политика не поставлена заново, защита осталась прежней: %w", err)
-		}
-		// Здесь правила уже заведены, и откатывать есть что.
-		return otkazPervogo(fmt.Errorf("политика не поставлена: %w", err))
-	}
-	if peresborka {
-		// Временных и лишних прежних правил больше нет. Если запись не удалась,
-		// беды нет: лишнее имя в откате при выключении снимается впустую.
-		if err := ZapisatOtkat(Otkat{Profili: do, Namerenno: namerenno, Pravila: imena}); err != nil {
-			log.Printf("откат не сужен до новых правил, лишние имена снимутся при выключении: %v", err)
+		novyy.Profili, novyy.Pravila = nil, nil
+		if err := ZapisatOtkat(novyy); err != nil {
+			log.Printf("снятый замок прежней версии остался в файле отката: %v", err)
 		}
 	}
 	return nil
 }
 
-// suffiksZameny отличает правило-замену на время пересборки.
-const suffiksZameny = "-Zamena"
-
-func vremennoeImya(imya string) string { return imya + suffiksZameny }
-
-// zavestiBezOkna меняет правила под запертой машиной без окна.
-//
-// Прежде было «снять, потом завести», и между двумя вызовами netsh туннель
-// стоял без разрешения: ping рвался на каждом переподъёме под режимом (С3
-// аудита 1.6.1). netsh снимает правила по имени все сразу, поэтому новое
-// правило сначала встаёт под временным именем, потом прежнее снимается,
-// настоящее заводится и временное уходит.
-func zavestiBezOkna(pravila [][]string, prezhnie []string) error {
-	novye := map[string]bool{}
-	for _, k := range pravila {
-		imya, vrem := k[0], vremennoeImya(k[0])
-		novye[imya] = true
-		if _, err := vypolnit(sImenem(k[1:], vrem)); err != nil {
-			return fmt.Errorf("замена правила %s не заведена: %w", imya, err)
-		}
-		if err := SnyatPravilo(imya); err != nil {
-			return err
-		}
-		if _, err := vypolnit(k[1:]); err != nil {
-			return fmt.Errorf("правило %s не заведено, стоит замена: %w", imya, err)
-		}
-		if err := SnyatPravilo(vrem); err != nil {
-			return err
-		}
+// vernutFayl возвращает файл отката к состоянию до неудачного включения.
+func vernutFayl(estFayl bool, prezhniy Otkat) {
+	var err error
+	if estFayl {
+		err = ZapisatOtkat(prezhniy)
+	} else {
+		err = UdalitOtkat()
 	}
-	// Прежние правила, которых в новом наборе нет: пропал резолвер, стало
-	// меньше процессов, осталась замена от оборванной пересборки.
-	for _, imya := range prezhnie {
-		if novye[imya] {
-			continue
-		}
-		if err := SnyatPravilo(imya); err != nil {
-			return err
-		}
+	if err != nil {
+		log.Printf("файл отката после отказа не возвращён: %v", err)
 	}
-	return nil
 }
 
-// sImenem отдаёт копию команды заведения под другим именем.
-func sImenem(komanda []string, imya string) []string {
-	c := slices.Clone(komanda)
-	for i, s := range c {
-		if strings.HasPrefix(s, "name=") {
-			c[i] = "name=" + imya
-		}
-	}
-	return c
-}
-
-// VyklyuchitVesTrafik снимает режим в ОБРАТНОМ порядке.
+// VyklyuchitVesTrafik снимает запрет и, если он остался, замок прежней версии.
 //
-// Сначала политика, потом правила. У снятия есть окно, где туннель ещё поднят, а
-// защиты уже нет, и это осознанная плата: обратный порядок запирает машину, если
-// снятие зависнет посередине, а это хуже.
+// Файл отката удаляется последним и только после полного снятия: он
+// единственное, по чему следующий старт поймёт, что машина осталась запертой.
 func VyklyuchitVesTrafik() error {
 	o, err := ProchitatOtkat()
 	if errors.Is(err, ErrOtkataNet) {
-		_, _, err = podmesti()
-		return err
+		// Файла нет, но запрет или правила могли остаться: файл потерян, или
+		// правила остались от сборки, у которой файла ещё не было.
+		_, errW := snyatZapretBezFayla()
+		_, _, errP := podmesti()
+		return errors.Join(errW, errP)
 	}
 	if err != nil {
 		return snyatBezOtkata(err)
 	}
+	if _, err := zamok.Snyat(); err != nil {
+		return fmt.Errorf("запрет не снят: %w", sBfe(err))
+	}
+	if len(o.Profili) > 0 {
+		if err := snyatStaryyZamok(o); err != nil {
+			if o.Wfp {
+				// Запрет WFP уже снят, в файле остаётся только прежний замок.
+				o.Wfp = false
+				if e := ZapisatOtkat(o); e != nil {
+					log.Printf("файл отката не переписан после снятия запрета: %v", e)
+				}
+			}
+			return err
+		}
+	}
+	return UdalitOtkat()
+}
 
+// snyatZapretBezFayla снимает запрет, о котором файл ничего не знает.
+// Недоступная BFE здесь не отказ: нашего замка за ней не видно, а установщик,
+// которому этот вызов нужен на каждой машине, падать из-за неё не должен.
+func snyatZapretBezFayla() (bool, error) {
+	snyato, err := zamok.Snyat()
+	if err != nil && errors.Is(err, wfp.ErrNedostupen) {
+		log.Printf("запрет без файла отката не проверен: %v", err)
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("запрет без файла отката не снят: %w", err)
+	}
+	if snyato {
+		log.Printf("запрет без файла отката снят: файл потерян, намеренность неизвестна")
+	}
+	return snyato, nil
+}
+
+// snyatStaryyZamok снимает замок прежней схемы в ОБРАТНОМ порядке: сначала
+// политика, потом правила. Файл отката не трогает: решает вызывающий.
+func snyatStaryyZamok(o Otkat) error {
 	var oshibki []error
 	for _, p := range o.Profili {
 		if _, err := vypolnit([]string{"advfirewall", "set", p.Imya + "profile", "firewallpolicy", strings.ToLower(p.Politika)}); err != nil {
@@ -360,10 +260,10 @@ func VyklyuchitVesTrafik() error {
 		}
 	}
 	if len(oshibki) > 0 {
-		return errors.Join(oshibki...)
+		return sveritSMpsSvc(errors.Join(oshibki...))
 	}
 	// Имена берутся из файла отката: там записано то, что реально заведено.
-	// Запасной список нужен, когда файла нет, и он заведомо шире нужного.
+	// Запасной список нужен, когда имён в файле нет, и он заведомо шире нужного.
 	imena := o.Pravila
 	if len(imena) == 0 {
 		imena = VseImenaPravil()
@@ -373,159 +273,41 @@ func VyklyuchitVesTrafik() error {
 			oshibki = append(oshibki, err)
 		}
 	}
-	if o.Profili != nil {
-		for _, p := range o.Profili {
-			if p.Vklyuchen {
-				continue // был включён, включённым и оставляем
-			}
-			if _, err := vypolnit([]string{"advfirewall", "set", p.Imya + "profile", "state", "off"}); err != nil {
-				oshibki = append(oshibki, fmt.Errorf("профиль %s не выключен обратно: %w", p.Imya, err))
-			}
-		}
-	}
-	if len(oshibki) > 0 {
-		// Файл отката НЕ удаляется: он единственное, по чему следующий старт
-		// поймёт, что машина осталась запертой.
-		return errors.Join(oshibki...)
-	}
-	return UdalitOtkat()
-}
-
-// Возврат берёт значение из СВОЕГО файла, а не из живой системы.
-//
-// Причина проще, чем казалась, и прежняя формулировка здесь была неверна.
-// Замерено опытом 02.09.2026 (stend/opyt-hranilishche-politiki.ps1): netsh show
-// читает ПОСТОЯННОЕ хранилище, то есть ровно то, которое меняет netsh set.
-// Действующее значение он не показывает вовсе: локальный GPO с Block дал
-// ActiveStore=Block при netsh=AllowOutbound.
-//
-// Живую систему спрашивать нельзя по другой причине: к моменту возврата она
-// заперта НАМИ, и "прежним" значением оказался бы наш собственный Block.
-// Второе: netsh печатает NotConfigured тем же текстом, что и явное
-// blockinbound,allowoutbound, поэтому отличить нетронутую настройку от
-// настроенной по его выводу невозможно в принципе.
-func politikaIzOtkata(o Otkat) string {
 	for _, p := range o.Profili {
-		if p.Politika != "" {
-			return strings.ToLower(p.Politika)
+		if p.Vklyuchen {
+			continue // был включён, включённым и оставляем
+		}
+		if _, err := vypolnit([]string{"advfirewall", "set", p.Imya + "profile", "state", "off"}); err != nil {
+			oshibki = append(oshibki, fmt.Errorf("профиль %s не выключен обратно: %w", p.Imya, err))
 		}
 	}
-	return ""
+	return sveritSMpsSvc(errors.Join(oshibki...))
 }
 
-// pravilaRazresheniya возвращает пары: имя правила и команда его создания.
-func pravilaRazresheniya(r Razreshyonnoe) [][]string {
-	var itog [][]string
-	dobavit := func(imya string, hvost ...string) {
-		itog = append(itog, append([]string{imya,
-			"advfirewall", "firewall", "add", "rule", "name=" + imya,
-			"dir=out", "action=allow", "profile=any"}, hvost...))
-	}
-
-	// 1. Исходящий с адреса TUN-адаптера.
-	dobavit(PravAllowTun, "localip="+r.AdresTun.String())
-
-	// 2. Адреса серверов и ВСЕ кандидаты, включая узел подписки: без него режим
-	// отрезает обновление списка ровно тогда, когда оно нужнее всего.
-	for _, k := range pravilaServerov(r.Kandidaty, r.Porty) {
-		dobavit(k[0], k[1:]...)
-	}
-
-	// 3. Частные диапазоны и шлюз: иначе умирают локальная сеть и принтер.
-	mestnye := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"}
-	if r.Shlyuz.IsValid() {
-		mestnye = append(mestnye, r.Shlyuz.String())
-	}
-	// Сети чужих туннелей, которые есть на этой машине. Список собран по живым
-	// адаптерам, а не вбит списком: Radmin и Hamachi заняли настоящие публичные
-	// /8, и постоянная дыра в них была бы дырой мимо туннеля.
-	mestnye = append(mestnye, r.ChuzhieSeti...)
-	dobavit(PravAllowLan, "remoteip="+strings.Join(mestnye, ","))
-
-	// 4. Порт 53 к локальному резолверу: на нём держится повторный резолв по TTL.
-	//
-	// ОБА протокола. Правило было только на UDP, а резолвер уходит на TCP при
-	// усечённом ответе, и в запертом режиме этот переспрос молча не доезжал:
-	// выглядит как случайно неработающие сайты, а не как правило брандмауэра.
-	// Решено 01.09.2026.
-	//
-	// Только системной службе DNS, как во встроенном правиле Windows «Core
-	// Networking - DNS» (С4 аудита 1.6.1). Прежде порт был открыт любой
-	// программе, и в запертом режиме всякая, что шлёт запросы сама мимо
-	// туннеля, резолвила открытым текстом. Наша служба резолвит через ту же
-	// системную службу, а ядру и службе любой выход и так разрешён пунктом 5.
-	for _, k := range pravilaDns(r.Resolver) {
-		dobavit(k[0], k[1:]...)
-	}
-
-	// 5. Процессы ядер и сама служба. У netsh одно правило это ОДНА программа,
-	// списка тут нет, поэтому имена нумеруются.
-	for i, p := range r.Protsessy {
-		itog = append(itog, []string{fmt.Sprintf("%s-%d", PravAllowProc, i),
-			"advfirewall", "firewall", "add", "rule",
-			"name=" + fmt.Sprintf("%s-%d", PravAllowProc, i),
-			"dir=out", "action=allow", "profile=any", "program=" + p})
-	}
-	return itog
-}
-
-// pravilaDns даёт правила порта 53 к резолверу: имя и условия. Пусто без
-// резолвера.
-func pravilaDns(resolver netip.Addr) [][]string {
-	if !resolver.IsValid() {
-		return nil
-	}
-	sluzhbaDns := []string{"program=" + putSvchost(), "service=dnscache"}
-	return [][]string{
-		append([]string{PravAllowDns, "remoteip=" + resolver.String(), "remoteport=53", "protocol=udp"}, sluzhbaDns...),
-		append([]string{PravAllowDnsTcp, "remoteip=" + resolver.String(), "remoteport=53", "protocol=tcp"}, sluzhbaDns...),
-	}
-}
-
-// pravilaServerov даёт пары: имя правила и его условия. Пусто, если адресов или
-// портов нет: правило без них у netsh значит «любой адрес» или «любой порт».
-func pravilaServerov(kandidaty []netip.Addr, porty []string) [][]string {
-	adresa, p := spisokAdresov(kandidaty), strings.Join(porty, ",")
-	if adresa == "" || p == "" {
-		return nil
-	}
-	return [][]string{
-		{PravAllowSrv, "remoteip=" + adresa, "remoteport=" + p, "protocol=tcp"},
-		{PravAllowSrvUdp, "remoteip=" + adresa, "remoteport=" + p, "protocol=udp"},
-	}
-}
-
-func spisokAdresov(a []netip.Addr) string {
-	var s []string
-	for _, k := range a {
-		if k.IsValid() {
-			s = append(s, k.String())
-		}
-	}
-	return strings.Join(s, ",")
-}
-
-// SnyatOsirotevshee зовётся при КАЖДОМ старте службы.
+// VesTrafikVklyuchyon отвечает, заперта ли машина СЕЙЧАС: стоит ли наш запрет
+// WFP или замок прежней версии.
 //
-// Осиротевшая защита это правила и политика Block, оставшиеся после нештатной
-// смерти службы: туннеля нет, а машина заперта, и распечатать её некому.
-//
-// Развилка, которую редакция 3 не разводила вовсе. Правило «политика Block
-// есть, туннеля нет, значит осиротело» накрывает и НАМЕРЕННО запертую машину,
-// и она после перезапуска службы распечаталась бы сама. Это ровно наоборот
-// тому, ради чего kill-switch включают. Поэтому решает признак Namerenno в
-// файле отката:
-//
-//	Namerenno = false -> сняли, это наш собственный мусор;
-//	Namerenno = true  -> НЕ трогаем, но говорим вслух кодом killswitch-orphan.
-//
-// Возвращает: снято ли, и осталась ли машина запертой намеренно.
-// VesTrafikVklyuchyon отвечает, заперта ли машина СЕЙЧАС, спрашивая брандмауэр.
-//
-// Заперта означает BlockOutbound хотя бы на одном ВКЛЮЧЁННОМ профиле:
-// выключенный профиль свою политику не применяет вовсе, это замерено, и считать
-// его за блокировку значит принять открытую машину за запертую.
+// Политика Block без нашего файла отката нашей не считается: человек мог
+// поставить её себе сам, и снятие программы не повод её трогать.
 func VesTrafikVklyuchyon() (bool, error) {
+	stoit, err := zamok.Stoit()
+	if err != nil {
+		return false, sBfe(err)
+	}
+	if stoit {
+		return true, nil
+	}
+	o, err := ProchitatOtkat()
+	if errors.Is(err, ErrOtkataNet) || (err == nil && len(o.Profili) == 0) {
+		return false, nil
+	}
+	return staryyZamokStoit()
+}
+
+// staryyZamokStoit: BlockOutbound хотя бы на одном ВКЛЮЧЁННОМ профиле.
+// Выключенный профиль свою политику не применяет вовсе, это замерено, и считать
+// его за блокировку значит принять открытую машину за запертую.
+func staryyZamokStoit() (bool, error) {
 	profili, err := SostoyanieProfiley()
 	if err != nil {
 		return false, err
@@ -538,28 +320,35 @@ func VesTrafikVklyuchyon() (bool, error) {
 	return false, nil
 }
 
+// SnyatOsirotevshee зовётся при КАЖДОМ старте службы.
+//
+// Осиротевший замок это запрет, оставшийся после нештатной смерти службы или
+// перезагрузки: туннеля нет, а машина заперта. Решает признак Namerenno в
+// файле отката:
+//
+//	Namerenno = false -> сняли, это наш собственный мусор;
+//	Namerenno = true  -> НЕ трогаем, но говорим вслух кодом killswitch-orphan.
+//
+// Возвращает: снято ли, и осталась ли машина запертой намеренно.
 func SnyatOsirotevshee() (snyato bool, zapertaNamerenno bool, err error) {
 	o, err := ProchitatOtkat()
 	if errors.Is(err, ErrOtkataNet) {
-		// Файла нет. Но правила могли остаться от сборки, у которой файла ещё не
-		// было, поэтому мусор всё равно подметается по запасному списку.
-		return podmesti()
+		// Файл пишется ДО фильтров, поэтому запрет без файла значит, что файл
+		// потерян. Намеренность записана в нём же, а запертая навсегда машина
+		// хуже распечатанной: из первой человеку не выйти без аварийного листа.
+		snyatoW, errW := snyatZapretBezFayla()
+		snyatoP, _, errP := podmesti()
+		return snyatoW || snyatoP, false, errors.Join(errW, errP)
 	}
 	if err != nil {
-		// Намеренность записана в том же файле и прочитана быть не может.
-		// Запертая навсегда машина хуже распечатанной: из первой человеку не
-		// выйти без аварийного листа.
 		if err := snyatBezOtkata(err); err != nil {
 			return false, false, err
 		}
 		return true, false, snyatSirotuIPv6()
 	}
 	if o.Namerenno {
-		// Файлу верить нельзя, не спросив саму машину. Выход из режима руками по
-		// аварийному листу возвращает политику и снимает правила, но файл не
-		// трогает: он остаётся лежать и утверждать, что машина заперта. Без этой
-		// проверки служба докладывала бы о намеренной блокировке при каждом
-		// старте до скончания века, а машина при этом открыта настежь.
+		// Файлу верить нельзя, не спросив саму машину: запрет могли снять
+		// руками, а файл остался бы утверждать, что машина заперта.
 		zaperta, err := VesTrafikVklyuchyon()
 		if err != nil {
 			return false, false, err
@@ -567,8 +356,6 @@ func SnyatOsirotevshee() (snyato bool, zapertaNamerenno bool, err error) {
 		if zaperta {
 			return false, true, nil
 		}
-		// Машина открыта, значит файл устарел. Удаляем: держать его дальше значит
-		// врать следующему старту тем же самым способом.
 		if err := UdalitOtkat(); err != nil {
 			return false, false, err
 		}
@@ -586,10 +373,8 @@ func SnyatOsirotevshee() (snyato bool, zapertaNamerenno bool, err error) {
 // когда туннеля заведомо нет. Глушить IPv6 без туннеля это чистая потеря:
 // защищать нечего, а половина сети у человека не работает.
 //
-// НЕ зовётся на ветке «заперта намеренно»: там сеть закрыта целиком политикой,
+// НЕ зовётся на ветке «заперта намеренно»: там сеть закрыта запретом целиком,
 // вреда от правила нет, а трогать намеренно запертую машину нельзя вовсе.
-// Прежде правило снималось только при отсутствии файла отката, потому что
-// VyklyuchitVesTrafik перебирает имена ИЗ ФАЙЛА, а IPv6 туда не вносился.
 func snyatSirotuIPv6() error { return VernutIPv6() }
 
 // PolitikaWindowsPoUmolchaniyu это политика профиля у Windows из коробки.
@@ -598,17 +383,18 @@ const PolitikaWindowsPoUmolchaniyu = "blockinbound,allowoutbound"
 // snyatBezOtkata распечатывает машину, когда файл отката есть, но не
 // читается ни он, ни его прежняя версия (Н4 аудита 1.6.1).
 //
-// До 1.7.0 и выключение режима, и уборка при старте возвращали здесь ошибку
-// разбора, ничего не сняв, и машина оставалась запертой навсегда. Прежняя
-// политика неизвестна, но файл есть, значит запирали мы, и возвращается
-// умолчание Windows. Только если машина и правда заперта: открытую трогать
-// незачем, её политика может быть чужой настройкой. Выключенные нами профили
-// брандмауэра остаются включёнными, вернуть их не по чему.
+// Файл есть, значит запирали мы. Снимается запрет WFP, а если стоит замок
+// прежней версии, возвращается умолчание Windows: прежняя политика
+// неизвестна. Открытую по брандмауэру машину это не трогает: её политика
+// может быть чужой настройкой.
 func snyatBezOtkata(prichina error) error {
-	log.Printf("файл отката не читается (%v): возвращаю политику Windows по умолчанию %s "+
-		"и снимаю правила Affory. Профили, включённые при запирании, остаются включёнными",
+	log.Printf("файл отката не читается (%v): снимаю запрет и правила Affory; замок прежней "+
+		"версии, если стоит, сменяю политикой Windows по умолчанию %s",
 		prichina, PolitikaWindowsPoUmolchaniyu)
-	zaperta, err := VesTrafikVklyuchyon()
+	if _, err := zamok.Snyat(); err != nil {
+		return fmt.Errorf("файл отката не читается (%v), а запрет не снят: %w", prichina, sBfe(err))
+	}
+	zaperta, err := staryyZamokStoit()
 	if err != nil {
 		return fmt.Errorf("файл отката не читается (%v), а состояние брандмауэра не прочитано: %w", prichina, err)
 	}
@@ -625,7 +411,7 @@ func snyatBezOtkata(prichina error) error {
 	return UdalitOtkat()
 }
 
-// podmesti снимает наши правила, ничего не зная о прошлом.
+// podmesti снимает правила прежней схемы, ничего не зная о прошлом.
 //
 // Политику при этом НЕ трогает: без файла отката неизвестно, ставили ли её мы,
 // и вернуть чужой Block в Allow значит отключить чужую защиту, приняв её за
@@ -633,8 +419,8 @@ func snyatBezOtkata(prichina error) error {
 //
 // Снимаются только правила, которые стоят: их имена читаются из реестра одним
 // проходом (Г1 аудита 1.8.0). Сверка идёт по точным именам из VseImenaPravil,
-// как и прежде, маски нет. Реестр не прочитался: снятие по всему списку, как
-// до этой правки, медленно, но без пропусков.
+// маски нет. Реестр не прочитался: снятие по всему списку, медленно, но без
+// пропусков.
 func podmesti() (bool, bool, error) {
 	est, err := imenaPravilVReestre()
 	if err != nil {
@@ -673,87 +459,41 @@ func podmestiPoSpisku() (bool, bool, error) {
 	return nashli, false, errors.Join(oshibki...)
 }
 
-// PerezavestiRazreshyonnyeServery переписывает ОДНО правило: список адресов
-// серверов.
+// PerezavestiRazreshyonnyeServery меняет ОДНО разрешение: список серверов.
 //
 // Зачем отдельно от VklyuchitVesTrafik. Та собирает набор целиком и требует
-// адрес TUN-адаптера, потому что на нём держится правило туннеля. При упавшем
-// туннеле адреса нет, пересобрать набор нечем, и весь набор оставался стоять
-// под ПРЕЖНИЙ список серверов. Удалённый сервер при этом сохранял разрешение
-// наружу в запертом режиме, то есть ровно там, где режим и включают. Список
-// серверов от туннеля не зависит вовсе, и переписать его можно всегда.
+// адрес TUN-адаптера. При упавшем туннеле адреса нет, пересобрать набор нечем,
+// и удалённый сервер сохранял бы разрешение наружу ровно там, где режим и
+// включают. Список серверов от туннеля не зависит вовсе.
 //
-// Порядок здесь ОБРАТНЫЙ общему: сначала снять, потом завести. У netsh
-// заведение по существующему имени добавляет ВТОРОЕ правило с тем же именем, и
-// «переписать» превратилось бы в «дописать», а старый адрес остался бы
-// разрешённым. Окно между снятием и заведением машина проводит запертой
-// плотнее нужного, и это верная сторона отказа.
-//
-// Имя правила в файл отката не пишется намеренно: режим включается только при
-// живом туннеле, значит правило уже заведено и уже записано, а пустой список
-// его снимает, и снятие несуществующего правила при выключении режима ничего
-// не стоит.
-// PerezavestiPravilaDns переписывает правила DNS под резолвер, пока машина
-// заперта без туннеля (L4 аудита 1.8.0). Правило стояло под резолвером
-// момента запирания, и после смены сети служба не могла разрешить имена
-// серверов, если встроенные правила Windows выключены политикой: подъём
-// не проходил, и восстановление крутилось взаперти вечно.
-//
-// Снять, потом завести: снятое разрешение только запирает сильнее, утечки
-// в этом окне нет. Имена сперва дописываются в файл отката: замок,
-// вставший без резолвера, их не знает, и выключение режима оставило бы
-// новые правила стоять.
-func PerezavestiPravilaDns(resolver netip.Addr) error {
-	o, err := ProchitatOtkat()
-	switch {
-	case err == nil:
-		dopisat := false
-		for _, imya := range []string{PravAllowDns, PravAllowDnsTcp} {
-			if !slices.Contains(o.Pravila, imya) {
-				o.Pravila = append(o.Pravila, imya)
-				dopisat = true
-			}
-		}
-		if dopisat {
-			if err := ZapisatOtkat(o); err != nil {
-				return err
-			}
-		}
-	case !errors.Is(err, ErrOtkataNet):
+// Запрета нет (выключили, или стоит замок прежней версии): менять нечего, и
+// разрешение без запрета осталось бы постоянным мусором в BFE.
+func PerezavestiRazreshyonnyeServery(a Adresa) error {
+	nabor, err := filtryServerov(a.Vse, a.Porty)
+	if err != nil {
 		return err
 	}
-	// Файла отката нет: выключение режима снимает по полному списку имён.
-	for _, imya := range []string{PravAllowDns, PravAllowDnsTcp} {
-		if err := SnyatPravilo(imya); err != nil {
-			return err
-		}
+	stoit, err := zamok.Zamenit(klyuchiVida(vidServery), nabor)
+	if err != nil {
+		return fmt.Errorf("разрешение серверов не переписано: %w", sBfe(err))
 	}
-	for _, k := range pravilaDns(resolver) {
-		if _, err := vypolnit(append([]string{"advfirewall", "firewall", "add", "rule",
-			"name=" + k[0], "dir=out", "action=allow", "profile=any"}, k[1:]...)); err != nil {
-			return fmt.Errorf("правило %s не переучреждено: %w", k[0], err)
-		}
+	if !stoit {
+		log.Printf("запрет не стоит, разрешение серверов переписывать некуда")
 	}
 	return nil
 }
 
-func PerezavestiRazreshyonnyeServery(a Adresa) error {
-	// Правила могло не быть вовсе: это не отказ. Отличает SnyatPravilo, и
-	// глотать здесь ЛЮБОЙ отказ нельзя: молчащий netsh означал бы, что старый
-	// список остался стоять, а мы доложили об успехе.
-	for _, imya := range []string{PravAllowSrv, PravAllowSrvUdp} {
-		if err := SnyatPravilo(imya); err != nil {
-			return err
-		}
+// PerezavestiPravilaDns переписывает разрешение DNS под резолвер, пока машина
+// заперта без туннеля (L4 аудита 1.8.0). Разрешение стояло под резолвером
+// момента запирания, и после смены сети служба не могла разрешить имена
+// серверов: подъём не проходил, и восстановление крутилось взаперти вечно.
+func PerezavestiPravilaDns(resolver netip.Addr) error {
+	stoit, err := zamok.Zamenit(klyuchiVida(vidDns), filtryDns(resolver))
+	if err != nil {
+		return fmt.Errorf("разрешение DNS не переписано: %w", sBfe(err))
 	}
-	// Серверов не осталось: разрешать некуда, и правило без адресов у netsh
-	// значит «любой адрес», то есть распахнутую дыру вместо снятой. Этим
-	// заведует pravilaServerov.
-	for _, k := range pravilaServerov(a.Vse, a.Porty) {
-		if _, err := vypolnit(append([]string{"advfirewall", "firewall", "add", "rule",
-			"name=" + k[0], "dir=out", "action=allow", "profile=any"}, k[1:]...)); err != nil {
-			return fmt.Errorf("правило %s не переучреждено: %w", k[0], err)
-		}
+	if !stoit {
+		log.Printf("запрет не стоит, разрешение DNS переписывать некуда")
 	}
 	return nil
 }

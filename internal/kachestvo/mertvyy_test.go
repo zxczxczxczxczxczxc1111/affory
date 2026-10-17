@@ -43,9 +43,9 @@ var razresheno = map[string]string{
 	pakets + "protokol.DolgieKomandy": "шов для теста чужого пакета: " +
 		"cmd/affory-svc/komandy_test.go сверяет, что у каждой долгой команды есть " +
 		"обработчик. Внутрипакетным export_test.go не закрывается, тест в другом пакете",
-	pakets + "set.KomandyRazresheniya": "шов для теста чужого пакета: " +
-		"cmd/affory-svc/adresa_test.go сверяет состав правил со ВХОДОМ, а не список " +
-		"со списком",
+	pakets + "set.ServeryVZaprete": "шов для теста чужого пакета: " +
+		"cmd/affory-svc/adresa_test.go сверяет адреса серверов в запрете со ВХОДОМ, " +
+		"а не список со списком",
 	pakets + "genkonfig.VseTransporty": "шов для теста чужого пакета: " +
 		"internal/kachestvo/transporty_ekrana_test.go сверяет реестр транспортов " +
 		"ядра со словарём имён на экране. Копия списка вместо реестра разошлась бы " +

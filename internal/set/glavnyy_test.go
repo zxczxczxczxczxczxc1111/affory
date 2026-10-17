@@ -37,6 +37,9 @@ func TestMain(m *testing.M) {
 		time.Sleep(time.Hour)
 		os.Exit(0)
 	}
+	// Постоянный запрет живого BFE пережил бы и прогон, и перезагрузку машины
+	// разработки. Тест, забывший свой подставной запрет, попадает сюда.
+	zamok = &zamokVPamyati{}
 	goleak.VerifyTestMain(m,
 		// Резолвер Windows, а не наша утечка. TestNastoyashchiyRezolverNeRazreshaetInvalid
 		// намеренно спрашивает живой резолвер про имя в .invalid, а net.Resolver

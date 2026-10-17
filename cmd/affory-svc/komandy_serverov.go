@@ -568,8 +568,8 @@ func (s *Sluzhba) setServer(ctx context.Context, id string) error {
 		return fmt.Errorf("%w: %w", ErrNovyyVyborNeNesyot, err)
 	}
 
-	// Отметка СРАЗУ после удачной пробы. Дальше идут netsh пачкой и два GET у
-	// ядра: поставив отметку после них, прибор мерил бы брандмауэр.
+	// Отметка СРАЗУ после удачной пробы. Дальше идут пересборка запрета и два
+	// GET у ядра: поставив отметку после них, прибор мерил бы запрет.
 	gotov := s.seychas()
 	s.pravitSost(func(f *sostoyanie.SostoyanieFayla) { f.SelectorGotov = &gotov })
 	// Человек выбрал сам, и выбор понёс: подмена молчащего сервера кончилась.

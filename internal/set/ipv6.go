@@ -315,15 +315,15 @@ func vypolnitNetsh(argumenty []string) (string, error) {
 // PATH нашёл бы первый попавшийся `netsh.exe` из каталога, стоящего в PATH
 // раньше системного. Голое имя остаётся только на случай, когда системный
 // каталог не назван.
-// putSvchost это хост системных служб, в нём живёт служба DNS. Запасной путь
-// записан так же, как во встроенных правилах Windows: брандмауэр сам
-// раскрывает переменную.
-func putSvchost() string {
+// putSvchost это хост системных служб, в нём живёт служба DNS. Нужен
+// настоящий путь: WFP опознаёт программу по файлу на диске, переменных он не
+// раскрывает.
+func putSvchost() (string, error) {
 	sistemnyy, err := windows.GetSystemDirectory()
 	if err != nil {
-		return `%SystemRoot%\System32\svchost.exe`
+		return "", fmt.Errorf("системный каталог не назван: %w", err)
 	}
-	return filepath.Join(sistemnyy, "svchost.exe")
+	return filepath.Join(sistemnyy, "svchost.exe"), nil
 }
 
 func putNetsh() string {
