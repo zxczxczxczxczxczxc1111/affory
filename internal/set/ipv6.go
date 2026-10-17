@@ -2,10 +2,14 @@ package set
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"net"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -48,6 +52,142 @@ func komandaPokaza() []string {
 	return []string{"advfirewall", "firewall", "show", "rule", "name=" + ImyaPravilaIPv6}
 }
 
+// ZakrytIPv6 закрывает исходящий IPv6 на время туннеля.
+//
+// Прежде здесь всегда заводилось правило netsh, и его отказ ронял подключение.
+// У сотрудника с 04.10.2026 служба брандмауэра тринадцать раз отвечала на
+// заведение «Неустранимая ошибка брандмауэра Защитника Windows (0x2)», пачками
+// до перезагрузки, и VPN не поднимался вовсе. При этом IPv6 в те минуты уже был
+// закрыт: ядро ставит свой фильтр WFP (sing-tun, tun_windows.go, фильтр «block
+// ipv6»: при strict_route и туннеле без адреса IPv6 режется весь исходящий
+// IPv6, кроме самого ядра). Фильтры ядра идут прямо в BFE, мимо службы MpsSvc,
+// её настроек и языка системы, то есть ломаются ровно там, где не поднимется и
+// туннель.
+//
+// Поэтому сначала спрашивается факт, и правило netsh остаётся запасным путём на
+// случай, когда ядро IPv6 не закрыло, а у машины IPv6 есть. Отказ и тогда
+// роняет подключение: туннель с открытым IPv6 течёт, а течь молча хуже, чем
+// громко не подключиться.
+func ZakrytIPv6() error {
+	if probaFiltra() {
+		return nil
+	}
+	if est, err := estIPv6NaMashine(); err == nil && !est {
+		return nil
+	}
+	// Фильтр ядро ставит сразу после адаптера, а подъём спрашивает, как только
+	// адаптер появился. Первый ответ «открыт» поэтому может быть просто ранним.
+	srok := time.Now().Add(srokFiltraYadra)
+	for time.Now().Before(srok) {
+		time.Sleep(shagFiltraYadra)
+		if probaFiltra() {
+			return nil
+		}
+	}
+	log.Printf("исходящий IPv6 не закрыт ядром, завожу правило %s", ImyaPravilaIPv6)
+	if err := GlushitIPv6(); err != nil {
+		return fmt.Errorf("исходящий IPv6 открыт, ядро его не закрыло, а %w", err)
+	}
+	praviloZavedeno.Store(true)
+	return nil
+}
+
+// OtkrytIPv6 снимает то, что поставил ZakrytIPv6. Фильтр ядра уходит вместе с
+// ядром сам, снимать нужно только своё правило netsh.
+//
+// Без правила netsh не зовётся вовсе: на машине со сломанной службой
+// брандмауэра каждое отключение иначе стоило бы трёх отказов netsh. Правило,
+// оставшееся от прежнего процесса или прежней версии, снимает уборка при старте
+// службы (snyatSirotuIPv6), а не это место.
+func OtkrytIPv6() error {
+	if !praviloZavedeno.Load() {
+		return nil
+	}
+	if err := VernutIPv6(); err != nil {
+		return err
+	}
+	praviloZavedeno.Store(false)
+	return nil
+}
+
+// IPv6Zakryt отвечает проверке утечек, может ли сейчас что-то уйти по IPv6
+// мимо туннеля. Спрашивается факт, а не наше правило: им IPv6 теперь
+// закрывается только в запасном случае.
+func IPv6Zakryt() (bool, error) {
+	if probaFiltra() {
+		return true, nil
+	}
+	est, err := estIPv6NaMashine()
+	if err != nil {
+		return false, err
+	}
+	return !est, nil
+}
+
+// praviloZavedeno помнит, заводил ли ЭТОТ процесс правило netsh.
+var praviloZavedeno atomic.Bool
+
+var (
+	srokFiltraYadra = 3 * time.Second
+	shagFiltraYadra = 200 * time.Millisecond
+	srokProbyFiltra = 300 * time.Millisecond
+)
+
+// adresProbyFiltra из диапазона IPv6 для документации (2001:db8::/32): он
+// никому не принадлежит, и без фильтра пакет уходит в никуда, а не к чужому
+// серверу.
+const adresProbyFiltra = "[2001:db8::1]:443"
+
+// probaFiltra отвечает, режет ли Windows исходящий IPv6 этой службы.
+//
+// Фильтр WFP отказывает сразу, ещё до отправки пакета, и отказ этот WSAEACCES.
+// Любой другой исход значит «не закрыт» или «не знаю», и это одинаково повод
+// закрывать самим. Шов: тесты подставляют ответ.
+var probaFiltra = func() bool {
+	d := net.Dialer{Timeout: srokProbyFiltra}
+	c, err := d.Dial("tcp6", adresProbyFiltra)
+	if err == nil {
+		// Соединиться с адресом для документации нельзя, но если вышло, IPv6
+		// точно не закрыт.
+		if err := c.Close(); err != nil {
+			log.Printf("проба IPv6: соединение не закрылось: %v", err)
+		}
+		return false
+	}
+	return errors.Is(err, windows.WSAEACCES)
+}
+
+// estIPv6NaMashine отвечает, есть ли у какого-нибудь адаптера адрес IPv6 шире
+// ссылочного. Без него уйти по IPv6 нечем: fe80:: живёт только в своём
+// сегменте. Частные fd00:: считаются: роутер с подменой адресов выпускает их
+// наружу так же, как домашние IPv4. Шов: тесты подставляют ответ.
+var estIPv6NaMashine = func() (bool, error) {
+	adaptery, err := net.Interfaces()
+	if err != nil {
+		return false, fmt.Errorf("адаптеры не прочитаны: %w", err)
+	}
+	for _, a := range adaptery {
+		if a.Flags&net.FlagUp == 0 || a.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		adresa, err := a.Addrs()
+		if err != nil {
+			return false, fmt.Errorf("адреса адаптера %s не прочитаны: %w", a.Name, err)
+		}
+		for _, ad := range adresa {
+			p, ok := ad.(*net.IPNet)
+			if !ok || p.IP.To4() != nil {
+				continue
+			}
+			if p.IP.IsGlobalUnicast() {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// GlushitIPv6 заводит правило netsh. Это запасной путь ZakrytIPv6.
 func GlushitIPv6() error {
 	// Сначала снять, потом поставить. netsh не обновляет правило по имени, он
 	// заводит ВТОРОЕ с тем же именем, и снятие потом убирает только одно.
@@ -61,9 +201,6 @@ func GlushitIPv6() error {
 // VernutIPv6 идемпотентна: снятие несуществующего правила это успех, а не
 // ошибка. Иначе уборка после сбоя падала бы ровно там, где она нужнее всего.
 func VernutIPv6() error { return SnyatPravilo(ImyaPravilaIPv6) }
-
-// PravilaIPv6Est отвечает проверке утечек (6.3): стоит ли правило сейчас.
-func PravilaIPv6Est() (bool, error) { return pravilaIPv6Est() }
 
 // pravilaIPv6Est нужна проверке осиротевшего в задаче 2.6.
 func pravilaIPv6Est() (bool, error) {

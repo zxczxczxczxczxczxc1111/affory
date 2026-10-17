@@ -104,17 +104,17 @@ func (r *RezultatProverki) punktVyhoda(ctx context.Context, v VhodProverki) Punk
 func punktIPv6(v VhodProverki) PunktProverki {
 	p := PunktProverki{Imya: "IPv6"}
 	if !v.Podnyat {
-		p.Itog, p.Tekst = ItogNeIzmereno, "правило ставится при подключении VPN"
+		p.Itog, p.Tekst = ItogNeIzmereno, "проверяется при подключённом VPN"
 		return p
 	}
 	est, err := v.IPv6Zaglushen()
 	switch {
 	case err != nil:
-		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("брандмауэр не ответил: %s", sboi.DlyaCheloveka(err))
+		p.Itog, p.Tekst = ItogNeIzmereno, fmt.Sprintf("проверить не вышло: %s", sboi.DlyaCheloveka(err))
 	case est:
-		p.Itog, p.Tekst = ItogOk, "исходящий IPv6 закрыт правилом брандмауэра, мимо VPN по нему не уйти"
+		p.Itog, p.Tekst = ItogOk, "исходящий IPv6 закрыт или его у машины нет: мимо VPN по нему не уйти"
 	default:
-		p.Itog, p.Tekst = ItogUtechka, "правила "+ImyaPravilaIPv6+" нет: IPv6 может уйти мимо VPN"
+		p.Itog, p.Tekst = ItogUtechka, "исходящий IPv6 открыт: программы могут уйти по нему мимо VPN"
 	}
 	return p
 }

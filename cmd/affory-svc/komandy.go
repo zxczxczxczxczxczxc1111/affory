@@ -531,7 +531,7 @@ func NovayaSluzhba() *Sluzhba {
 	s.zhalobaVyhoda = yadra.ZhalobaVyhoda
 	s.adresProverki = set.AdresProverkiPoUmolchaniyu
 	s.sprositVyhod = set.AdresVyhoda
-	s.ipv6Zaglushen = set.PravilaIPv6Est
+	s.ipv6Zaglushen = set.IPv6Zakryt
 	s.zapustitPodmenshchika = zapustitPodmenshchika
 	s.dirDannyh = sostoyanie.KatalogDannyh()
 	s.dirProgrammy = sostoyanie.KatalogProgrammy()
@@ -574,8 +574,8 @@ func NovayaSluzhba() *Sluzhba {
 	s.proveritKonfig = func(put string) error { return yadra.Proverit(imyaYadraTun, put) }
 	s.fonCtx, s.fonOtmena = context.WithCancel(context.Background())
 	s.speedRunner = runSpeed
-	s.glushitIPv6 = set.GlushitIPv6
-	s.vernutIPv6 = set.VernutIPv6
+	s.glushitIPv6 = set.ZakrytIPv6
+	s.vernutIPv6 = set.OtkrytIPv6
 	s.vklyuchitVes = set.VklyuchitVesTrafik
 	s.prochitatProksi = set.ProksiLyudey
 	s.vyklyuchitVes = set.VyklyuchitVesTrafik
