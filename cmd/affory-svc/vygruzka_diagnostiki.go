@@ -129,4 +129,3 @@ func (s *Sluzhba) sobratDiagnostiku() []byte {
 	}
 	return []byte(ssylki.Vychistit(b.String(), servery, adresa))
 }
-
