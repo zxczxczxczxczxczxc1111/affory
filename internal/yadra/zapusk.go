@@ -31,8 +31,8 @@ func Zapustit(imya string, putKonfiga string) (*Yadro, error) {
 	// Checked here rather than at install time only, because the interesting
 	// moment is not "was it right when we put it there" but "is it right now".
 	// A core swapped between install and launch is the whole scenario.
-	if err := hranenie.Sverit(put); err != nil {
-		return nil, fmt.Errorf("ядро %s не запущено: %w", imya, err)
+	if err := Sverit(imya); err != nil {
+		return nil, err
 	}
 	cmd := exec.Command(put, "run", "-c", putKonfiga)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -73,6 +73,20 @@ func Zapustit(imya string, putKonfiga string) (*Yadro, error) {
 	}
 	fon.Zapustit("ожидании ядра "+imya, y.zhdat)
 	return y, nil
+}
+
+// Sverit сверяет файл ядра с отпечатком установки, не запуская его.
+//
+// Подъём туннеля зовёт её ДО сторожа: ошибку Zapustit сторож отдаёт только в
+// журнал, и ядро, унесённое антивирусом, человек видел через двадцать секунд
+// ожидания адаптера как «не удалось создать сетевое подключение VPN».
+// Пропажу и подмену отличают hranenie.ErrFaylPropal и ErrFaylIzmenen.
+func Sverit(imya string) error {
+	put := filepath.Join(sostoyanie.KatalogProgrammy(), imya)
+	if err := hranenie.Sverit(put); err != nil {
+		return fmt.Errorf("ядро %s не запущено: %w", imya, err)
+	}
+	return nil
 }
 
 func (y *Yadro) zhdat() {

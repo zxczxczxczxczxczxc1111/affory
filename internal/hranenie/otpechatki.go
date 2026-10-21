@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,15 @@ import (
 )
 
 const imyaFayla = "otpechatki.json"
+
+// Пропавший и подменённый файл программы это отдельные ошибки, а не текст.
+// Чаще всего их делает антивирус, унёсший ядро в карантин, и служба обязана
+// отличить это от прочих отказов подъёма: до 1.10.0 человек видел «не удалось
+// создать сетевое подключение» с кнопкой «Повторить», где повторять нечего.
+var (
+	ErrFaylPropal  = errors.New("файл пропал")
+	ErrFaylIzmenen = errors.New("файл изменён после установки")
+)
 
 // С 0.7.0 выпуск подписывается самоподписанным сертификатом, но эти отпечатки
 // он не заменяет и заменить не может: подпись говорит «байты те же, что вышли
@@ -86,11 +97,14 @@ func sveritV(dirDannyh, put string) error {
 		return fmt.Errorf("файла %s нет в отпечатках", imya)
 	}
 	est2, err := hashFayla(put)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: %s", ErrFaylPropal, put)
+	}
 	if err != nil {
 		return err
 	}
 	if est2 != hotim {
-		return fmt.Errorf("отпечаток %s не совпал: ожидался %s, получен %s", imya, hotim, est2)
+		return fmt.Errorf("%w: %s, отпечаток %s вместо %s", ErrFaylIzmenen, put, est2, hotim)
 	}
 	return nil
 }

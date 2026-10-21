@@ -35,6 +35,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "selected-server-gone": { deystvie: "otkryt-servery", tekst: "выбранного сервера больше нет в подписке" },
   "tun-create-failed": { deystvie: "povtorit", tekst: "не удалось создать сетевое подключение VPN" },
   "core-not-responding": { deystvie: "povtorit", tekst: "часть программы, которая ведёт соединение, не отвечает" },
+  "core-missing": { deystvie: "nichego", tekst: "файл ядра VPN пропал или изменён, обычно его убирает антивирус: верни его из карантина или переустанови Affory" },
   "wintun-missing": { deystvie: "postavit-sluzhbu", tekst: "драйвер VPN не установился" },
   "no-admin": { deystvie: "postavit-sluzhbu", tekst: "служба не установлена или не отвечает" },
   "admin-required": { deystvie: "zaprosit-prava", tekst: "нужны права администратора" },

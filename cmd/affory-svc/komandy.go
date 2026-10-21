@@ -1489,8 +1489,10 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 	// Вердикт пишется в журнал СО ВСЕЙ обстановкой. Разовый отказ 03.09.2026
 	// разбирать было нечем именно потому, что здесь молчали: состояние живёт
 	// в памяти до следующей команды, а в журнале команд пишется только код.
+	// Код тот же, что уйдёт в состояние. До 1.10.0 строка печатала
+	// all-servers-down всегда, и журнал спорил с экраном.
 	log.Printf("подключение: отказ %s, сервер %s (%s, %s), попыток %d по %s, последняя проба: %v",
-		protokol.KodAllServersDown, srv.Id, srv.Imya, srv.Transport,
+		kodNepodnyavshegosya(poslednyaya), srv.Id, srv.Imya, srv.Transport,
 		popytokPodyoma, zhdatPodyoma, poslednyaya)
 	s.Disconnect()
 	// Код по ПРИЧИНЕ последней пробы, а не all-servers-down насмерть: ответ
@@ -1517,8 +1519,13 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 //
 // Молчащий резолвер тоже не адаптер (жалоба 02.10.2026): подъём падает на
 // сборе адресов серверов, до создания адаптера, и чинить надо DNS.
+//
+// Пропавшее или подменённое ядро тоже не адаптер (1.10.0): чаще всего его
+// уносит антивирус, и повтор тут не поможет никогда.
 func kodPodyomaTunnelya(err error) string {
 	switch {
+	case errors.Is(err, hranenie.ErrFaylPropal), errors.Is(err, hranenie.ErrFaylIzmenen):
+		return protokol.KodYadroPropalo
 	case errors.Is(err, yadra.ErrDrayverNeVstal):
 		return protokol.KodWintunMissing
 	case errors.Is(err, ErrRezolverMolchit):

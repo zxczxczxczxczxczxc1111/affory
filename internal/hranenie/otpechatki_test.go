@@ -1,6 +1,7 @@
 package hranenie
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,8 +31,45 @@ func TestSveritLovitPodmenu(t *testing.T) {
 	if err := os.WriteFile(yadro, []byte("настоящее ядрО"), 0o600); err != nil {
 		t.Fatalf("файл не переписан: %v", err)
 	}
-	if err := sveritV(dannye, yadro); err == nil {
+	err := sveritV(dannye, yadro)
+	if err == nil {
 		t.Fatal("подмена не замечена")
+	}
+	if !errors.Is(err, ErrFaylIzmenen) || errors.Is(err, ErrFaylPropal) {
+		t.Fatalf("подмена должна быть ErrFaylIzmenen, получено: %v", err)
+	}
+}
+
+// Ядро, унесённое антивирусом в карантин, это пропавший файл, и служба
+// отличает его от подмены и от прочих отказов только по этой ошибке.
+func TestSveritOtlichaetPropavshiyFayl(t *testing.T) {
+	prog := t.TempDir()
+	dannye := t.TempDir()
+	yadro := filepath.Join(prog, "sing-box.exe")
+	if err := os.WriteFile(yadro, []byte("ядро"), 0o600); err != nil {
+		t.Fatalf("файл не создан: %v", err)
+	}
+	if err := snyatV(prog, dannye); err != nil {
+		t.Fatalf("отпечатки не сняты: %v", err)
+	}
+	if err := os.Remove(yadro); err != nil {
+		t.Fatalf("файл не удалён: %v", err)
+	}
+	err := sveritV(dannye, yadro)
+	if !errors.Is(err, ErrFaylPropal) || errors.Is(err, ErrFaylIzmenen) {
+		t.Fatalf("пропавший файл должен быть ErrFaylPropal, получено: %v", err)
+	}
+	if !strings.Contains(err.Error(), yadro) {
+		t.Fatalf("в отказе нет пути к файлу, человеку нечего искать в карантине: %v", err)
+	}
+}
+
+// Пропавший файл ОТПЕЧАТКОВ это не пропавшее ядро: карантин тут ни при чём, и
+// текст про антивирус увёл бы человека не туда.
+func TestPropavshieOtpechatkiNeYadro(t *testing.T) {
+	err := sveritV(t.TempDir(), filepath.Join(t.TempDir(), "sing-box.exe"))
+	if errors.Is(err, ErrFaylPropal) || errors.Is(err, ErrFaylIzmenen) {
+		t.Fatalf("отказ без файла отпечатков принят за пропажу ядра: %v", err)
 	}
 }
 

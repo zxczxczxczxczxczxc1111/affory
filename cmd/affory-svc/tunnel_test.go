@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
@@ -162,6 +163,29 @@ func TestMolchashchiyRezolverNeNazyvaetsyaNesozdannymAdapterom(t *testing.T) {
 	}
 	if !strings.Contains(st.Oshib.Tekst, "vpn.example.net") {
 		t.Errorf("текст %q не называет имя, которое не нашлось", st.Oshib.Tekst)
+	}
+}
+
+// Ядро, унесённое антивирусом, до 1.10.0 приезжало как tun-create-failed с
+// кнопкой «Повторить». Пропажа и подмена дают один код, а причина с путём к
+// файлу остаётся в тексте: по ней человек ищет файл в карантине.
+func TestPropavsheeYadroNeNazyvaetsyaNesozdannymAdapterom(t *testing.T) {
+	for _, sluchay := range []error{hranenie.ErrFaylPropal, hranenie.ErrFaylIzmenen} {
+		s := podstavnaya(t, nil)
+		s.podnyatTunnel = func(ctx context.Context) (set.Adapter, error) {
+			return set.Adapter{}, fmt.Errorf("ядро sing-box.exe не запущено: %w: C:\\Program Files\\Affory\\sing-box.exe", sluchay)
+		}
+
+		if err := s.Connect(context.Background()); err == nil {
+			t.Fatal("connect объявил успех при пропавшем ядре")
+		}
+		st := s.Status()
+		if st.Oshib == nil || st.Oshib.Kod != protokol.KodYadroPropalo {
+			t.Fatalf("%v: код ошибки %v, ожидался %s", sluchay, st.Oshib, protokol.KodYadroPropalo)
+		}
+		if !strings.Contains(st.Oshib.Tekst, "sing-box.exe") {
+			t.Errorf("текст %q не называет файл, который искать в карантине", st.Oshib.Tekst)
+		}
 	}
 }
 
