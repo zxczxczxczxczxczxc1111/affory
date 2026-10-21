@@ -49,7 +49,7 @@ func (s *Sluzhba) sveritChasy(ctx context.Context) (time.Duration, error) {
 	s.chasyRashozhdenie, s.chasyZamereno = d, s.seychas()
 	s.mu.Unlock()
 	if sbity(d) != byli || sbity(d) {
-		log.Printf("часы: компьютер %s точного времени", opisatRashozhdenie(d))
+		log.Printf("часы компьютера %s точного времени", opisatRashozhdenie(d))
 	}
 	if sbity(d) != byli {
 		s.izvestit("state", s.Status())

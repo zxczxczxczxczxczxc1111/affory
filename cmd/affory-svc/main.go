@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/debug"
 
 	"golang.org/x/sys/windows/svc"
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/puti"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/yadra"
@@ -134,6 +136,21 @@ func (s *sluzhba) Execute(args []string, r <-chan svc.ChangeRequest, st chan<- s
 		defer zh.Close()
 	}
 	log.Printf("служба запускается, программа %s, версия протокола %d", versiyaProgrammy, protokol.Versiya)
+	// Падение рантайма (fatal error, паника вне перехвата fon) пишет стек в
+	// свой файл (1.10.0). До этого он уходил в консоль, которой у службы нет, и
+	// от падения в журнале оставался только обрыв на полуслове.
+	if f, proshloe, err := zhurnaly.OtkrytFaylPadeniya(sostoyanie.KatalogZhurnalov(), puti.PadenieSluzhby); err != nil {
+		log.Printf("файл падений не открыт: %v", err)
+	} else {
+		if !proshloe.IsZero() {
+			log.Printf("прошлый запуск службы упал %s, стек в %s.1", proshloe.Format("2006-01-02 15:04:05"), puti.PadenieSluzhby)
+		}
+		// SetCrashOutput берёт копию дескриптора, свой можно закрыть сразу.
+		if err := debug.SetCrashOutput(f, debug.CrashOptions{}); err != nil {
+			log.Printf("файл падений не подключён: %v", err)
+		}
+		f.Close()
+	}
 
 	// Осиротевшая защита снимается ДО того, как служба начнёт принимать команды.
 	// Машина, оставшаяся запертой после нештатной смерти службы, не должна ждать,

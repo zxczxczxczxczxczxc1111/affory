@@ -4,13 +4,20 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"golang.org/x/sys/windows"
+
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/diagnostika"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/puti"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
 )
 
 // О6 аудита 1.6.1. Каталог данных открыт только системе и администраторам, и
@@ -144,6 +151,55 @@ func TestVygruzkaDiagnostikiIdyotPorciyami(t *testing.T) {
 	// Обрезка по началу строки: с полстроки начинается битый символ.
 	if !strings.HasPrefix(razdel, "(начало обрезано)\n"+strings.Repeat("я", 60)) {
 		t.Fatalf("хвост начат не со строки: %q", razdel[:80])
+	}
+}
+
+// Шапка 1.10.0 отвечает на вопросы, которые прежде задавали человеку, и не
+// несёт адресов машины: ни своих адресов адаптеров, ни шлюзов, ни резолвера
+// провайдера.
+func TestShapkaVygruzkiBezAdresovMashiny(t *testing.T) {
+	s := podstavnaya(t, nil)
+	s.adaptery = func() ([]set.Adapter, error) {
+		return []set.Adapter{{
+			Indeks: 7, Imya: "Ethernet", Opisanie: "Intel(R) Ethernet", Tip: 6,
+			Sostoyanie: windows.IfOperStatusUp, Umolchanie: true,
+			Adresa:    []netip.Addr{netip.MustParseAddr("192.168.1.50")},
+			Shlyuzy:   []netip.Addr{netip.MustParseAddr("192.168.1.1")},
+			Resolvery: []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("198.51.100.53"), netip.MustParseAddr("192.168.1.1")},
+		}}, nil
+	}
+	s.prochitatProksi = func() ([]set.ProksiCheloveka, error) {
+		return []set.ProksiCheloveka{{Sid: "S-1-5-21-1-2-3-1001", Proksi: set.Proksi{Vklyuchen: true, Adres: "127.0.0.1:10809"}}}, nil
+	}
+	s.proveritPomehi = pomehiIz(zapret)
+	s.zameritChasy = chasyOtvechayut(-7 * time.Minute)
+	if _, err := s.sveritChasy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	tekst, _ := vygruzitVsyo(t, s)
+	for _, nuzhno := range []string{
+		"кодовые страницы: ANSI", "папка программы: ", "(длина ", "часы: отстают на 7 мин от точного времени",
+		"помехи: lomaet zapret", "«Ethernet» (Intel(R) Ethernet), вид 6, маршрут по умолчанию",
+		"8.8.8.8 (Google), внешний, частный", "системный прокси: включён, 127.0.0.1:10809",
+		"===== " + puti.PadenieSluzhby,
+	} {
+		if !strings.Contains(tekst, nuzhno) {
+			t.Errorf("в выгрузке нет %q", nuzhno)
+		}
+	}
+	for _, adres := range []string{"192.168.1.50", "198.51.100.53", "S-1-5-21-1-2-3-1001"} {
+		if strings.Contains(tekst, adres) {
+			t.Errorf("в выгрузку попал адрес машины %q", adres)
+		}
+	}
+}
+
+// Список журналов один на службу и окно, и имя подробного журнала в нём
+// обязано совпадать с тем, под которым его пишет служба.
+func TestSpisokZhurnalovZnaetPodrobnyy(t *testing.T) {
+	if !slices.Contains(puti.ZhurnalySluzhby, diagnostika.ImyaZhurnala) {
+		t.Fatalf("подробного журнала %s нет в списке выгрузки %v", diagnostika.ImyaZhurnala, puti.ZhurnalySluzhby)
 	}
 }
 

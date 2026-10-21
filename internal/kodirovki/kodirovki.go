@@ -36,7 +36,17 @@ const (
 var (
 	kernel32                = windows.NewLazySystemDLL("kernel32.dll")
 	procWideCharToMultiByte = kernel32.NewProc("WideCharToMultiByte")
+	// GetOEMCP тоже нет в golang.org/x/sys/windows, GetACP есть.
+	procGetOEMCP = kernel32.NewProc("GetOEMCP")
 )
+
+// NomeraStranic отдаёт номера кодовых страниц ANSI и консоли машины. Нужны
+// шапке выгрузки диагностики (1.10.0): обе жалобы на «ромбики» решались
+// именно этими двумя числами, а спросить их у человека нельзя.
+func NomeraStranic() (ansi, konsoli uint32) {
+	oem, _, _ := procGetOEMCP.Call()
+	return windows.GetACP(), uint32(oem)
+}
 
 var errPusto = errors.New("перекодировать нечего")
 
