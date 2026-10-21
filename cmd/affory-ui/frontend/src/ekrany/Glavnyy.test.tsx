@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Glavnyy, hodVosstanovleniya, obyom } from "./Glavnyy";
+import { Glavnyy, hodVosstanovleniya, obyom, tekstPomehi } from "./Glavnyy";
 import { podpis } from "./podpisi";
 
 afterEach(cleanup);
@@ -93,6 +93,36 @@ describe("главный экран", () => {
     cleanup();
     render(<Glavnyy status={{ sostoyanie: "vyklyuchen", vremenno_vmesto: "Affory DE reality" }} />);
     expect(screen.queryByTestId("vremenno-vmesto")).toBeNull();
+  });
+
+  it("помеха называется строкой при любом состоянии и уходит вместе с полем", () => {
+    // 1.10.0: перехватчик и чужой VPN мешают и до подключения, поэтому
+    // строка не ждёт «подключено».
+    render(
+      <Glavnyy
+        status={{
+          sostoyanie: "vyklyuchen",
+          pomehi: [
+            { imya: "zapret", vid: "obhod" },
+            { imya: "Cloudflare WARP", vid: "vpn" },
+          ],
+        }}
+      />,
+    );
+    const stroki = screen.getAllByTestId("pomeha").map((p) => p.textContent);
+    expect(stroki).toEqual([
+      "Работает zapret: он перехватывает те же соединения, что и VPN. Выключи его на время работы Affory",
+      "Включён Cloudflare WARP: два VPN сразу не работают. Отключи его и подключись снова",
+    ]);
+    cleanup();
+    render(<Glavnyy status={{ sostoyanie: "podnyat" }} />);
+    expect(screen.queryByTestId("pomeha")).toBeNull();
+  });
+
+  it("незнакомый вид помехи от службы новее говорит общей фразой", () => {
+    expect(tekstPomehi({ imya: "chto-to.exe", vid: "novyy-vid" })).toBe(
+      "Работает chto-to.exe: он мешает VPN. Выключи его на время работы Affory",
+    );
   });
 
   it("от режима трафика есть путь в правила, а не только через полосу разделов", () => {

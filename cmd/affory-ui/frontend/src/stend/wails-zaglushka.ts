@@ -116,6 +116,8 @@ const status: Record<string, unknown> = {
   versiya_sluzhby: VERSIYA,
   podnyat_s: new Date(Date.now() - 82 * 60 * 1000).toISOString(),
   ...(SLUCHAY === "otkaz" ? { oshibka: OTKAZ } : {}),
+  // Строка о перехватчике на главном экране (1.10.0), для снимков и судей.
+  ...(SLUCHAY === "pomehi" ? { pomehi: [{ imya: "zapret", vid: "obhod" }] } : {}),
   // Лежащий список: тот же паспорт, что у встроенного (internal/reklama).
   reklama: {
     uroven: "light",

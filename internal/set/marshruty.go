@@ -69,6 +69,48 @@ func prefiksyMarshrutovSistemnye() ([]netip.Prefix, error) {
 	return itog, nil
 }
 
+// PolovinkiUmolchaniya отдаёт индексы адаптеров, через которые идут ОБЕ
+// половины 0.0.0.0/1 и 128.0.0.0/1.
+//
+// Так умолчание ставят OpenVPN и часть других VPN: две половины длиннее 0/0 и
+// выигрывают у него без правки чужого маршрута. Для поиска чужого VPN (пакет
+// pomehi, 1.10.0) такая пара значит ровно то же, что 0.0.0.0/0, а
+// marshrutyUmolchaniya её не видит.
+func PolovinkiUmolchaniya() (map[uint32]bool, error) {
+	var tabl *windows.MibIpForwardTable2
+	if err := windows.GetIpForwardTable2(windows.AF_INET, &tabl); err != nil {
+		return nil, fmt.Errorf("GetIpForwardTable2: %w", err)
+	}
+	defer windows.FreeMibTable(unsafe.Pointer(tabl))
+
+	itog := map[uint32]bool{}
+	if tabl.NumEntries == 0 {
+		return itog, nil
+	}
+	nizhnyaya, verhnyaya := map[uint32]bool{}, map[uint32]bool{}
+	stroki := unsafe.Slice(&tabl.Table[0], tabl.NumEntries)
+	for i := range stroki {
+		s := &stroki[i]
+		if s.DestinationPrefix.PrefixLength != 1 ||
+			s.DestinationPrefix.Prefix.Family != windows.AF_INET {
+			continue
+		}
+		adres := (*windows.RawSockaddrInet4)(unsafe.Pointer(&s.DestinationPrefix.Prefix))
+		switch adres.Addr {
+		case [4]byte{0, 0, 0, 0}:
+			nizhnyaya[s.InterfaceIndex] = true
+		case [4]byte{128, 0, 0, 0}:
+			verhnyaya[s.InterfaceIndex] = true
+		}
+	}
+	for i := range nizhnyaya {
+		if verhnyaya[i] {
+			itog[i] = true
+		}
+	}
+	return itog, nil
+}
+
 // marshrutyUmolchaniyaSistemnye отдаёт лучшую метрику маршрута 0.0.0.0/0 по
 // индексу интерфейса. Индекса в карте нет значит умолчания у адаптера нет.
 func marshrutyUmolchaniyaSistemnye() (map[uint32]uint32, error) {

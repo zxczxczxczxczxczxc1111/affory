@@ -17,6 +17,7 @@ import (
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/fon"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/hranenie"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/pomehi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/proby"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
@@ -333,6 +334,16 @@ type Sluzhba struct {
 	podp   map[uint64]chan protokol.Kadr
 	sledId uint64
 
+	// Чужие программы, которые ломают VPN или могут мешать (pomehi.go, 1.10.0).
+	// Последний ответ, его описание и текст неполной проверки живут под mu;
+	// описания нужны, чтобы журнал получал только перемены. proveritPomehi это
+	// шов: настоящий обходит процессы, драйверы и адаптеры машины.
+	pomehiNaydeno  []pomehi.Nahodka
+	pomehiOpis     string
+	pomehiOshibka  string
+	proveritPomehi func(pomehi.Svoi) ([]pomehi.Nahodka, error)
+	periodPomeh    time.Duration
+
 	// Seams. Not for elegance: without them the only way to test a state machine
 	// is to own a hypervisor, and a state machine nobody tests is where the app
 	// learns to lie about being connected.
@@ -548,6 +559,8 @@ func NovayaSluzhba() *Sluzhba {
 	s.skachatFayl = s.skachatVypusk
 	s.zhurnalSoed = sostoyanie.NovyyZhurnalSoedineniy()
 	s.periodDiagnostiki = periodDiagnostikiPoUmolchaniyu
+	s.proveritPomehi = pomehi.NovyySkaner().Proverit
+	s.periodPomeh = periodPomehPoUmolchaniyu
 	// Файл открывается ВСЕГДА, а пишется только при включённой настройке: иначе
 	// первая же секунда после включения уходила бы на открытие файла, а
 	// интересна как раз она.
@@ -794,6 +807,7 @@ func (s *Sluzhba) Status() protokol.StatusOtvet {
 		Obnovlenie:           s.obnovlenie,
 		ObnovlenieProvereno:  s.obnovlenieProvereno,
 		ObnovlenieOtkaz:      s.obnovlenieOtkaz,
+		Pomehi:               s.pomehiDlyaStatusa(),
 	}
 }
 
@@ -1106,6 +1120,9 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 	// podnimaetsya is not decoration: the UI draws a different screen for it, and
 	// jumping straight to podnyat makes the app look frozen for four seconds.
 	s.postavit(protokol.SostPodnimaetsya, nil)
+	// Помехи заново при каждом подъёме: перехватчик, запущенный минуту назад,
+	// фоновая проверка назвала бы только через полминуты.
+	s.obnovitPomehi()
 
 	// Контекст операции подъёма (A7). Одним defer, а не записью на каждой
 	// ветке: веток выхода ниже десять, и одиннадцатая однажды забыла бы
@@ -1495,18 +1512,25 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 		kodNepodnyavshegosya(poslednyaya), srv.Id, srv.Imya, srv.Transport,
 		popytokPodyoma, zhdatPodyoma, poslednyaya)
 	s.Disconnect()
+	// Человеческой фразой, а не сводкой замера: «не понёс трафик (2 попытки
+	// по 15s)» читалось как строка журнала, случайно попавшая на экран
+	// (владелец, 23.09.2026). Число попыток и срок остались - они говорят,
+	// что программа не сдалась после первой неудачи, - но словами.
+	// Причина понятной частью: полный текст пробы записан строкой выше.
+	tekst := fmt.Sprintf("VPN включился, но данные через него не пошли. Попыток: %d, по %d секунд каждая. Причина: %s",
+		popytokPodyoma, int(zhdatPodyoma.Seconds()), sboi.DlyaCheloveka(poslednyaya))
+	// Антивирус с проверкой трафика и запущенный чужой VPN-клиент называются
+	// здесь, а не на главном экране (решение владельца 21.10.2026): у
+	// большинства они работают рядом с VPN без всяких бед.
+	if p := s.podskazkaPomeh(); p != "" {
+		tekst += ". " + p
+	}
 	// Код по ПРИЧИНЕ последней пробы, а не all-servers-down насмерть: ответ
 	// команды выбирает kodPodklyucheniya, а состояние живёт на Главной до
 	// следующей команды, и разойтись им нельзя.
 	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
-		Kod: kodNepodnyavshegosya(poslednyaya),
-		// Человеческой фразой, а не сводкой замера: «не понёс трафик (2 попытки
-		// по 15s)» читалось как строка журнала, случайно попавшая на экран
-		// (владелец, 23.09.2026). Число попыток и срок остались - они говорят,
-		// что программа не сдалась после первой неудачи, - но словами.
-		// Причина понятной частью: полный текст пробы записан строкой выше.
-		Tekst: fmt.Sprintf("VPN включился, но данные через него не пошли. Попыток: %d, по %d секунд каждая. Причина: %s",
-			popytokPodyoma, int(zhdatPodyoma.Seconds()), sboi.DlyaCheloveka(poslednyaya)),
+		Kod:   kodNepodnyavshegosya(poslednyaya),
+		Tekst: tekst,
 	})
 	return fmt.Errorf("VPN не понёс трафик за %d попытки по %s: %w", popytokPodyoma, zhdatPodyoma, poslednyaya)
 }

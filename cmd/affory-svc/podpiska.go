@@ -205,6 +205,15 @@ func (s *Sluzhba) ZapustitRaspisanie() {
 			s.sobiratDiagnostiku(s.fonCtx)
 		})
 	})
+	// Помехи тоже всегда: строка о zapret на главном экране нужна и до
+	// подключения, и уйти она должна сама, когда zapret закрыли.
+	s.fon.Add(1)
+	fon.Zapustit("поиске помех", func() {
+		defer s.fon.Done()
+		fon.SPovtorom(s.fonCtx, "поиск помех", pauzaPoslePaniki, func() {
+			s.raspisaniePomeh(s.fonCtx)
+		})
+	})
 }
 
 // raspisaniePodpiski тянет подписку при старте и дальше раз в период.

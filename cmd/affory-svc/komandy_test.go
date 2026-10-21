@@ -17,6 +17,7 @@ import (
 
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/genkonfig"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/kanal"
+	"github.com/zxczxczxczxczxczxc1111/affory/internal/pomehi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/protokol"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sboi"
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/set"
@@ -63,6 +64,9 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	}
 	// Настоящий сброс чистит кэш DNS всей машины: тестам это ни к чему.
 	s.sbrositKeshDNS = func() error { return nil }
+	// Настоящий поиск помех читает процессы и адаптеры машины разработчика, а
+	// на ней бывает запущен и Happ, и чужой VPN.
+	s.proveritPomehi = func(pomehi.Svoi) ([]pomehi.Nahodka, error) { return nil, nil }
 	// Настоящая проба резолвера шлёт вопрос в сеть. Список пуст, значит
 	// выбирать не из чего и резолвер конфига это mestnyyRezolver.
 	s.mestnyeRezolvery = func(...uint32) ([]netip.Addr, error) { return nil, nil }

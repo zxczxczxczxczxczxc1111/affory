@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type {
   OtkazNaEkrane,
+  Pomeha,
   Rezhim,
   Server,
   Statistika,
@@ -147,6 +148,19 @@ export function hodVosstanovleniya(
   return prichina ? `${prichina}, ${kogda}` : kogda;
 }
 
+/** Фраза о чужой программе, которая ломает VPN прямо сейчас (1.10.0). Окно
+ *  её не закрывает: чужие процессы не наши, и решать человеку. Строка уходит
+ *  сама, когда служба перестала видеть программу. */
+export function tekstPomehi(p: Pomeha): string {
+  switch (p.vid) {
+    case "obhod":
+      return `Работает ${p.imya}: он перехватывает те же соединения, что и VPN. Выключи его на время работы Affory`;
+    case "vpn":
+      return `Включён ${p.imya}: два VPN сразу не работают. Отключи его и подключись снова`;
+  }
+  return `Работает ${p.imya}: он мешает VPN. Выключи его на время работы Affory`;
+}
+
 export function Glavnyy({
   podpiski = [],
   naObnovitPodpisku,
@@ -273,6 +287,14 @@ export function Glavnyy({
               {status.vremenno_vmesto} не отвечает, VPN временно идёт через этот сервер
             </p>
           )}
+          {/* При любом состоянии, а не только поднятом: о zapret надо знать и
+              до подключения. Подключение строка не запрещает (решение
+              владельца 21.10.2026). */}
+          {status.pomehi?.map((p) => (
+            <p key={p.imya} role="status" className="text-warn mt-1 text-center text-sm" data-testid="pomeha">
+              {tekstPomehi(p)}
+            </p>
+          ))}
           </div>
 
           <div className="affory-routing mt-5 w-full max-w-[380px]">
