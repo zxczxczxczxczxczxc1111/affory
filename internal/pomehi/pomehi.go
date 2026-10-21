@@ -72,9 +72,11 @@ type programma struct {
 	gruppa Gruppa
 }
 
-// izvestnye: имя exe в нижнем регистре. Список Happ 4.5.4 (разбор 21.10.2026)
-// плюс клиенты, чьи exe видны на диске. Имя, которого никто не видел, сюда не
-// добавляется: ложная находка на экране хуже пропущенной.
+// izvestnye: имя exe в нижнем регистре. Список Happ 4.5.4 (разбор 21.10.2026),
+// клиенты, чьи exe видны на диске, и сверенные по исходникам и справке
+// производителя 21.10.2026 (Hiddify, NekoBox, Throne, Clash Verge, AmneziaVPN,
+// Outline, AdGuard, Proxifier, Kaspersky VPN). Имя, подтверждённое только
+// косвенно, сюда не добавляется: ложная находка хуже пропущенной.
 var izvestnye = map[string]programma{
 	// Перехватчики пакетов. Оба держат драйвер WinDivert и ломают туннель
 	// всегда, а не только в некоторых сетях.
@@ -88,40 +90,61 @@ var izvestnye = map[string]programma{
 	"tpws.exe":     {"zapret (tpws)", VidObhod, Meshaet},
 	// VPN-клиенты. Без поднятого подключения не мешают, с поднятым их находит
 	// проверка адаптеров, и тогда они в группе «ломает».
-	"warp-svc.exe":        {"Cloudflare WARP", VidVPN, Meshaet},
-	"cloudflare warp.exe": {"Cloudflare WARP", VidVPN, Meshaet},
-	"happ.exe":            {"Happ", VidVPN, Meshaet},
-	"happd.exe":           {"Happ", VidVPN, Meshaet},
-	"karing.exe":          {"Karing", VidVPN, Meshaet},
-	"karingservice.exe":   {"Karing", VidVPN, Meshaet},
-	"v2rayn.exe":          {"v2rayN", VidVPN, Meshaet},
-	"sotavpn.exe":         {"Sota", VidVPN, Meshaet},
-	"sota-daemon.exe":     {"Sota", VidVPN, Meshaet},
-	"avp.exe":             {"Kaspersky", VidAntivirus, Meshaet},
-	"avpui.exe":           {"Kaspersky", VidAntivirus, Meshaet},
-	"ekrn.exe":            {"ESET", VidAntivirus, Meshaet},
-	"egui.exe":            {"ESET", VidAntivirus, Meshaet},
-	"dwengine.exe":        {"Dr.Web", VidAntivirus, Meshaet},
-	"dwnetfilter.exe":     {"Dr.Web", VidAntivirus, Meshaet},
-	"drweb32.exe":         {"Dr.Web", VidAntivirus, Meshaet},
-	"avastsvc.exe":        {"Avast", VidAntivirus, Meshaet},
-	"avastui.exe":         {"Avast", VidAntivirus, Meshaet},
-	"aswengsrv.exe":       {"Avast", VidAntivirus, Meshaet},
-	"bdagent.exe":         {"Bitdefender", VidAntivirus, Meshaet},
-	"bdservicehost.exe":   {"Bitdefender", VidAntivirus, Meshaet},
-	"nortonsecurity.exe":  {"Norton", VidAntivirus, Meshaet},
-	"ccsvchst.exe":        {"Norton", VidAntivirus, Meshaet},
-	"mcshield.exe":        {"McAfee", VidAntivirus, Meshaet},
-	"mfemms.exe":          {"McAfee", VidAntivirus, Meshaet},
-	"mbam.exe":            {"Malwarebytes", VidAntivirus, Meshaet},
-	"mbamservice.exe":     {"Malwarebytes", VidAntivirus, Meshaet},
-	"savservice.exe":      {"Sophos", VidAntivirus, Meshaet},
-	"cmdagent.exe":        {"Comodo", VidAntivirus, Meshaet},
-	"cfp.exe":             {"Comodo", VidAntivirus, Meshaet},
-	"vsmon.exe":           {"ZoneAlarm", VidAntivirus, Meshaet},
-	"zlclient.exe":        {"ZoneAlarm", VidAntivirus, Meshaet},
-	"fortitray.exe":       {"FortiClient", VidAntivirus, Meshaet},
-	"fmon.exe":            {"FortiClient", VidAntivirus, Meshaet},
+	"warp-svc.exe":            {"Cloudflare WARP", VidVPN, Meshaet},
+	"cloudflare warp.exe":     {"Cloudflare WARP", VidVPN, Meshaet},
+	"happ.exe":                {"Happ", VidVPN, Meshaet},
+	"happd.exe":               {"Happ", VidVPN, Meshaet},
+	"karing.exe":              {"Karing", VidVPN, Meshaet},
+	"karingservice.exe":       {"Karing", VidVPN, Meshaet},
+	"v2rayn.exe":              {"v2rayN", VidVPN, Meshaet},
+	"sotavpn.exe":             {"Sota", VidVPN, Meshaet},
+	"sota-daemon.exe":         {"Sota", VidVPN, Meshaet},
+	"hiddify.exe":             {"Hiddify", VidVPN, Meshaet},
+	"hiddifycli.exe":          {"Hiddify", VidVPN, Meshaet},
+	"nekobox.exe":             {"NekoBox", VidVPN, Meshaet},
+	"nekobox_core.exe":        {"NekoBox", VidVPN, Meshaet},
+	"throne.exe":              {"Throne", VidVPN, Meshaet},
+	"thronecore.exe":          {"Throne", VidVPN, Meshaet},
+	"clash-verge.exe":         {"Clash Verge", VidVPN, Meshaet},
+	"clash-verge-service.exe": {"Clash Verge", VidVPN, Meshaet},
+	"verge-mihomo.exe":        {"Clash Verge", VidVPN, Meshaet},
+	"verge-mihomo-alpha.exe":  {"Clash Verge", VidVPN, Meshaet},
+	"amneziavpn.exe":          {"AmneziaVPN", VidVPN, Meshaet},
+	"amneziavpn-service.exe":  {"AmneziaVPN", VidVPN, Meshaet},
+	"outline.exe":             {"Outline", VidVPN, Meshaet},
+	"outlineservice.exe":      {"Outline", VidVPN, Meshaet},
+	"adguardvpnsvc.exe":       {"AdGuard VPN", VidVPN, Meshaet},
+	"ksdeui.exe":              {"Kaspersky VPN", VidVPN, Meshaet},
+	// Фильтры трафика: пропускают соединения через себя и бывают причиной
+	// «VPN включился, а данные не пошли».
+	"adguard.exe":        {"AdGuard", VidFiltr, Meshaet},
+	"adguardsvc.exe":     {"AdGuard", VidFiltr, Meshaet},
+	"proxifier.exe":      {"Proxifier", VidFiltr, Meshaet},
+	"avp.exe":            {"Kaspersky", VidAntivirus, Meshaet},
+	"avpui.exe":          {"Kaspersky", VidAntivirus, Meshaet},
+	"ekrn.exe":           {"ESET", VidAntivirus, Meshaet},
+	"egui.exe":           {"ESET", VidAntivirus, Meshaet},
+	"dwengine.exe":       {"Dr.Web", VidAntivirus, Meshaet},
+	"dwnetfilter.exe":    {"Dr.Web", VidAntivirus, Meshaet},
+	"drweb32.exe":        {"Dr.Web", VidAntivirus, Meshaet},
+	"avastsvc.exe":       {"Avast", VidAntivirus, Meshaet},
+	"avastui.exe":        {"Avast", VidAntivirus, Meshaet},
+	"aswengsrv.exe":      {"Avast", VidAntivirus, Meshaet},
+	"bdagent.exe":        {"Bitdefender", VidAntivirus, Meshaet},
+	"bdservicehost.exe":  {"Bitdefender", VidAntivirus, Meshaet},
+	"nortonsecurity.exe": {"Norton", VidAntivirus, Meshaet},
+	"ccsvchst.exe":       {"Norton", VidAntivirus, Meshaet},
+	"mcshield.exe":       {"McAfee", VidAntivirus, Meshaet},
+	"mfemms.exe":         {"McAfee", VidAntivirus, Meshaet},
+	"mbam.exe":           {"Malwarebytes", VidAntivirus, Meshaet},
+	"mbamservice.exe":    {"Malwarebytes", VidAntivirus, Meshaet},
+	"savservice.exe":     {"Sophos", VidAntivirus, Meshaet},
+	"cmdagent.exe":       {"Comodo", VidAntivirus, Meshaet},
+	"cfp.exe":            {"Comodo", VidAntivirus, Meshaet},
+	"vsmon.exe":          {"ZoneAlarm", VidAntivirus, Meshaet},
+	"zlclient.exe":       {"ZoneAlarm", VidAntivirus, Meshaet},
+	"fortitray.exe":      {"FortiClient", VidAntivirus, Meshaet},
+	"fmon.exe":           {"FortiClient", VidAntivirus, Meshaet},
 }
 
 // Protsess это строка снимка процессов. Put пуст, если процесс не отдал путь
@@ -314,7 +337,7 @@ func Podskazka(n []Nahodka, katalogProgrammy string) string {
 	}
 	var frazy []string
 	if len(zashchita) > 0 {
-		frazy = append(frazy, fmt.Sprintf("Может мешать %s. Если интернета нет, добавь папку %s в исключения его сетевого экрана",
+		frazy = append(frazy, fmt.Sprintf("Может мешать %s. Если интернета нет, добавь папку %s в исключения его проверки трафика",
 			perechen(zashchita), katalogProgrammy))
 	}
 	if len(vpn) > 0 {
