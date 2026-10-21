@@ -3,7 +3,7 @@
 // `deystvie` first) and compares it with the spec both ways. Text is checked
 // by Otkaz.test.tsx: dry, no "we", no trailing dot.
 
-/** Verbatim the ten-word vocabulary of internal/kachestvo/deystviya_test.go. */
+/** Verbatim the vocabulary of internal/kachestvo/deystviya_test.go. */
 export type Deystvie =
   | "povtorit"
   | "perepodklyuchitsya"
@@ -14,6 +14,7 @@ export type Deystvie =
   | "zaprosit-prava"
   | "proverit-set"
   | "pokazat-vinovnika"
+  | "nastroit-vremya"
   | "nichego";
 
 export interface ZapisOtkaza {
@@ -35,6 +36,7 @@ export const tekstOtkaza: Record<string, ZapisOtkaza> = {
   "selected-server-gone": { deystvie: "otkryt-servery", tekst: "выбранного сервера больше нет в подписке" },
   "tun-create-failed": { deystvie: "povtorit", tekst: "не удалось создать сетевое подключение VPN" },
   "core-not-responding": { deystvie: "povtorit", tekst: "часть программы, которая ведёт соединение, не отвечает" },
+  "clock-skew": { deystvie: "nastroit-vremya", tekst: "часы компьютера сбиты, и серверы не принимают подключение" },
   "core-missing": { deystvie: "nichego", tekst: "файл ядра VPN пропал или изменён, обычно его убирает антивирус: верни его из карантина или переустанови Affory" },
   "wintun-missing": { deystvie: "postavit-sluzhbu", tekst: "драйвер VPN не установился" },
   "no-admin": { deystvie: "postavit-sluzhbu", tekst: "служба не установлена или не отвечает" },
@@ -83,6 +85,7 @@ export const podpisDeystviya: Record<Deystvie, string | null> = {
   "zaprosit-prava": "Повторить от администратора",
   "proverit-set": "Проверить сеть",
   "pokazat-vinovnika": null,
+  "nastroit-vremya": "Настроить время",
   nichego: null,
 };
 

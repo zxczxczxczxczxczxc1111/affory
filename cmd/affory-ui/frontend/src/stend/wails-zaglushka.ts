@@ -517,6 +517,7 @@ export const Call = {
   async ByName(imya: string, ...args: unknown[]): Promise<unknown> {
     if (imya === "main.most.VybratPrilozhenie") throw new Error("В браузерном стенде выбор файла недоступен. В установленном Affory откроется окно выбора приложения.");
     if (imya === "main.most.OtkrytPapkuZhurnalov") throw new Error("В браузерном стенде Проводник недоступен. В установленном Affory кнопка открывает папку журналов.");
+    if (imya === "main.most.OtkrytNastroykiVremeni") throw new Error("В браузерном стенде настроек Windows нет. В установленном Affory кнопка открывает настройки даты и времени.");
     if (imya === "main.most.SluzhbaUstanovlena") return sluzhbaEst;
     if (imya === "main.most.UstanovitSluzhbu") {
       if (SLUCHAY === "novyy-otkaz") throw new Error("права не выданы: запрос отклонён");

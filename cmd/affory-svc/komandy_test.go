@@ -67,6 +67,8 @@ func podstavnaya(t *testing.T, zamerOtvet error) *Sluzhba {
 	// Настоящий поиск помех читает процессы и адаптеры машины разработчика, а
 	// на ней бывает запущен и Happ, и чужой VPN.
 	s.proveritPomehi = func(pomehi.Svoi) ([]pomehi.Nahodka, error) { return nil, nil }
+	// Настоящая сверка часов ходит в сеть. Нулевое расхождение: часы верны.
+	s.zameritChasy = func(context.Context) (time.Duration, error) { return 0, nil }
 	// Настоящая проба резолвера шлёт вопрос в сеть. Список пуст, значит
 	// выбирать не из чего и резолвер конфига это mestnyyRezolver.
 	s.mestnyeRezolvery = func(...uint32) ([]netip.Addr, error) { return nil, nil }

@@ -214,6 +214,13 @@ func (s *Sluzhba) ZapustitRaspisanie() {
 			s.raspisaniePomeh(s.fonCtx)
 		})
 	})
+	s.fon.Add(1)
+	fon.Zapustit("сверке часов", func() {
+		defer s.fon.Done()
+		fon.SPovtorom(s.fonCtx, "сверка часов", pauzaPoslePaniki, func() {
+			s.raspisanieChasov(s.fonCtx)
+		})
+	})
 }
 
 // raspisaniePodpiski тянет подписку при старте и дальше раз в период.

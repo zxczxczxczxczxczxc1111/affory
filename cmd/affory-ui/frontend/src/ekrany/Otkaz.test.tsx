@@ -31,13 +31,13 @@ const BEZ_EKRANA = new Set(["not-implemented"]);
 const VSE_DEYSTVIYA: Deystvie[] = [
   "povtorit", "perepodklyuchitsya", "otkryt-servery", "obnovit-podpisku",
   "obnovit-programmu", "postavit-sluzhbu", "zaprosit-prava", "proverit-set",
-  "pokazat-vinovnika", "nichego",
+  "pokazat-vinovnika", "nastroit-vremya", "nichego",
 ];
 
 describe("экраны отказов", () => {
   const kody = kodyIzGo().filter((k) => !BEZ_EKRANA.has(k));
 
-  it("коды прочитаны из kody.go, и их сорок восемь", () => {
+  it("коды прочитаны из kody.go, и их сорок девять", () => {
     // Pinning the count is deliberate: a new code must fail here until the
     // screen for it exists, and an empty read must not pass as "all covered".
     // Тридцать восьмой это internal-error, заведён 04.09.2026 полосой З:
@@ -63,7 +63,9 @@ describe("экраны отказов", () => {
     // сертификат сервера назывался отказом ключа и вёл обновлять подписку.
     // Сорок восьмой заведён 21.10.2026 (1.10.0): core-missing. Ядро, унесённое
     // антивирусом, называлось несозданным адаптером и звало повторять.
-    expect(kody.length).toBe(48);
+    // Сорок девятый в тот же день: clock-skew. Со сбитыми часами серверы
+    // отказывают при любом ключе, а человек шёл чинить сеть или подписку.
+    expect(kody.length).toBe(49);
   });
 
   it.each(kody)("у кода %s есть свой текст и действие из словаря", (kod) => {

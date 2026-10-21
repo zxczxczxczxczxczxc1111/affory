@@ -573,6 +573,10 @@ func imenaKomand() []string {
 // он приходит именно ошибкой без кода в состоянии.
 func kodPodklyucheniya(err error, sost *protokol.Oshibka) string {
 	switch {
+	// Первым: отказ при сбитых часах несёт внутри и причину пробы, и по ней
+	// одной ответ разошёлся бы с состоянием (chasy.go).
+	case errors.Is(err, ErrChasySbity):
+		return protokol.KodChasy
 	case errors.Is(err, ErrNetServerov), errors.Is(err, ErrServerNeNayd):
 		return protokol.KodSelectedServerGone
 	// Ядро назвало, почему не установилось защищённое соединение: ключ тут ни

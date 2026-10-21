@@ -62,6 +62,11 @@ export async function otkrytPapkuZhurnalov(): Promise<void> {
   await Call.ByName("main.most.OtkrytPapkuZhurnalov");
 }
 
+/** Настройки даты и времени Windows, кнопка отказа clock-skew (1.10.0). */
+export async function otkrytNastroykiVremeni(): Promise<void> {
+  await Call.ByName("main.most.OtkrytNastroykiVremeni");
+}
+
 /** Выгрузка диагностики (О6 аудита 1.6.1): оболочка спрашивает, куда сохранить,
  *  забирает журналы у службы и пишет файл. Экран получает строку итога, пустая
  *  значит «передумал в диалоге». */

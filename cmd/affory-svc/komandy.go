@@ -344,6 +344,14 @@ type Sluzhba struct {
 	proveritPomehi func(pomehi.Svoi) ([]pomehi.Nahodka, error)
 	periodPomeh    time.Duration
 
+	// Сверка часов (chasy.go, 1.10.0): последнее расхождение и когда оно
+	// измерено, под mu. Нулевое время значит «ни разу не сверены». zameritChasy
+	// это шов: настоящий ходит в сеть.
+	chasyRashozhdenie time.Duration
+	chasyZamereno     time.Time
+	zameritChasy      func(context.Context) (time.Duration, error)
+	periodChasov      time.Duration
+
 	// Seams. Not for elegance: without them the only way to test a state machine
 	// is to own a hypervisor, and a state machine nobody tests is where the app
 	// learns to lie about being connected.
@@ -561,6 +569,10 @@ func NovayaSluzhba() *Sluzhba {
 	s.periodDiagnostiki = periodDiagnostikiPoUmolchaniyu
 	s.proveritPomehi = pomehi.NovyySkaner().Proverit
 	s.periodPomeh = periodPomehPoUmolchaniyu
+	s.zameritChasy = func(ctx context.Context) (time.Duration, error) {
+		return set.RashozhdenieChasov(ctx, set.CeliChasov)
+	}
+	s.periodChasov = periodChasovPoUmolchaniyu
 	// Файл открывается ВСЕГДА, а пишется только при включённой настройке: иначе
 	// первая же секунда после включения уходила бы на открытие файла, а
 	// интересна как раз она.
@@ -808,6 +820,7 @@ func (s *Sluzhba) Status() protokol.StatusOtvet {
 		ObnovlenieProvereno:  s.obnovlenieProvereno,
 		ObnovlenieOtkaz:      s.obnovlenieOtkaz,
 		Pomehi:               s.pomehiDlyaStatusa(),
+		ChasyRashozhdenie:    s.chasyDlyaStatusa(),
 	}
 }
 
@@ -1506,17 +1519,15 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 	// Вердикт пишется в журнал СО ВСЕЙ обстановкой. Разовый отказ 03.09.2026
 	// разбирать было нечем именно потому, что здесь молчали: состояние живёт
 	// в памяти до следующей команды, а в журнале команд пишется только код.
-	// Код тот же, что уйдёт в состояние. До 1.10.0 строка печатала
-	// all-servers-down всегда, и журнал спорил с экраном.
-	log.Printf("подключение: отказ %s, сервер %s (%s, %s), попыток %d по %s, последняя проба: %v",
-		kodNepodnyavshegosya(poslednyaya), srv.Id, srv.Imya, srv.Transport,
-		popytokPodyoma, zhdatPodyoma, poslednyaya)
+	//
+	// Строка пишется ПОСЛЕ опускания: сверка часов ниже ходит в сеть напрямую,
+	// а поднятый туннель, который не несёт, съел бы и её.
 	s.Disconnect()
 	// Человеческой фразой, а не сводкой замера: «не понёс трафик (2 попытки
 	// по 15s)» читалось как строка журнала, случайно попавшая на экран
 	// (владелец, 23.09.2026). Число попыток и срок остались - они говорят,
 	// что программа не сдалась после первой неудачи, - но словами.
-	// Причина понятной частью: полный текст пробы записан строкой выше.
+	// Причина понятной частью: полный текст пробы записан в журнал ниже.
 	tekst := fmt.Sprintf("VPN включился, но данные через него не пошли. Попыток: %d, по %d секунд каждая. Причина: %s",
 		popytokPodyoma, int(zhdatPodyoma.Seconds()), sboi.DlyaCheloveka(poslednyaya))
 	// Антивирус с проверкой трафика и запущенный чужой VPN-клиент называются
@@ -1527,11 +1538,15 @@ func (s *Sluzhba) connect(ctx context.Context, expected *int, avto bool) (itogEr
 	}
 	// Код по ПРИЧИНЕ последней пробы, а не all-servers-down насмерть: ответ
 	// команды выбирает kodPodklyucheniya, а состояние живёт на Главной до
-	// следующей команды, и разойтись им нельзя.
-	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{
-		Kod:   kodNepodnyavshegosya(poslednyaya),
-		Tekst: tekst,
-	})
+	// следующей команды, и разойтись им нельзя. Сбитые часы главнее причины
+	// пробы: сервер с ними отказывает при любом ключе (1.10.0).
+	var kod string
+	kod, tekst, poslednyaya = s.sUchetomChasov(kodNepodnyavshegosya(poslednyaya), tekst, poslednyaya)
+	// Код тот же, что уйдёт в состояние. До 1.10.0 строка печатала
+	// all-servers-down всегда, и журнал спорил с экраном.
+	log.Printf("подключение: отказ %s, сервер %s (%s, %s), попыток %d по %s, последняя проба: %v",
+		kod, srv.Id, srv.Imya, srv.Transport, popytokPodyoma, zhdatPodyoma, poslednyaya)
+	s.postavit(protokol.SostNeNeset, &protokol.Oshibka{Kod: kod, Tekst: tekst})
 	return fmt.Errorf("VPN не понёс трафик за %d попытки по %s: %w", popytokPodyoma, zhdatPodyoma, poslednyaya)
 }
 

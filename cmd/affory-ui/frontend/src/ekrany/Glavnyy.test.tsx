@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Glavnyy, hodVosstanovleniya, obyom, tekstPomehi } from "./Glavnyy";
+import { Glavnyy, hodVosstanovleniya, obyom, tekstChasov, tekstPomehi } from "./Glavnyy";
 import { podpis } from "./podpisi";
 
 afterEach(cleanup);
@@ -117,6 +117,18 @@ describe("главный экран", () => {
     cleanup();
     render(<Glavnyy status={{ sostoyanie: "podnyat" }} />);
     expect(screen.queryByTestId("pomeha")).toBeNull();
+  });
+
+  it("сбитые часы называются строкой, верные молчат", () => {
+    render(<Glavnyy status={{ sostoyanie: "vyklyuchen", chasy_rashozhdenie: -432 }} />);
+    expect(screen.getByTestId("chasy")).toHaveTextContent(
+      "Часы компьютера отстают на 7 мин: из-за этого серверы отказывают в подключении",
+    );
+    cleanup();
+    render(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} />);
+    expect(screen.queryByTestId("chasy")).toBeNull();
+    expect(tekstChasov(3 * 3600 + 5)).toContain("спешат на 3 ч");
+    expect(tekstChasov(-2 * 86400)).toContain("отстают на 2 сут.");
   });
 
   it("незнакомый вид помехи от службы новее говорит общей фразой", () => {

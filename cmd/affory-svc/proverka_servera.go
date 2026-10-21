@@ -93,7 +93,10 @@ func (s *Sluzhba) proveritServerDoTun(ctx context.Context, avto bool, moyo int) 
 		err = zErr
 	}
 	log.Printf("сервер не отвечает, туннель не поднимаю: %v", err)
-	s.postavit(protokol.SostOtkaz, &protokol.Oshibka{Kod: protokol.KodAllServersDown, Tekst: tekstServerMolchit})
+	// Восстановление ходит только этим путём, и при сбитых часах оно бы вечно
+	// называло молчащие серверы, а не часы (1.10.0).
+	kod, tekst, err := s.sUchetomChasov(protokol.KodAllServersDown, tekstServerMolchit, err)
+	s.postavit(protokol.SostOtkaz, &protokol.Oshibka{Kod: kod, Tekst: tekst})
 	return err
 }
 

@@ -53,6 +53,8 @@ type Most interface {
 	SpisokProtsessov() ([]Protsess, error)
 	VybratPrilozhenie() (string, error)
 	OtkrytPapkuZhurnalov() error
+	// Настройки даты и времени Windows, кнопка отказа clock-skew (1.10.0).
+	OtkrytNastroykiVremeni() error
 	// QR с экрана (шесть удобств §3, О8 аудита 1.6.1): сначала снимок и
 	// сводка без секретов, потом добавление по подтверждению либо отмена.
 	// Ссылка в окно не попадает, окно получает сводку и строку итога.

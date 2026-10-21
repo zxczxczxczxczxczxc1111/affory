@@ -13,7 +13,7 @@ import { KOD_OBOLOCHKI, KOD_SROKA, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
-  dobavitNaydennoeQr, kodyQr, naytiQrNaEkrane, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitDiagnostiku, sohranitProfil, spisokProtsessov, startovayaVkladka,
+  dobavitNaydennoeQr, kodyQr, naytiQrNaEkrane, otkrytNastroykiVremeni, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitDiagnostiku, sohranitProfil, spisokProtsessov, startovayaVkladka,
   tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, zabytQr, type Zapushchennyy,
 } from "./most";
 import { Servery, svodkaQrIz, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
@@ -622,6 +622,14 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
             tekst: e instanceof Error ? e.message : String(e),
             vkladka: vkladkaSeychas.current,
           }),
+        );
+        break;
+      // Часы сбиты: окно открывает настройки Windows, а отказ остаётся на
+      // экране, пока человек не поправит время и не нажмёт «Подключить».
+      // Отказ открытия говорит своим текстом поверх того же отказа.
+      case "nastroit-vremya":
+        void otkrytNastroykiVremeni().catch((e: unknown) =>
+          zadatOtkaz({ kod: KOD_OBOLOCHKI, tekst: e instanceof Error ? e.message : String(e) }),
         );
         break;
       case "proverit-set":

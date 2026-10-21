@@ -161,6 +161,15 @@ export function tekstPomehi(p: Pomeha): string {
   return `Работает ${p.imya}: он мешает VPN. Выключи его на время работы Affory`;
 }
 
+/** Строка о сбитых часах (1.10.0). Сокращения «мин», «ч», «сут.» не
+ *  склоняются, поэтому без slovoPosleChisla. */
+export function tekstChasov(sekund: number): string {
+  const kuda = sekund < 0 ? "отстают" : "спешат";
+  const s = Math.abs(sekund);
+  const skolko = s < 3600 ? `${Math.floor(s / 60)} мин` : s < 86400 ? `${Math.floor(s / 3600)} ч` : `${Math.floor(s / 86400)} сут.`;
+  return `Часы компьютера ${kuda} на ${skolko}: из-за этого серверы отказывают в подключении`;
+}
+
 export function Glavnyy({
   podpiski = [],
   naObnovitPodpisku,
@@ -295,6 +304,11 @@ export function Glavnyy({
               {tekstPomehi(p)}
             </p>
           ))}
+          {status.chasy_rashozhdenie ? (
+            <p role="status" className="text-warn mt-1 text-center text-sm" data-testid="chasy">
+              {tekstChasov(status.chasy_rashozhdenie)}
+            </p>
+          ) : null}
           </div>
 
           <div className="affory-routing mt-5 w-full max-w-[380px]">
