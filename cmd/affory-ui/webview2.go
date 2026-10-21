@@ -41,14 +41,28 @@ var minimalnyyWebView2 = [4]int{86, 0, 616, 0}
 const ssylkaWebView2 = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 
 func webView2Est() bool {
+	_, ok := naytiWebView2()
+	return ok
+}
+
+// versiyaWebView2 это версия найденного рантайма для журнала и выгрузки
+// (1.10.0): чёрное или пустое окно разбирается по ней первой.
+func versiyaWebView2() string {
+	if papka, ok := naytiWebView2(); ok {
+		return filepath.Base(papka)
+	}
+	return "не найден"
+}
+
+func naytiWebView2() (string, bool) {
 	for _, kanal := range kanalyWebView2 {
 		for _, koren := range []registry.Key{registry.LOCAL_MACHINE, registry.CURRENT_USER} {
 			if papka, ok := papkaWebView2(koren, klyuchSostoyaniyaEdge+kanal); ok && webView2Goden(papka) {
-				return true
+				return papka, true
 			}
 		}
 	}
-	return false
+	return "", false
 }
 
 func papkaWebView2(koren registry.Key, put string) (string, bool) {

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -151,5 +151,51 @@ describe("экраны отказов", () => {
     expect(p).toHaveTextContent("Архив не выбран");
     expect(p.textContent).not.toContain("canceled");
     expect(p).toHaveAttribute("title", "Архив не выбран: dialog: The operation was canceled by the user.");
+  });
+});
+
+// Просьба владельца 21.10.2026: под любой ошибкой кнопка, которая сохраняет
+// журнал файлом, чтобы его переслать.
+describe("журнал под отказом", () => {
+  it("без обработчиков полосы журнала нет", () => {
+    render(<Otkaz kod="all-servers-down" naDeystvie={() => undefined} />);
+    expect(screen.queryByTestId("otkaz-zhurnal")).toBeNull();
+  });
+
+  it("сохраняет журнал и печатает итог под кнопками", async () => {
+    const sohranit = vi.fn(() => Promise.resolve("сохранено: affory-zhurnal-1.txt, 2 МБ"));
+    render(<Otkaz kod="all-servers-down" naDeystvie={() => undefined} naSohranitZhurnal={sohranit}
+                  versiya="Affory 1.10.0, Windows 11 (26200)" />);
+    expect(screen.getByTestId("otkaz-versiya")).toHaveTextContent("Affory 1.10.0, Windows 11 (26200)");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Сохранить журнал" })); });
+    expect(sohranit).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("otkaz-itog-zhurnala")).toHaveTextContent("сохранено: affory-zhurnal-1.txt, 2 МБ");
+  });
+
+  it("отмена диалога не печатает ничего", async () => {
+    render(<Otkaz kod="all-servers-down" naDeystvie={() => undefined} naSohranitZhurnal={() => Promise.resolve("")} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Сохранить журнал" })); });
+    expect(screen.queryByTestId("otkaz-itog-zhurnala")).toBeNull();
+  });
+
+  it("отказ сохранения говорится нашими словами, без английского хвоста", async () => {
+    const sohranit = () => Promise.reject(new Error("файл не записан: open C:\\x: Access is denied."));
+    render(<Otkaz kod="all-servers-down" naDeystvie={() => undefined} naSohranitZhurnal={sohranit} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Сохранить журнал" })); });
+    const itog = screen.getByTestId("otkaz-itog-zhurnala");
+    expect(itog).toHaveTextContent("журнал не сохранён: файл не записан");
+    expect(itog.textContent).not.toContain("Access");
+    expect(screen.getByRole("button", { name: "Сохранить журнал" })).toBeEnabled();
+  });
+
+  it("копирует текст целиком с кодом и версией", async () => {
+    const skopirovat = vi.fn((_: string) => Promise.resolve());
+    render(<Otkaz kod={KOD_OBOLOCHKI} tekst="connect: read pipe: The pipe has been ended."
+                  naDeystvie={() => undefined} naSkopirovat={skopirovat} versiya="Affory 1.10.0, Windows 10 (19045)" />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Скопировать текст" })); });
+    expect(skopirovat).toHaveBeenCalledWith(
+      `${TEKST_OBOLOCHKI}\nconnect: read pipe: The pipe has been ended.\nкод: ${KOD_OBOLOCHKI}\nAffory 1.10.0, Windows 10 (19045)`,
+    );
+    expect(screen.getByTestId("otkaz-itog-zhurnala")).toHaveTextContent("текст ошибки скопирован");
   });
 });

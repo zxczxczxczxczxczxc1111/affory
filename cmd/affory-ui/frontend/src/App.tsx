@@ -13,8 +13,8 @@ import { KOD_OBOLOCHKI, KOD_SROKA, type Deystvie } from "./ekrany/otkazy";
 import { PervyyZapusk, type SostoyanieUstanovki } from "./ekrany/PervyyZapusk";
 import { Pravila, type PravilaOtvet } from "./ekrany/Pravila";
 import {
-  dobavitNaydennoeQr, kodyQr, naytiQrNaEkrane, otkrytNastroykiVremeni, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitDiagnostiku, sohranitProfil, spisokProtsessov, startovayaVkladka,
-  tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, zabytQr, type Zapushchennyy,
+  dobavitNaydennoeQr, kodyQr, naytiQrNaEkrane, opisanieVersii, otkrytNastroykiVremeni, otkrytPapkuZhurnalov, prochitatSoedineniya, prochitatOhvatPrilozheniya, perezapustitOkno, perezapustitSPravami, prochitatProfil, skopirovatTekst, sohranitDiagnostiku, sohranitProfil, spisokProtsessov, startovayaVkladka,
+  tekstBufera, vybratArhiv, vybratKudaSohranit, vybratOtkuda, vybratPrilozhenie, zabytQr, zapisatVZhurnal, type Zapushchennyy,
 } from "./most";
 import { Servery, svodkaQrIz, type PodpiskaNaEkrane, type SpisokServerov, type ZamerZaderzhki } from "./ekrany/Servery";
 import { VKLADKI, type Vkladka } from "./ekrany/vkladki";
@@ -776,6 +776,18 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
     void perezapustitOkno().catch((e: unknown) => zhaloba("Новое окно не открылось", e));
   }, [status?.versiya_programmy, zhaloba]);
 
+  // Строка версии под отказом. Её отдаёт окно, а не служба: служба, которая
+  // молчит, это как раз тот отказ, под которым строка нужнее всего.
+  const [versiyaOkna, zadatVersiyuOkna] = useState("");
+  useEffect(() => {
+    let zhivo = true;
+    opisanieVersii().then(
+      (v) => { if (zhivo) zadatVersiyuOkna(v); },
+      (e: unknown) => zapisatVZhurnal(`строка версии не получена: ${e instanceof Error ? e.message : String(e)}`),
+    );
+    return () => { zhivo = false; };
+  }, []);
+
   // Трей просит открыть вкладку. Пункт «Обновить до X» открывает окно и зовёт
   // сюда: до 13.09.2026 он просто показывал окно на брошенной вкладке, и это
   // читалось как «ничего не происходит».
@@ -967,6 +979,13 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
   // A refusal raised by a button stays on that button's tab.
   if (pokazat?.vkladka && pokazat.vkladka !== vkladka) pokazat = null;
   pokazannoe.current = pokazat;
+  // Каждый показанный отказ уходит в журнал окна дословно (1.10.0): прежде
+  // то, что видел человек, в журналах не оставалось нигде, и жалобу «выскочила
+  // ошибка» сверять было не с чем.
+  const klyuchPokazannogo = klyuchOtkaza(pokazat);
+  useEffect(() => {
+    if (klyuchPokazannogo !== null) zapisatVZhurnal(`отказ на экране: ${klyuchPokazannogo}`);
+  }, [klyuchPokazannogo]);
 
 
 
@@ -983,12 +1002,16 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           // экрана это читалось как «нажал, и ничего не произошло».
           <div data-testid="otkaz-obertka" className="bg-background sticky top-0 z-20 px-8 pt-6">
             <Otkaz
+              key={klyuchPokazannogo}
               kod={pokazat.kod}
               tekst={pokazat.tekst}
               vinovnik={pokazat.vinovnik}
               naDeystvie={naDeystvie}
               naPovtor={naPovtor}
               naZakrytie={ubratOtkaz}
+              naSohranitZhurnal={sohranitDiagnostiku}
+              naSkopirovat={skopirovatTekst}
+              versiya={versiyaOkna}
             />
           </div>
         )}

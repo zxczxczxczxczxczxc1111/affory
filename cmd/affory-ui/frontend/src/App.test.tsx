@@ -58,6 +58,9 @@ const stend = vi.hoisted(() => {
     /** Every bridge call with its arguments. The profile password must show
      *  up in exactly one entry and nowhere else. */
     sled: [] as { chto: string; args: unknown[] }[],
+    /** Строки журнала окна (1.10.0), отдельно от sled: журнал пишется на
+     *  каждый показанный отказ, и в sled он мешал бы сверке вызовов. */
+    zhurnalOkna: [] as string[],
     putSohraneniya: "",
     putZagruzki: "",
     soderzhimoeFayla: "",
@@ -180,6 +183,8 @@ vi.mock("./most", () => ({
   dobavitNaydennoeQr: async () => "",
   zabytQr: () => {},
   sohranitDiagnostiku: async () => "",
+  zapisatVZhurnal: (tekst: string) => { stend.s.zhurnalOkna.push(tekst); },
+  opisanieVersii: async () => "Affory 1.10.0, Windows 11 (26200)",
   kodyQr: async (tekst: string) => { stend.s.sled.push({ chto: "kodyQr", args: [tekst] }); return ["data:image/png;base64,AAA"]; },
   skopirovatTekst: async (tekst: string) => { stend.s.sled.push({ chto: "skopirovatTekst", args: [tekst] }); },
   vybratKudaSohranit: async () => {
@@ -345,6 +350,7 @@ beforeEach(() => {
   s.tela = new Map();
   s.poslannoe = new Map();
   s.sled = [];
+  s.zhurnalOkna = [];
   s.putSohraneniya = "";
   s.putZagruzki = "";
   s.soderzhimoeFayla = "";
@@ -859,6 +865,21 @@ describe("баннер отказа", () => {
     expect(screen.queryByTestId("otkaz")).toBeNull();
     fireEvent.click(screen.getByText("Настройки"));
     expect(screen.getByTestId("otkaz")).toBeTruthy();
+  });
+
+  // 1.10.0: что видел человек, то и лежит в журнале окна, а под плашкой
+  // кнопка журнала и версия, которую окно знает без службы.
+  it("показанный отказ пишется в журнал окна, под ним журнал и версия", async () => {
+    const most = mostProby();
+    most.zadatStatus({ sostoyanie: "otkaz", oshibka: { kod: "all-servers-down", tekst: "ни один не ответил" } });
+    render(<App periodOprosaMs={BYSTRO} />);
+    expect(await screen.findByTestId("otkaz")).toHaveAttribute("data-kod", "all-servers-down");
+    expect(await screen.findByTestId("otkaz-versiya")).toHaveTextContent("Affory 1.10.0, Windows 11 (26200)");
+    expect(screen.getByRole("button", { name: "Сохранить журнал" })).toBeInTheDocument();
+    await waitFor(() => expect(stend.s.zhurnalOkna).toEqual(["отказ на экране: all-servers-down | ни один не ответил"]));
+    // Тот же отказ на следующем опросе статуса в журнал второй раз не идёт.
+    await new Promise((r) => setTimeout(r, BYSTRO * 4));
+    expect(stend.s.zhurnalOkna).toHaveLength(1);
   });
 
   it("пока служба восстанавливает туннель, причина не встаёт красной плашкой", async () => {

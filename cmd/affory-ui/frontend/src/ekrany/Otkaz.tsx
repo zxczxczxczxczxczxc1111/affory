@@ -2,12 +2,16 @@ import {
   KOD_OBOLOCHKI, KOD_SROKA, TEKST_BEZ_KODA, TEKST_OBOLOCHKI, TEKST_SLUZHBY_DOSLOVNO,
   podpisDeystviya, tekstOtkaza, type Deystvie,
 } from "./otkazy";
+import { useState } from "react";
 import { ponyatno } from "../ponyatno";
 
 // One refusal, one screen. Pure over props: the code names the text and the
 // action, App decides what the action does. An unknown code still renders,
 // with the code itself as text: a refusal the screen cannot name is worse
 // shown raw than swallowed.
+//
+// Своё у экрана одно: строка итога под кнопками журнала. App ставит экрану
+// key по отказу, и новый отказ начинается с чистой строки.
 
 export interface OtkazProps {
   kod: string;
@@ -24,9 +28,18 @@ export interface OtkazProps {
    *  the codes have no action at all, and without a cross they hung on screen
    *  until the next command that happened to succeed. */
   naZakrytie?: () => void;
+  /** «Сохранить журнал» (1.10.0, просьба владельца 21.10.2026): журнал
+   *  пересылают тому, кто разбирает, и кнопка стоит там, где человек видит
+   *  ошибку. Отдаёт строку итога, пустая значит «передумал в диалоге». */
+  naSohranitZhurnal?: () => Promise<string>;
+  naSkopirovat?: (tekst: string) => Promise<void>;
+  /** «Affory 1.10.0, Windows 11 (26200)»: её переписывают в жалобу первой. */
+  versiya?: string;
 }
 
-export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }: OtkazProps) {
+export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie, naSohranitZhurnal, naSkopirovat, versiya }: OtkazProps) {
+  const [itogZhurnala, zadatItogZhurnala] = useState("");
+  const [sohranyaetsya, zadatSohranyaetsya] = useState(false);
   const z = tekstOtkaza[kod];
   const deystvie: Deystvie = z?.deystvie ?? "nichego";
   // An unknown code has no wording of ours, so the sender's text IS the
@@ -48,8 +61,8 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
   const panel = TEKST_SLUZHBY_DOSLOVNO.has(kod) && !!tekst;
   const neizvesten = z === undefined && !obolochka && !!tekst;
   // Английский хвост Windows и Go отрезается (01.10.2026), целиком текст
-  // остаётся в подсказке у причины: окно своего журнала не ведёт, и без неё
-  // разбирать сбой оболочки было бы не по чему.
+  // остаётся в подсказке у причины, в «Скопировать текст» и в журнале окна
+  // (с 1.10.0 App пишет туда каждый показанный отказ).
   const chistyy = tekst ? ponyatno(tekst) : "";
   // Нечем сказать вообще: ни строки по коду, ни текста от отправителя. Тогда
   // общая фраза, но НЕ код: код это имя для нас, а не ответ человеку.
@@ -64,6 +77,30 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
   // Если от причины ничего не осталось, сырой текст висит подсказкой на
   // главной строке, иначе он пропал бы с экрана совсем.
   const skrytyy = tekst && tekst !== osnovnoy && (!prichina || povtor) ? tekst : undefined;
+
+  const sohranitZhurnal = naSohranitZhurnal && (async () => {
+    zadatSohranyaetsya(true);
+    zadatItogZhurnala("");
+    try {
+      zadatItogZhurnala(await naSohranitZhurnal());
+    } catch (e) {
+      zadatItogZhurnala(`журнал не сохранён: ${ponyatno(e instanceof Error ? e.message : String(e)) || "что-то пошло не так"}`);
+    } finally {
+      zadatSohranyaetsya(false);
+    }
+  });
+  // Копируется всё, что нужно разбирающему: наша строка, текст отправителя
+  // целиком, код и версия. Код человеку не показывается, а в жалобе он
+  // находит место в журнале быстрее любого пересказа.
+  const skopirovat = naSkopirovat && (async () => {
+    const stroki = [osnovnoy ?? "", tekst && tekst !== osnovnoy ? tekst : "", `код: ${kod}`, versiya ?? ""];
+    try {
+      await naSkopirovat(stroki.filter((s) => s !== "").join("\n"));
+      zadatItogZhurnala("текст ошибки скопирован");
+    } catch (e) {
+      zadatItogZhurnala(`текст не скопирован: ${ponyatno(e instanceof Error ? e.message : String(e)) || "что-то пошло не так"}`);
+    }
+  });
 
   return (
     <section
@@ -120,6 +157,37 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie }
             >
               Повторить
             </button>
+          )}
+        </div>
+      )}
+      {(sohranitZhurnal || skopirovat || versiya) && (
+        <div className="border-border flex flex-col gap-1.5 border-t pt-3" data-testid="otkaz-zhurnal">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {sohranitZhurnal && (
+              <button
+                type="button"
+                data-testid="otkaz-sohranit-zhurnal"
+                disabled={sohranyaetsya}
+                onClick={() => void sohranitZhurnal()}
+                className="text-accent-ink hover:underline text-sm font-medium disabled:opacity-60"
+              >
+                {sohranyaetsya ? "Сохраняю журнал…" : "Сохранить журнал"}
+              </button>
+            )}
+            {skopirovat && (
+              <button
+                type="button"
+                data-testid="otkaz-skopirovat"
+                onClick={() => void skopirovat()}
+                className="text-accent-ink hover:underline text-sm font-medium"
+              >
+                Скопировать текст
+              </button>
+            )}
+            {versiya && <span className="text-fg-muted ml-auto text-xs" data-testid="otkaz-versiya">{versiya}</span>}
+          </div>
+          {itogZhurnala && (
+            <p role="status" className="text-fg-secondary text-sm" data-testid="otkaz-itog-zhurnala">{itogZhurnala}</p>
           )}
         </div>
       )}

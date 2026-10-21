@@ -68,14 +68,29 @@ export async function otkrytNastroykiVremeni(): Promise<void> {
 }
 
 /** Выгрузка диагностики (О6 аудита 1.6.1): оболочка спрашивает, куда сохранить,
- *  забирает журналы у службы и пишет файл. Экран получает строку итога, пустая
- *  значит «передумал в диалоге». */
+ *  забирает журналы у службы (без службы читает их сама, 1.10.0) и пишет файл.
+ *  Экран получает строку итога, пустая значит «передумал в диалоге». */
 export async function sohranitDiagnostiku(): Promise<string> {
   try {
     return ((await Call.ByName("main.most.SohranitDiagnostiku")) as string | null) ?? "";
   } catch (e) {
     throw new Error(e instanceof Error ? e.message : String(e));
   }
+}
+
+/** Строка в журнал окна (1.10.0): показанный отказ, ошибка страницы. Журнал
+ *  это последнее место, куда пишут о сбое, и его собственный отказ некому
+ *  показать: он уходит в консоль разработчика и дальше не идёт. */
+export function zapisatVZhurnal(tekst: string): void {
+  void Call.ByName("main.most.ZapisatVZhurnal", tekst).catch((e: unknown) => {
+    console.error("журнал окна не принял запись", e);
+  });
+}
+
+/** «Affory 1.10.0, Windows 11 (26200)» для строки под отказом. Её отдаёт окно,
+ *  а не служба, поэтому строка есть и тогда, когда служба молчит. */
+export async function opisanieVersii(): Promise<string> {
+  return ((await Call.ByName("main.most.OpisanieVersii")) as string | null) ?? "";
 }
 
 /** Sends one command and returns the answer frame. The body travels as JSON

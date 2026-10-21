@@ -60,9 +60,14 @@ func prilozhenieOpcii(sluzhby ...application.Service) application.Options {
 }
 
 func main() {
+	// Журнал первым: всё ниже может отказать, и отказ обязан остаться в файле.
+	zakrytZhurnal := zavestiZhurnalOkna()
+	defer zakrytZhurnal()
 	// До создания приложения: без WebView2 окно вышло бы чёрным и без рамки.
 	if !webView2Est() {
+		log.Printf("WebView2 не найден, окно не запускается")
 		soobshchitNetWebView2()
+		zakrytZhurnal()
 		os.Exit(1)
 	}
 	// Преемник живого окна ждёт его ухода ДО application.New: там Wails берёт
@@ -178,6 +183,11 @@ func main() {
 	go trey.Nablyudat(m)
 
 	if err := app.Run(); err != nil {
-		log.Fatal(err)
+		// Прежде log.Fatal: причина уходила в stderr, которого нет, и окно
+		// просто не открывалось. Теперь человек видит причину и путь к журналу.
+		soobshchitNeZapustilos(err)
+		zakrytZhurnal()
+		os.Exit(1)
 	}
+	log.Printf("окно закрыто")
 }
