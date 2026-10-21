@@ -102,13 +102,30 @@ try {
     # -s -w: без таблицы символов и DWARF, выпуск легче на треть. -trimpath:
     # пути машины сборки в бинарь не попадают.
     $ld = "-s -w -X main.versiyaProgrammy=$Versiya"
-    & go build -trimpath -ldflags $ld -o (Join-Path $sborka 'affory-svc.exe') ./cmd/affory-svc
-    if ($LASTEXITCODE -ne 0) { throw 'affory-svc не собрался' }
-    & go build -trimpath -ldflags $ld -o (Join-Path $sborka 'affory-cli.exe') ./cmd/affory-cli
-    if ($LASTEXITCODE -ne 0) { throw 'affory-cli не собрался' }
-    # Иконка и версия в ресурсах affory-ui.exe: go build сам подхватывает
-    # rsrc_windows_amd64.syso из каталога пакета. Без него у exe нет иконки
-    # ни в проводнике, ни в панели задач (выпуск 0.6.0 ушёл таким).
+    # Манифест и номер у службы и командной строки (1.10.0): Windows 10 в
+    # совместимости, длинные пути, запуск без повышения. Длинные пути манифест
+    # включает только вместе с LongPathsEnabled в реестре, поэтому глубокую
+    # папку установки отсекает ещё и установщик. Файл ресурсов убирается
+    # сразу после сборки, по той же причине, что и у окна ниже.
+    foreach ($imya in 'affory-svc', 'affory-cli') {
+        $paket = Join-Path $koren "cmd\$imya"
+        Push-Location $paket
+        try {
+            & go run github.com/tc-hib/go-winres@v0.3.3 make --in winres\winres.json --out rsrc --arch amd64 --file-version $Versiya --product-version $Versiya
+            if ($LASTEXITCODE -ne 0) { throw "ресурсы $imya не собрались" }
+        } finally { Pop-Location }
+        try {
+            & go build -trimpath -ldflags $ld -o (Join-Path $sborka "$imya.exe") "./cmd/$imya"
+            if ($LASTEXITCODE -ne 0) { throw "$imya не собрался" }
+        } finally {
+            Remove-Item (Join-Path $paket 'rsrc_windows_amd64.syso') -ErrorAction SilentlyContinue
+        }
+    }
+    # Иконка, версия и манифест в ресурсах affory-ui.exe: go build сам
+    # подхватывает rsrc_windows_amd64.syso из каталога пакета. Без него у exe
+    # нет иконки ни в проводнике, ни в панели задач (выпуск 0.6.0 ушёл таким).
+    # Масштаб в манифесте тот же, что Wails ставит сам при запуске
+    # (permonitorv2): увидев его в манифесте, Wails свой вызов пропускает.
     # go-winres закреплённой версией, а не тем, что лежит в go\bin (Б5 аудита
     # 1.6.1). От его работы зависит номер в ресурсах, по которому служба
     # отвергает понижение версии.

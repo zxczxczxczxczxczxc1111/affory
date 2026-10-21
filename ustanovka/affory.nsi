@@ -127,6 +127,14 @@ Function SvoyKatalog
   ${If} $R1 != "\Affory"
     StrCpy $INSTDIR "$INSTDIR\Affory"
   ${EndIf}
+  ; Длинный путь (1.10.0). За 260 знаками часть Windows перестаёт находить
+  ; файлы, если длинные пути не включены в реестре, а по умолчанию они
+  ; выключены. 200 оставляют запас на имена файлов внутри.
+  StrLen $R1 $INSTDIR
+  ${If} $R1 > 200
+    StrCpy $R0 "Путь к папке слишком длинный ($R1 знаков, можно до 200): с таким Windows не всегда находит файлы программы. Выбери папку покороче, например C:\Program Files."
+    Return
+  ${EndIf}
   StrCpy $R1 $WINDIR
   Call VnutriKataloga
   ${If} $R0 == "1"
@@ -187,6 +195,15 @@ FunctionEnd
 Function .onInit
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "Affory работает только на 64-разрядной Windows." /SD IDOK
+    Abort
+  ${EndIf}
+  ; Windows 10 и новее (1.10.0): WebView2, фильтры WFP и манифесты программы
+  ; рассчитаны на неё. Номер сборки из реестра, а не из GetVersionEx: тот
+  ; отвечает по манифесту установщика. Нечитаемый номер установку не держит.
+  ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion" "CurrentBuildNumber"
+  ${If} $R0 != ""
+  ${AndIf} $R0 < 10240
+    MessageBox MB_ICONSTOP "Affory работает на Windows 10 и 11, а здесь более старая Windows (сборка $R0)." /SD IDOK
     Abort
   ${EndIf}
   SetRegView 64
@@ -311,6 +328,16 @@ Section "Affory" SEC_AFFORY
     ${If} ${Errors}
     ${OrIf} $0 != 0
       DetailPrint "WebView2 не установился (код $0): окно Affory не откроется, пока его нет"
+    ${EndIf}
+    ; Код загрузчика не говорит, встал ли рантайм: он отвечает и за скачивание.
+    ; Сверка тем же способом, что и до установки (1.10.0). Строчку в журнале
+    ; установки человек не читает, поэтому говорится сообщением.
+    Call WebView2Est
+    ${If} $R0 == ""
+      MessageBox MB_YESNO|MB_ICONEXCLAMATION "Affory установлена, но для её окна нужен компонент Microsoft Edge WebView2, а он не установился (обычно нет сети).$\r$\n$\r$\nОткрыть страницу загрузки на сайте Microsoft?" /SD IDNO IDNO webview2_bez_ssylki
+        ; Через explorer, как и окно: браузер не наследует права установщика.
+        Exec '"$WINDIR\explorer.exe" "https://go.microsoft.com/fwlink/p/?LinkId=2124703"'
+      webview2_bez_ssylki:
     ${EndIf}
   ${EndIf}
 

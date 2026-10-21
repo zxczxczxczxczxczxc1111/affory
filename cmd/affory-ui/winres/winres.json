@@ -4,6 +4,11 @@
       "0000": ["../ikonki/sfera_16.png", "../ikonki/sfera_20.png", "../ikonki/sfera_24.png", "../ikonki/sfera_32.png", "../ikonki/sfera_48.png", "../ikonki/sfera_64.png", "../ikonki/sfera_128.png", "../ikonki/sfera_256.png"]
     }
   },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": "affory-ui.manifest"
+    }
+  },
   "RT_VERSION": {
     "#1": {
       "0000": {
