@@ -40,6 +40,9 @@ var ErrChasySbity = errors.New("часы компьютера сбиты")
 func (s *Sluzhba) sveritChasy(ctx context.Context) (time.Duration, error) {
 	ctx, otmena := context.WithTimeout(ctx, srokSverkiChasov)
 	defer otmena()
+	s.mu.Lock()
+	s.chasyPopytka = s.seychas()
+	s.mu.Unlock()
 	d, err := s.zameritChasy(ctx)
 	if err != nil {
 		return 0, err
@@ -57,12 +60,15 @@ func (s *Sluzhba) sveritChasy(ctx context.Context) (time.Duration, error) {
 	return d, nil
 }
 
-// raspisanieChasov сверяет часы при старте службы и дальше раз в periodChasov.
+// raspisanieChasov сверяет часы при старте службы и дальше раз в periodChasov,
+// а пока они сбиты, раз в минуту.
 func (s *Sluzhba) raspisanieChasov(ctx context.Context) {
 	neudach := 0
 	for {
 		pauza := s.periodChasov
-		if _, err := s.sveritChasy(ctx); err != nil {
+		d, err := s.sveritChasy(ctx)
+		switch {
+		case err != nil:
 			// В журнал первая неудача из серии: сеть без доступа к адресам
 			// сверки дала бы строку каждые шесть часов навсегда, это терпимо,
 			// а каждую минуту нет.
@@ -73,7 +79,13 @@ func (s *Sluzhba) raspisanieChasov(ctx context.Context) {
 			if neudach <= povtorovChasov {
 				pauza = povtorChasov
 			}
-		} else {
+		case sbity(d):
+			// Сбитые часы сверяются раз в минуту: человек поправит их по
+			// строке на главном, и строка обязана уйти сразу, а не через шесть
+			// часов.
+			pauza = povtorChasov
+			neudach = 0
+		default:
 			neudach = 0
 		}
 		select {
@@ -87,9 +99,13 @@ func (s *Sluzhba) raspisanieChasov(ctx context.Context) {
 // chasySbityDlyaOtkaza отвечает, сбиты ли часы, на момент отказа подъёма.
 func (s *Sluzhba) chasySbityDlyaOtkaza() (time.Duration, bool) {
 	s.mu.Lock()
-	d, kogda := s.chasyRashozhdenie, s.chasyZamereno
+	d, kogda, popytka := s.chasyRashozhdenie, s.chasyZamereno, s.chasyPopytka
 	s.mu.Unlock()
-	if kogda.IsZero() || s.seychas().Sub(kogda) > svezhestChasov {
+	// Сбитые по прошлой сверке часы сверяются заново всегда: их могли
+	// поправить минуту назад. Но не чаще раза в минуту: без сети сверка ждёт
+	// свой срок до конца, и восстановление платило бы им за каждый круг.
+	nuzhno := kogda.IsZero() || s.seychas().Sub(kogda) > svezhestChasov || sbity(d)
+	if nuzhno && s.seychas().Sub(popytka) >= povtorChasov {
 		// Контекст свой, а не команды: команда к этому моменту могла кончиться
 		// по сроку, а вопрос про часы от неё не зависит.
 		svezhee, err := s.sveritChasy(context.Background())

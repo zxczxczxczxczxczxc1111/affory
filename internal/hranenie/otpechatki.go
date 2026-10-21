@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/zxczxczxczxczxczxc1111/affory/internal/sostoyanie"
 )
 
@@ -97,8 +99,8 @@ func sveritV(dirDannyh, put string) error {
 		return fmt.Errorf("файла %s нет в отпечатках", imya)
 	}
 	est2, err := hashFayla(put)
-	if errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%w: %s", ErrFaylPropal, put)
+	if faylaNet(err) {
+		return fmt.Errorf("%w: %s (%v)", ErrFaylPropal, put, err)
 	}
 	if err != nil {
 		return err
@@ -107,6 +109,13 @@ func sveritV(dirDannyh, put string) error {
 		return fmt.Errorf("%w: %s, отпечаток %s вместо %s", ErrFaylIzmenen, put, est2, hotim)
 	}
 	return nil
+}
+
+// faylaNet: файла нет на диске, или антивирус, который нашёл его, но ещё не
+// унёс, отказывает в открытии кодами 225 и 226. Для подъёма это одно и то же.
+func faylaNet(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, windows.ERROR_VIRUS_INFECTED) ||
+		errors.Is(err, windows.ERROR_VIRUS_DELETED)
 }
 
 func hashFayla(put string) (string, error) {

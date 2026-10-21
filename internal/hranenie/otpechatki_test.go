@@ -2,10 +2,13 @@ package hranenie
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestSveritLovitPodmenu(t *testing.T) {
@@ -61,6 +64,20 @@ func TestSveritOtlichaetPropavshiyFayl(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), yadro) {
 		t.Fatalf("в отказе нет пути к файлу, человеку нечего искать в карантине: %v", err)
+	}
+}
+
+// Антивирус, который ещё держит файл, отвечает на открытие кодом 225 или 226,
+// а не «файла нет»: это тоже пропажа, иначе человек снова видит «Повторить».
+func TestAntivirusDerzhitFayl(t *testing.T) {
+	for _, kod := range []error{windows.ERROR_VIRUS_INFECTED, windows.ERROR_VIRUS_DELETED, os.ErrNotExist} {
+		err := &os.PathError{Op: "open", Path: "sing-box.exe", Err: kod}
+		if !faylaNet(fmt.Errorf("файл sing-box.exe не открывается: %w", err)) {
+			t.Errorf("%v не принят за пропажу", kod)
+		}
+	}
+	if faylaNet(&os.PathError{Op: "open", Path: "sing-box.exe", Err: windows.ERROR_ACCESS_DENIED}) {
+		t.Error("отказ в доступе принят за пропажу: его причина не обязательно антивирус")
 	}
 }
 

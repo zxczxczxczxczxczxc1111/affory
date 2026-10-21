@@ -17,7 +17,7 @@ const katalog = `C:\Program Files\Affory`
 func skanerIz(p []Protsess, drayvery []string, derzhat map[uint32]bool, a []set.Adapter, pol map[uint32]bool) (*Skaner, *int) {
 	osmotrov := 0
 	return &Skaner{
-		osmotreny:      map[klyuchOsmotra]bool{},
+		osmotreny:      map[klyuchOsmotra]osmotr{},
 		protsessy:      func() ([]Protsess, error) { return p, nil },
 		drayveryWinDiv: func() ([]string, error) { return drayvery, nil },
 		derzhitWinDivert: func(pid uint32) (bool, error) {
@@ -108,20 +108,34 @@ func TestBezDrayveraModuliNeOsmatrivayutsya(t *testing.T) {
 	}
 }
 
-// Переименованный zapret находится по WinDivert.dll, а осмотр не повторяется,
-// пока процесс жив.
+// Переименованный zapret находится по WinDivert.dll и осматривается один раз,
+// пока жив; процесс без библиотеки осматривается дважды и больше нет.
 func TestPereimenovannyyPerehvatchikIOsmotrOdinRaz(t *testing.T) {
 	p := []Protsess{{Pid: 600, Imya: "myfilter.exe", Put: `D:\tools\myfilter.exe`}, {Pid: 601, Imya: "notepad.exe"}}
 	s, osmotrov := skanerIz(p, []string{"WinDivert1.4"}, map[uint32]bool{600: true}, nil, nil)
-	for i := 0; i < 2; i++ {
+	for range 3 {
 		n, _ := s.Proverit(Svoi{KatalogProgrammy: katalog})
 		x := odna(t, n)
 		if x.Imya != "myfilter.exe" || x.Gruppa != Lomaet || !strings.Contains(x.Priznak, "WinDivert.dll") {
 			t.Fatalf("держатель WinDivert назван не так: %+v", x)
 		}
 	}
-	if *osmotrov != 2 {
-		t.Fatalf("осмотров %d за две проверки двух процессов, ожидалось 2", *osmotrov)
+	if *osmotrov != 3 {
+		t.Fatalf("осмотров %d за три проверки, ожидалось 3: держатель один раз, прочий дважды", *osmotrov)
+	}
+}
+
+// Первый осмотр мог прийтись до загрузки WinDivert.dll: второй её находит.
+func TestPerehvatchikZagruzivshiyDllPozzheNayden(t *testing.T) {
+	derzhat := map[uint32]bool{}
+	s, _ := skanerIz([]Protsess{{Pid: 650, Imya: "svc-filter.exe"}}, []string{"WinDivert"}, derzhat, nil, nil)
+	if n, _ := s.Proverit(Svoi{}); len(n) != 0 {
+		t.Fatalf("находка до загрузки библиотеки: %+v", n)
+	}
+	derzhat[650] = true
+	n, _ := s.Proverit(Svoi{})
+	if x := odna(t, n); x.Imya != "svc-filter.exe" {
+		t.Fatalf("держатель назван не так: %+v", x)
 	}
 }
 

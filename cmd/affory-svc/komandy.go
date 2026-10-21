@@ -337,7 +337,9 @@ type Sluzhba struct {
 	// Чужие программы, которые ломают VPN или могут мешать (pomehi.go, 1.10.0).
 	// Последний ответ, его описание и текст неполной проверки живут под mu;
 	// описания нужны, чтобы журнал получал только перемены. proveritPomehi это
-	// шов: настоящий обходит процессы, драйверы и адаптеры машины.
+	// шов: настоящий обходит процессы, драйверы и адаптеры машины. pomehiMu
+	// держится на всю проверку, mu только на чтение и запись ответа.
+	pomehiMu       sync.Mutex
 	pomehiNaydeno  []pomehi.Nahodka
 	pomehiOpis     string
 	pomehiOshibka  string
@@ -345,10 +347,12 @@ type Sluzhba struct {
 	periodPomeh    time.Duration
 
 	// Сверка часов (chasy.go, 1.10.0): последнее расхождение и когда оно
-	// измерено, под mu. Нулевое время значит «ни разу не сверены». zameritChasy
-	// это шов: настоящий ходит в сеть.
+	// измерено, под mu. Нулевое время значит «ни разу не сверены». chasyPopytka
+	// это начало последней сверки, удачной или нет. zameritChasy это шов:
+	// настоящий ходит в сеть.
 	chasyRashozhdenie time.Duration
 	chasyZamereno     time.Time
+	chasyPopytka      time.Time
 	zameritChasy      func(context.Context) (time.Duration, error)
 	periodChasov      time.Duration
 

@@ -24,6 +24,10 @@ func (s *Sluzhba) obnovitPomehi() []pomehi.Nahodka {
 	if s.proveritPomehi == nil {
 		return nil
 	}
+	// Проверки идут по одной: фоновая, начатая до закрытия zapret, кончилась
+	// бы после свежей проверки подъёма и вернула бы строку о нём на экран.
+	s.pomehiMu.Lock()
+	defer s.pomehiMu.Unlock()
 	s.mu.Lock()
 	svoi := pomehi.Svoi{KatalogProgrammy: s.dirProgrammy}
 	if s.tun.Indeks != 0 {

@@ -122,7 +122,7 @@ describe("главный экран", () => {
   it("сбитые часы называются строкой, верные молчат", () => {
     render(<Glavnyy status={{ sostoyanie: "vyklyuchen", chasy_rashozhdenie: -432 }} />);
     expect(screen.getByTestId("chasy")).toHaveTextContent(
-      "Часы компьютера отстают на 7 мин: из-за этого серверы отказывают в подключении",
+      "Часы компьютера отстают на 7 мин. Если подключение не удаётся, включи в настройках Windows «Установить время автоматически»",
     );
     cleanup();
     render(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} />);

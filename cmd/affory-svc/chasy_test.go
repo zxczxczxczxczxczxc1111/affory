@@ -100,6 +100,49 @@ func TestSverkaPriOtkazeSvezhaya(t *testing.T) {
 	}
 }
 
+// Сбитые по прошлой сверке часы при отказе сверяются заново, даже если сверке
+// всего две минуты: человек мог поправить их по строке на главном, и отказ
+// не должен снова назвать часы причиной.
+func TestSbityeChasyPereproveryayutsyaPriOtkaze(t *testing.T) {
+	s := podstavnaya(t, nil)
+	s.zameritChasy = chasyOtvechayut(-7 * time.Minute)
+	if _, err := s.sveritChasy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	seychas := time.Now()
+	s.seychas = func() time.Time { return seychas.Add(2 * time.Minute) }
+	s.zameritChasy = chasyOtvechayut(0)
+	if _, sb := s.chasySbityDlyaOtkaza(); sb {
+		t.Fatal("поправленные две минуты назад часы названы сбитыми")
+	}
+	if r := s.Status().ChasyRashozhdenie; r != 0 {
+		t.Fatalf("строка о часах осталась в статусе: %d", r)
+	}
+}
+
+// Неудачная сверка повторяется не чаще раза в минуту: без сети она ждёт свой
+// срок до конца, и каждый круг восстановления платил бы за неё.
+func TestNeudachnayaSverkaNeChasheMinuty(t *testing.T) {
+	s := podstavnaya(t, nil)
+	zvonkov := 0
+	s.zameritChasy = func(context.Context) (time.Duration, error) {
+		zvonkov++
+		return 0, errors.New("сети нет")
+	}
+	seychas := time.Now()
+	s.seychas = func() time.Time { return seychas }
+	s.chasySbityDlyaOtkaza()
+	s.chasySbityDlyaOtkaza()
+	if zvonkov != 1 {
+		t.Fatalf("за одну минуту сверок %d, ожидалась одна", zvonkov)
+	}
+	s.seychas = func() time.Time { return seychas.Add(povtorChasov) }
+	s.chasySbityDlyaOtkaza()
+	if zvonkov != 2 {
+		t.Fatalf("через минуту сверок %d, ожидалось две", zvonkov)
+	}
+}
+
 func TestOpisatRashozhdenie(t *testing.T) {
 	for d, nado := range map[time.Duration]string{
 		-7 * time.Minute:          "отстают на 7 мин от",

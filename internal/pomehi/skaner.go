@@ -20,7 +20,7 @@ import (
 // чужого VPN, и не читая процессы машины разработчика.
 type Skaner struct {
 	mu        sync.Mutex
-	osmotreny map[klyuchOsmotra]bool
+	osmotreny map[klyuchOsmotra]osmotr
 
 	protsessy        func() ([]Protsess, error)
 	drayveryWinDiv   func() ([]string, error)
@@ -37,9 +37,20 @@ type klyuchOsmotra struct {
 	imya string
 }
 
+// osmotr это ответ осмотра и сколько раз процесс осмотрен. Процесс без
+// WinDivert.dll осматривается дважды: первый осмотр мог прийтись на
+// миллисекунды между запуском процесса и загрузкой библиотеки, и одного «нет»
+// хватило бы, чтобы не заметить перехватчик до его перезапуска.
+type osmotr struct {
+	derzhit bool
+	raz     int
+}
+
+const osmotrovBezDll = 2
+
 func NovyySkaner() *Skaner {
 	return &Skaner{
-		osmotreny:        map[klyuchOsmotra]bool{},
+		osmotreny:        map[klyuchOsmotra]osmotr{},
 		protsessy:        protsessySistemy,
 		drayveryWinDiv:   drayveryWinDivert,
 		derzhitWinDivert: derzhitWinDivertSistemno,
@@ -100,16 +111,16 @@ func (s *Skaner) derzhateliWinDivert(protsessy []Protsess, svoi Svoi) []Nahodka 
 		}
 		k := klyuchOsmotra{p.Pid, strings.ToLower(p.Imya)}
 		zhivye[k] = true
-		derzhit, osmotren := s.osmotreny[k]
-		if !osmotren {
-			var err error
-			derzhit, err = s.derzhitWinDivert(p.Pid)
+		o := s.osmotreny[k]
+		if !o.derzhit && o.raz < osmotrovBezDll {
+			derzhit, err := s.derzhitWinDivert(p.Pid)
 			if err != nil {
 				continue
 			}
-			s.osmotreny[k] = derzhit
+			o = osmotr{derzhit: derzhit, raz: o.raz + 1}
+			s.osmotreny[k] = o
 		}
-		if derzhit {
+		if o.derzhit {
 			itog = append(itog, derzhatelWinDivert(p))
 		}
 	}
@@ -134,11 +145,14 @@ func protsessySistemy() ([]Protsess, error) {
 	var zapis windows.ProcessEntry32
 	zapis.Size = uint32(unsafe.Sizeof(zapis))
 	var itog []Protsess
+	// Один буфер на весь обход: 64 КиБ на каждый процесс раз в 30 с давали бы
+	// службе десяток мегабайт мусора на каждую проверку.
+	bufer := make([]uint16, windows.MAX_LONG_PATH)
 	for err = windows.Process32First(snimok, &zapis); err == nil; err = windows.Process32Next(snimok, &zapis) {
 		itog = append(itog, Protsess{
 			Pid:  zapis.ProcessID,
 			Imya: windows.UTF16ToString(zapis.ExeFile[:]),
-			Put:  putObraza(zapis.ProcessID),
+			Put:  putObraza(zapis.ProcessID, bufer),
 		})
 	}
 	if !errors.Is(err, windows.ERROR_NO_MORE_FILES) {
@@ -150,13 +164,12 @@ func protsessySistemy() ([]Protsess, error) {
 // putObraza отдаёт полный путь образа или пустую строку. Буфер MAX_LONG_PATH:
 // программа в папке глубже 260 знаков иначе осталась бы без пути и не
 // отличилась бы от нашей по каталогу.
-func putObraza(pid uint32) string {
+func putObraza(pid uint32, bufer []uint16) string {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
 		return ""
 	}
 	defer windows.CloseHandle(h)
-	bufer := make([]uint16, windows.MAX_LONG_PATH)
 	dlina := uint32(len(bufer))
 	if err := windows.QueryFullProcessImageName(h, 0, &bufer[0], &dlina); err != nil {
 		return ""
