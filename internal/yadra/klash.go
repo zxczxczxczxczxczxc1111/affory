@@ -407,7 +407,9 @@ func chuzhoyNaPortu(adres string) error {
 		return nil
 	}
 	imya, err := VladelecPorta(n)
-	if err != nil || imya == "" {
+	// Нечитаемое имя это тоже «не установлен»: до 1.10.0 ядро из папки с
+	// путём длиннее 260 знаков объявлялось чужим на собственном порту.
+	if err != nil || imya == "" || imya == ImyaNedostupno {
 		return nil
 	}
 	if strings.EqualFold(filepath.Base(imya), ImyaYadra) {

@@ -184,7 +184,9 @@ func ktoNaTomKontse(h windows.Handle) (uint32, string) {
 		return pid, ""
 	}
 	defer windows.CloseHandle(p)
-	buf := make([]uint16, windows.MAX_PATH)
+	// MAX_LONG_PATH (1.10.0): окно из глубокой папки установки иначе
+	// попадало в журнал без имени.
+	buf := make([]uint16, windows.MAX_LONG_PATH)
 	n := uint32(len(buf))
 	if err := windows.QueryFullProcessImageName(p, 0, &buf[0], &n); err != nil {
 		return pid, ""

@@ -121,18 +121,27 @@ func slushateli() ([]strokaTcp, error) {
 	return stroki, nil
 }
 
+// ImyaNedostupno отдаёт VladelecPorta, когда порт занят, а имя владельца не
+// прочиталось. Это «занят, кем не знаю»: свободным такой порт не считается, а
+// чужим тоже не объявляется (chuzhoyNaPortu).
+const ImyaNedostupno = "имя недоступно"
+
 // Best effort, and deliberately so: the name is for the human reading the error.
 // Failing to get it must not turn a clear diagnosis into an unrelated errno.
+//
+// Буфер MAX_LONG_PATH (1.10.0): с буфером MAX_PATH путь длиннее 260 знаков не
+// читался, и наше собственное ядро из глубокой папки установки называлось
+// «имя недоступно», то есть чужим процессом на нашем порту.
 func imyaProcessa(pid uint32) string {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
-		return "имя недоступно"
+		return ImyaNedostupno
 	}
 	defer windows.CloseHandle(h)
-	bufer := make([]uint16, windows.MAX_PATH)
+	bufer := make([]uint16, windows.MAX_LONG_PATH)
 	dlina := uint32(len(bufer))
-	if err := windows.QueryFullProcessImageName(h, 0, &bufer[0], &dlina); err != nil {
-		return "имя недоступно"
+	if err := windows.QueryFullProcessImageName(h, 0, &bufer[0], &dlina); err != nil || dlina == 0 {
+		return ImyaNedostupno
 	}
 	return windows.UTF16ToString(bufer[:dlina])
 }
