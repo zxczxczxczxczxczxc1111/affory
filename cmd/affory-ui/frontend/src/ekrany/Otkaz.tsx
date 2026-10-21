@@ -2,8 +2,8 @@ import {
   KOD_OBOLOCHKI, KOD_SROKA, TEKST_BEZ_KODA, TEKST_OBOLOCHKI, TEKST_SLUZHBY_DOSLOVNO,
   podpisDeystviya, tekstOtkaza, type Deystvie,
 } from "./otkazy";
-import { useState } from "react";
-import { ponyatno } from "../ponyatno";
+import { ponyatno, TEKST_NICHEGO_NE_OSTALOS } from "../ponyatno";
+import { useSohranenieZhurnala } from "./sohranenieZhurnala";
 
 // One refusal, one screen. Pure over props: the code names the text and the
 // action, App decides what the action does. An unknown code still renders,
@@ -38,8 +38,8 @@ export interface OtkazProps {
 }
 
 export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie, naSohranitZhurnal, naSkopirovat, versiya }: OtkazProps) {
-  const [itogZhurnala, zadatItogZhurnala] = useState("");
-  const [sohranyaetsya, zadatSohranyaetsya] = useState(false);
+  const { sohranit: sohranitZhurnal, itog: itogZhurnala, zadatItog: zadatItogZhurnala, idet: sohranyaetsya } =
+    useSohranenieZhurnala(naSohranitZhurnal);
   const z = tekstOtkaza[kod];
   const deystvie: Deystvie = z?.deystvie ?? "nichego";
   // An unknown code has no wording of ours, so the sender's text IS the
@@ -78,17 +78,6 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie, 
   // главной строке, иначе он пропал бы с экрана совсем.
   const skrytyy = tekst && tekst !== osnovnoy && (!prichina || povtor) ? tekst : undefined;
 
-  const sohranitZhurnal = naSohranitZhurnal && (async () => {
-    zadatSohranyaetsya(true);
-    zadatItogZhurnala("");
-    try {
-      zadatItogZhurnala(await naSohranitZhurnal());
-    } catch (e) {
-      zadatItogZhurnala(`журнал не сохранён: ${ponyatno(e instanceof Error ? e.message : String(e)) || "что-то пошло не так"}`);
-    } finally {
-      zadatSohranyaetsya(false);
-    }
-  });
   // Копируется всё, что нужно разбирающему: наша строка, текст отправителя
   // целиком, код и версия. Код человеку не показывается, а в жалобе он
   // находит место в журнале быстрее любого пересказа.
@@ -98,7 +87,7 @@ export function Otkaz({ kod, tekst, vinovnik, naDeystvie, naPovtor, naZakrytie, 
       await naSkopirovat(stroki.filter((s) => s !== "").join("\n"));
       zadatItogZhurnala("текст ошибки скопирован");
     } catch (e) {
-      zadatItogZhurnala(`текст не скопирован: ${ponyatno(e instanceof Error ? e.message : String(e)) || "что-то пошло не так"}`);
+      zadatItogZhurnala(`текст не скопирован: ${ponyatno(e instanceof Error ? e.message : String(e)) || TEKST_NICHEGO_NE_OSTALOS}`);
     }
   });
 

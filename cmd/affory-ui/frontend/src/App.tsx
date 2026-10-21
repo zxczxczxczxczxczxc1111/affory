@@ -1028,6 +1028,7 @@ export function App({ periodOprosaMs = PERIOD_OPROSA_MS }: AppProps = {}) {
           <PervyyZapusk sostoyanie={ustanovka.sostoyanie} prichina={ustanovka.prichina} naUstanovku={naUstanovku} />
         ) : vkladka === "podklyuchenie" ? (
           <Glavnyy
+            naSohranitZhurnal={sohranitDiagnostiku}
             podpiski={podpiski}
             naObnovitPodpisku={id => void vypolnit("refreshSubscription", { id })}
             obnovlenieIdet={zanyatyeKomandy["refreshSubscription"] === true}

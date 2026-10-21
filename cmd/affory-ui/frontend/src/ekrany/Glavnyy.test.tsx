@@ -352,3 +352,20 @@ describe("главный экран: новая версия в подвале",
     expect(plashka).not.toHaveTextContent("Есть версия");
   });
 });
+
+// 1.10.0: «служба не отвечает» это ошибка без плашки отказа, и журнал при
+// ней нужнее всего. Кнопка есть только в этом состоянии.
+describe("главный экран: журнал при молчащей службе", () => {
+  it("кнопка сохраняет журнал и печатает итог", async () => {
+    const sohranit = vi.fn(() => Promise.resolve("сохранено: affory-zhurnal-1.txt, 3 МБ. Служба не ответила, её журналы прочитаны напрямую"));
+    render(<Glavnyy status={{ sostoyanie: "sluzhba-molchit" }} naSohranitZhurnal={sohranit} />);
+    await act(async () => { fireEvent.click(screen.getByTestId("molchit-sohranit-zhurnal")); });
+    expect(sohranit).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("molchit-itog-zhurnala")).toHaveTextContent("журналы прочитаны напрямую");
+  });
+
+  it("при живой службе кнопки нет", () => {
+    render(<Glavnyy status={{ sostoyanie: "vyklyuchen" }} naSohranitZhurnal={() => Promise.resolve("")} />);
+    expect(screen.queryByTestId("molchit-zhurnal")).toBeNull();
+  });
+});

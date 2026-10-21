@@ -18,6 +18,7 @@ import { IkVniz } from "../ikonki";
 import { KnopkaSpravki, SpravkaProtokolov } from "./SpravkaProtokolov";
 import { KatalogServerov, gruppyServerov } from "./KatalogServerov";
 import { slovoPosleChisla } from "../chisla";
+import { useSohranenieZhurnala } from "./sohranenieZhurnala";
 import { formatSkorosti, useSkorostTrafika } from "./skorostTrafika";
 import "./Glavnyy.css";
 
@@ -64,6 +65,9 @@ export interface GlavnyyProps {
    *  нажал «Установить» в настройках и ушёл на главную, а загрузка длится
    *  минуту. */
   podmenaIdet?: boolean;
+  /** «Сохранить журнал» под «служба не отвечает» (1.10.0): ошибка без
+   *  плашки отказа, и журнал при ней нужнее всего. */
+  naSohranitZhurnal?: () => Promise<string>;
 }
 
 function imyaServera(
@@ -194,7 +198,9 @@ export function Glavnyy({
   naPravila,
   kObnovleniyu,
   podmenaIdet = false,
+  naSohranitZhurnal,
 }: GlavnyyProps) {
+  const zhurnal = useSohranenieZhurnala(naSohranitZhurnal);
   const izvestnye = servery ?? spisok?.servery ?? [];
   const podnyat = status.sostoyanie === "podnyat";
   const skorosti = useSkorostTrafika(statistika, podnyat, `${status.podnyat_s ?? ""}:${status.nesushchiy_id ?? ""}`);
@@ -284,6 +290,22 @@ export function Glavnyy({
             <p className="text-fg-secondary mt-1 text-center text-sm" data-testid="hod-vosstanovleniya">
               {hodVosstanovleniya(status.oshibka, status.sled_popytka, seychas)}
             </p>
+          )}
+          {molchit && zhurnal.sohranit && (
+            <div className="mt-1 flex flex-col items-center gap-1" data-testid="molchit-zhurnal">
+              <button
+                type="button"
+                data-testid="molchit-sohranit-zhurnal"
+                disabled={zhurnal.idet}
+                onClick={() => void zhurnal.sohranit?.()}
+                className="text-accent-ink hover:underline text-sm font-medium disabled:opacity-60"
+              >
+                {zhurnal.idet ? "Сохраняю журнал…" : "Сохранить журнал"}
+              </button>
+              {zhurnal.itog && (
+                <p role="status" className="text-fg-secondary text-center text-sm" data-testid="molchit-itog-zhurnala">{zhurnal.itog}</p>
+              )}
+            </div>
           )}
           <p className="affory-carrier text-foreground mt-2 w-full break-all text-center text-[17px] font-medium" data-testid="nesushchiy">
             <span className="affory-server-name">{imya}</span>
